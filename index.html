@@ -204,56 +204,60 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   </style>
   
   <script>
-  /* Minimal google.script.run polyfill for Cloudflare Pages.
-     Calls /gas?method=... (GET for cacheable reads) or POST {method,args}.
+  /* google.script.run polyfill for Cloudflare Pages
+     - Per-call handler isolation (matches real GAS behavior)
+     - GET for cacheable public reads; POST for everything else
   */
-  (function(){
+  (function () {
     if (window.google && google.script && google.script.run) return;
 
     const CACHEABLE_READS = new Set([
-      'api_listEvents','api_upcomingEvents','api_eventDetails' // public-only reads
+      'api_listEvents', 'api_upcomingEvents', 'api_eventDetails' // public-only reads
     ]);
 
-    function makeRunner(base){
-      let ok = null, fail = null;
-
-      const runner = new Proxy(function(){}, {
-        get(_t, prop){
-          if (prop === 'withSuccessHandler') return (fn)=>{ ok=fn; return runner; };
-          if (prop === 'withFailureHandler') return (fn)=>{ fail=fn; return runner; };
-          return function(...args){
+    function runner(base, ctx = { ok: null, fail: null }) {
+      return new Proxy(function () {}, {
+        get(_t, prop) {
+          if (prop === 'withSuccessHandler') {
+            return (fn) => runner(base, { ...ctx, ok: fn });
+          }
+          if (prop === 'withFailureHandler') {
+            return (fn) => runner(base, { ...ctx, fail: fn });
+          }
+          // Treat any other property as a method name
+          return function (...args) {
             const method = String(prop);
-            (async ()=>{
-              try{
+            (async () => {
+              try {
                 let res;
                 if (CACHEABLE_READS.has(method)) {
                   const url = base + '?method=' + encodeURIComponent(method) +
-                              '&args=' + encodeURIComponent(JSON.stringify(args||[]));
-                  res = await fetch(url, { method:'GET' });
+                              '&args=' + encodeURIComponent(JSON.stringify(args || []));
+                  res = await fetch(url, { method: 'GET' });
                 } else {
                   res = await fetch(base, {
-                    method:'POST',
-                    headers:{ 'Content-Type':'application/json' },
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ method, args })
                   });
                 }
-                if (!res.ok) throw new Error('HTTP '+res.status);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = await res.json();
-                (ok||function(){})(data);
-              } catch(e){
-                (fail||console.error)(e);
-              } finally { ok=null; fail=null; }
+                (ctx.ok || function(){})(data);
+              } catch (e) {
+                (ctx.fail || console.error)(e);
+              }
             })();
-            return runner;
+            // After a call, return a fresh runner with empty handlers (like GAS)
+            return runner(base, {});
           };
         }
       });
-      return runner;
     }
 
     window.google = window.google || {};
     google.script = google.script || {};
-    google.script.run = makeRunner('/gas');
+    google.script.run = runner('/gas');
   })();
   </script>
 
