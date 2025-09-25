@@ -202,6 +202,62 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   display: none !important;
 }
   </style>
+  
+  <script>
+  /* Minimal google.script.run polyfill for Cloudflare Pages.
+     Calls /gas?method=... (GET for cacheable reads) or POST {method,args}.
+  */
+  (function(){
+    if (window.google && google.script && google.script.run) return;
+
+    const CACHEABLE_READS = new Set([
+      'api_listEvents','api_upcomingEvents','api_eventDetails' // public-only reads
+    ]);
+
+    function makeRunner(base){
+      let ok = null, fail = null;
+
+      const runner = new Proxy(function(){}, {
+        get(_t, prop){
+          if (prop === 'withSuccessHandler') return (fn)=>{ ok=fn; return runner; };
+          if (prop === 'withFailureHandler') return (fn)=>{ fail=fn; return runner; };
+          return function(...args){
+            const method = String(prop);
+            (async ()=>{
+              try{
+                let res;
+                if (CACHEABLE_READS.has(method)) {
+                  const url = base + '?method=' + encodeURIComponent(method) +
+                              '&args=' + encodeURIComponent(JSON.stringify(args||[]));
+                  res = await fetch(url, { method:'GET' });
+                } else {
+                  res = await fetch(base, {
+                    method:'POST',
+                    headers:{ 'Content-Type':'application/json' },
+                    body: JSON.stringify({ method, args })
+                  });
+                }
+                if (!res.ok) throw new Error('HTTP '+res.status);
+                const data = await res.json();
+                (ok||function(){})(data);
+              } catch(e){
+                (fail||console.error)(e);
+              } finally { ok=null; fail=null; }
+            })();
+            return runner;
+          };
+        }
+      });
+      return runner;
+    }
+
+    window.google = window.google || {};
+    google.script = google.script || {};
+    google.script.run = makeRunner('/gas');
+  })();
+  </script>
+
+  
 </head>
 <body>
   <div class="app" id="appShell">
@@ -886,7 +942,7 @@ function legacyCopy(txt){
   document.body.removeChild(ta);
 }
 
-function pageBalance(){ 
+function pageBalance(){
   if(!guard()) return;
 
   var node = el('<div class="card stack" id="bal_box"><div class="muted">Loading…</div></div>');
@@ -1715,61 +1771,5 @@ function pageBalance(){
 }
 
   </script>
-
-<script>
-/* Minimal google.script.run polyfill for Cloudflare Pages.
-   Calls /gas?method=... (GET for cacheable reads) or POST {method,args}.
-*/
-(function(){
-  if (window.google && google.script && google.script.run) return;
-
-  // Public, non-user-specific methods only (safe to cache at the edge):
-  const CACHEABLE_READS = new Set([
-    'api_listEvents','api_upcomingEvents','api_eventDetails'
-  ]);
-
-  function makeRunner(base){
-    let ok = null, fail = null;
-
-    const runner = new Proxy(function(){}, {
-      get(_t, prop){
-        if (prop === 'withSuccessHandler') return (fn)=>{ ok=fn; return runner; };
-        if (prop === 'withFailureHandler') return (fn)=>{ fail=fn; return runner; };
-        return function(...args){
-          const method = String(prop);
-          (async ()=>{
-            try{
-              let res;
-              if (CACHEABLE_READS.has(method)) {
-                const url = base + '?method=' + encodeURIComponent(method) +
-                            '&args=' + encodeURIComponent(JSON.stringify(args||[]));
-                res = await fetch(url, { method:'GET' });
-              } else {
-                res = await fetch(base, {
-                  method:'POST',
-                  headers:{ 'Content-Type':'application/json' },
-                  body: JSON.stringify({ method, args })
-                });
-              }
-              if (!res.ok) throw new Error('HTTP '+res.status);
-              const data = await res.json();
-              (ok||function(){})(data);
-            } catch(e){
-              (fail||console.error)(e);
-            } finally { ok=null; fail=null; }
-          })();
-          return runner; // keep the chaining API
-        };
-      }
-    });
-    return runner;
-  }
-
-  window.google = window.google || {};
-  google.script = google.script || {};
-  google.script.run = makeRunner('/gas');
-})();
-</script>
-
 </body>
 </html>
