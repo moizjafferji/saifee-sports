@@ -1,31 +1,1775 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Saifee Sports</title>
-  <meta name="google-signin-client_id" content="607955794668-ouqaec7s34ngn0s0quhc5d31vlros9o8.apps.googleusercontent.com">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="styles.css">
+  <style>
+    :root{
+      /* Colors */
+      --bg:#0b1220; --surface:#0f172a; --card:#0e1626; --muted:#9fb3c8; --text:#e6eef8;
+      --accent:#3b82f6; --ok:#16a34a; --warn:#f59e0b; --err:#ef4444; --border:#223;
+
+      /* Fluid type scale */
+      --fs-xxxs: clamp(20px, 8vw, 24px);
+      --fs-xxs: clamp(20px, 10vw, 30px);
+      --fs-xs:  clamp(25px, 13vw, 35px);
+      --fs-sm:  clamp(30px, 16vw, 40px);
+      --fs-md:  clamp(35px, 19vw, 45px);
+      --fs-lg:  clamp(40px, 22vw, 50px);
+      --fs-xl:  clamp(45px, 25vw, 55px);
+
+      /* Layout */
+      --sidebar-w: clamp(200px, 30vw, 300px);
+      --radius: 16px;
+      --pad: 14px;
+      --gap: 12px;
+      --elev: 0 10px 28px rgba(0,0,0,.35);
+
+      --topbar-h: clamp(56px, 9vh, 110px);
+
+    }
+    *{ box-sizing:border-box }
+    html, body{ height:100% }
+    body{
+      margin:0;
+      font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;
+      background:var(--bg); color:var(--text);
+      font-size:var(--fs-md); line-height:1.35;
+    }
+
+    /* ===== App layout ===== */
+    .app{ display:flex; min-height:100dvh; width:100%; position:relative; }
+    .sidebar{
+      width:var(--sidebar-w);
+      background:var(--surface);
+      border-right:1px solid var(--border);
+      padding: calc(var(--pad) + 6px) var(--pad);
+      position:sticky; top:0; align-self:flex-start; height:100dvh; overflow:auto;
+      will-change: transform;
+      transition: transform .25s ease;
+    }
+    .content{ flex:1; min-width:0; padding: var(--pad); }
+    .container{ max-width:1100px; margin:0 auto; padding: var(--pad); }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--elev);
+      padding: calc(var(--pad) + 6px);
+    }
+
+    /* ===== Mobile top bar + slide-in sidebar ===== */
+    .topbar{
+  min-height: var(--topbar-h);
+  display:flex;                       /* was: none */
+  position:sticky; top:0; z-index:200;/* higher than backdrop+sidebar */
+  background:linear-gradient(180deg, rgba(12,16,29,.95), rgba(12,16,29,.70));
+  backdrop-filter: blur(6px);
+  padding: 10px var(--pad);
+  border-bottom:1px solid var(--border);
+}
+
+    .hamburger{
+       min-width:88px;
+  min-height:44px;       /* larger tap target */
+  line-height:1;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color: transparent;
+      background:transparent; color:var(--text);
+      border:1px solid var(--border); border-radius:10px;
+      padding:8px 12px; font-weight:700; cursor:pointer;
+    }
+    .brand{ display:flex; align-items:center; gap:10px; font-size:var(--fs-lg); font-weight:800; letter-spacing:.3px }
+    .brand .logo{ width:28px; height:28px; object-fit:contain; border-radius:8px; border:1px solid var(--border); background:#0d1423 }
+    /* Sidebar logo only: triple the size */
+#sidebar .logo{
+  width: 126px;
+  height: 126px;
+}
+
+    @media (max-width: 1433px){
+  .sidebar{
+    position: fixed;
+    left: 0;
+    top: var(--topbar-h);                 /* start below topbar */
+    height: calc(100dvh - var(--topbar-h));
+    z-index: 180;
+    transform: translateX(-100%);
+  }
+  .sidebar.open{ transform: translateX(0); }
+  .content{ padding-top: 0; }
+
+  .backdrop{
+    position: fixed;
+    left: 0; right: 0;
+    top: var(--topbar-h);                 /* don’t cover the topbar/logo */
+    bottom: 0;
+    background: rgba(0,0,0,.45);
+    display: none;
+    z-index: 160;
+  }
+  .backdrop.show{ display: block; }
+}
+
+    /* ===== Desktop collapse (hide sidebar with ☰ as well) ===== */
+    /* ===== Desktop collapse (triggered by .sidebar.collapsed) ===== */
+@media (min-width: 601px){
+  .sidebar.collapsed{
+    position:fixed; left:0; top:0; height:100dvh; z-index:180;
+    transform: translateX(-100%);
+  }
+  /* no backdrop on desktop */
+}
+
+
+    /* ===== Nav ===== */
+    .nav-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
+    .brand-left{ display:flex; align-items:center; gap:10px; }
+    .logo{ width:42px; height:42px; object-fit:contain; border-radius:10px; border:1px solid var(--border); background:#0d1423; }
+    .nav{ display:flex; flex-direction:column; gap:6px; }
+    .nav a, .nav button.nav-item{
+      display:flex; align-items:center; gap:10px;
+      width:100%; padding:10px 12px;
+      border-radius: 12px; border:1px solid transparent;
+      background:transparent; color:#d7e5fb; text-decoration:none; cursor:pointer;
+      font-size:var(--fs-sm);
+    }
+    .nav a.active, .nav button.nav-item.active{ background:#1d283a; border-color:#2a364c; color:#fff; }
+    .nav-sep{ margin:8px 0; height:1px; background:var(--border) }
+    .nav .group{ display:flex; flex-direction:column; gap:6px; }
+    .submenu{ margin-left:8px; display:none; }
+    .submenu.open{ display:flex; flex-direction:column; gap:6px; }
+    .subitem{ padding-left:10px; font-size:var(--fs-xs) }
+
+    /* ===== Shared UI ===== */
+    .stack{ display:flex; flex-direction:column; gap: var(--gap); }
+    .row{ display:flex; gap: var(--gap); flex-wrap: wrap; }
+    .col{ flex:1 1 320px; min-width:280px; }
+    .label{ font-size:var(--fs-xs); color:#BF0A30; }
+    .tiny{ font-size:var(--fs-xxs); color:var(--muted); }
+    .muted{ color:var(--muted) }
+
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      padding: 11px 14px; border-radius:12px; border:1px solid #224;
+      background:var(--accent); color:#fff; font-weight:700; cursor:pointer;
+      font-size:var(--fs-sm);
+    }
+    .btn.secondary{ background:#1f2937; color:#dbeafe }
+    .btn.danger{ background:#dc2626 }
+    .btn:disabled{ opacity:.6; cursor:not-allowed }
+
+    .input, select, input[type="date"], input[type="datetime-local"], input[type="number"], input[type="file"]{
+      width:100%; padding:12px 14px; border-radius:10px; border:1px solid #293247;
+      background:#0e1626; color:var(--text); font-size:var(--fs-sm);
+    }
+    .table{ width:100%; border-collapse:collapse }
+.table th,.table td{
+  padding:10px;
+  border-bottom:1px solid var(--border);
+  text-align:left;
+  vertical-align: top;
+}
+.table--compact td { font-size: var(--fs-xxxs); }
+.table--compact th { font-size: var(--fs-xs); }
+
+    .right{ text-align:right }
+
+    .badge{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:var(--fs-xxs); border:1px solid transparent }
+    .badge.ok{ background:rgba(22,163,74,.15); color:#8ee5a3; border-color:rgba(22,163,74,.35) }
+    .badge.warn{ background:rgba(245,158,11,.15); color:#ffd089; border-color:rgba(245,158,11,.35) }
+
+    .event-card{ padding:12px; border:1px solid var(--border); border-radius:12px; background:#0e1626 }
+    .event-actions{ display:flex; gap:8px; flex-wrap:wrap }
+    .countdown{ font-size:var(--fs-lg); font-weight:800 }
+    .amt-credit{ color:#16a34a; font-weight:700 }
+    .amt-debit{ color:#ef4444; font-weight:700 }
+
+    /* Forms are one-column by design */
+    .form-grid{ display:grid; grid-template-columns: 1fr; gap: var(--gap); }
+
+    /* Utilities */
+    .hide{ display:none !important }
+    .w-full{ width:100% }
+    /* Make text scale reliably on iOS/Android and bump sizes on small screens */
+html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+
+/* Desktop collapse behavior */
+/* Hide the hamburger that shows inside the sidebar header */
+#sidebar .hamburger,
+#btnNavCollapse{
+  display: none !important;
+}
+  </style>
 </head>
 <body>
-  <div id="login-screen" class="centered">
-    <img id="logo" src="https://drive.google.com/uc?id=1Ez7CJktNfUgoE_erYtVa9F6qg7UiEt-H" alt="Saifee Sports Logo">
-    <h1>Welcome to Saifee Sports</h1>
-    <div class="g-signin2" data-onsuccess="onSignIn"></div>
+  <div class="app" id="appShell">
+    <div class="backdrop" id="backdrop"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="nav-head">
+        <div class="brand-left">
+          <img id="logo" class="logo" src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhGDd41RRLflpCpnJ6zrk8tZIWQ4rgNQS54N0CNUu4JSitj1pEsk4Ziu1emW06ph8I4Oqz80EiUGzh8fGk3aix-ARa7kqozocI7KpxG_ll1U5xkbl_ekUY7UTdw5W9KkRLlcPFlLYEptUtnHGcussYaRnVAUbBZYTCogDHMEAWr4kNGXQAvxYSxfzbQizCU/s16000/Saifee%20Sports%20Logo.png" alt="logo" onerror="this.style.display='none'"/>
+          <div class="brand" style="font-size:var(--fs-xl)"></div>
+        </div>
+        <button class="hamburger" id="btnCollapse" title="Hide menu">☰</button>
+      </div>
+      <nav class="nav" id="nav"></nav>
+    </aside>
+
+    <!-- Main content -->
+    <main class="content">
+      <div class="topbar">
+        <button class="hamburger" id="btnMenu">☰ Menu</button>
+        <div class="brand">
+          <img id="logoTop" class="logo" src="" alt="logo" onerror="this.style.display='none'"/>
+          <div>   Saifee Sports</div>
+        </div>
+      </div>
+      <div class="container"><div id="root"></div></div>
+    </main>
   </div>
 
-  <div id="animation-screen" class="hidden centered">
-    <img id="logo-animation" src="https://drive.google.com/uc?id=1Ez7CJktNfUgoE_erYtVa9F6qg7UiEt-H" alt="Saifee Sports Logo">
-  </div>
+  <script>
+    /* ===================== GLOBAL STATE ===================== */
+    var state = {
+      boot:null, user:null, page:'landing', sport:'Soccer', error:'', tmp:{},
+      admin:{ adminSports:[], pastAddresses:[], adminEvents:[] },
+      ui:{ menuOpen:false, sportsOpen:false }
+    };
+    var sportCountdownTimer = null;
+    var homeTimers = { cd:null, uiRefresh:null };
 
-  <div id="home-screen" class="hidden">
-    <div id="navbar"></div>
-    <div id="main-content"></div>
-  </div>
+    /* ===================== BOOT ===================== */
+    google.script.run.withSuccessHandler(function(res){
+      state.boot = res || {};
+      if (state.boot && state.boot.logoUrl) {
+        document.getElementById('logo').src = state.boot.logoUrl;
+        document.getElementById('logoTop').src = state.boot.logoUrl;
+      }
+      restoreSession();
+      render();
+    }).api_bootstrap();
 
-  <script src="https://apis.google.com/js/platform.js" async defer></script>
-  <script src="components/api.js"></script>
-  <script src="components/auth.js"></script>
-  <script src="components/router.js"></script>
+    /* ===================== UTILS ===================== */
+    function $(sel, root){ return (root||document).querySelector(sel); }
+    function el(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
+    function layout(n){ var root=document.getElementById('root'); root.innerHTML=''; root.appendChild(n); }
+    function setPage(p){ state.page=p; state.error=''; closeMenu(); render(); }
+    function setSport(sp){ state.sport=sp; setPage('sport'); }
+    function money(n){ return '$'+(Number(n||0)).toFixed(2); }
+    function ftIn(inches){ var v=Number(inches||0); var ft=Math.floor(v/12); var i=v%12; return v? (ft+'ft '+i+'in') : ''; }
+    function fmtDate(s){ if(!s) return ''; var d=new Date(s); if(isNaN(d)) return ''; var mm=('0'+(d.getMonth()+1)).slice(-2); var dd=('0'+d.getDate()).slice(-2); var yy=d.getFullYear(); return mm+'/'+dd+'/'+yy; }
+    function fmtDT(s){ try{ return new Date(s).toLocaleString(); }catch(_){return String(s||'');} }
+    function parseDT(s){ var d=new Date(s); return isNaN(d)?null:d; }
+    function now(){ return new Date(); }
+    function guard(){ if(!state.user){ setPage('landing'); return false; } return true; }
+    function showErr(sel, err){ var node=$(sel); if (node) node.textContent = (err && (err.message || err)) || 'Unexpected error'; }
+    function humanCountdown(ms){
+      var s = Math.max(0, Math.floor(ms/1000));
+      var d = Math.floor(s/86400);
+      var h = Math.floor((s%86400)/3600);
+      var m = Math.floor((s%3600)/60);
+      var ss = s%60;
+      var parts=[]; if (d) parts.push(d+'d'); if (h || d) parts.push(h+'h'); if (m || d || h) parts.push(m+'m'); parts.push(ss+'s');
+      return parts.join(' ');
+    }
+    function addrHtml(addr){
+      return addr
+        ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener">'+addr+'</a>')
+        : '';
+    }
+
+    // Session keep-alive
+    function saveSession(){ try { localStorage.setItem('saifee_user', JSON.stringify(state.user||null)); } catch(e){} }
+    function restoreSession(){
+      try {
+        var saved = JSON.parse(localStorage.getItem('saifee_user') || 'null');
+        if (saved && saved.its){
+          state.user = saved;
+          if (!state.page || state.page === 'landing') state.page = 'home';
+          AdminAPI.bootstrap(saved.its, function(b){
+            state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[]}, b||{});
+            render();
+          }, console.warn);
+        }
+      } catch(e){}
+    }
+    function signOut(){
+      try { localStorage.removeItem('saifee_user'); } catch(e){}
+      state.user = null;
+      state.admin = { adminSports:[], pastAddresses:[], adminEvents:[] };
+      setPage('landing');
+    }
+
+    /* ===================== SERVER CALL WRAPPER ===================== */
+    function callServer(primary, args, ok, err, fallback){
+      try{
+        google.script.run.withSuccessHandler(ok).withFailureHandler(function(e){
+          if (fallback){
+            google.script.run.withSuccessHandler(ok).withFailureHandler(err||console.error)[fallback].apply(google.script.run, args||[]);
+          } else (err||console.error)(e);
+        })[primary].apply(google.script.run, args||[]);
+      }catch(e){
+        if (fallback){
+          try{
+            google.script.run.withSuccessHandler(ok).withFailureHandler(err||console.error)[fallback].apply(google.script.run, args||[]);
+          }catch(e2){ (err||console.error)(e2); }
+        } else (err||console.error)(e);
+      }
+    }
+
+    /* ===================== ADMIN API WRAPPERS ===================== */
+    var AdminAPI = {
+      bootstrap:function(its, cb, eb){ callServer('Events_adminBootstrap', [its], cb, eb, 'api_admin_bootstrap'); },
+      eventsList:function(its, cb, eb){ callServer('Events_listForAdmin', [its], cb, eb, 'api_events_listForAdmin'); },
+      eventSave:function(its, payload, cb, eb){ callServer('Events_save', [its, payload], cb, eb, 'api_events_save'); },
+      eventDelete:function(its, id, cb, eb){ callServer('Events_delete', [its, id], cb, eb, 'api_events_delete'); },
+      eventCopy:function(its, id, cb, eb){ callServer('Events_copy', [its, id], cb, eb, 'api_events_copy'); },
+      receiptsList:function(its, cb, eb){ callServer('Receipts_listForAdmin', [its], cb, eb, 'api_receipts_listForAdmin'); },
+      receiptSave:function(its, payload, cb, eb){ callServer('Receipts_save', [its, payload], cb, eb, 'api_receipts_save'); },
+      receiptsFinalizeNow:function(its, eventId, cb, eb){ callServer('Receipts_finalizeNow', [its, eventId], cb, eb, 'api_receipts_finalizeNow'); }
+    };
+
+    /* ===================== LEFT NAV ===================== */
+    function buildNav(){
+      var nav = $('#nav'); if (!nav) return;
+      nav.innerHTML = '';
+
+      function navItem(label, page, opts){
+        var btn = el('<button class="nav-item">'+label+'</button>');
+        if (state.page===page) btn.classList.add('active');
+        btn.onclick = function(){ setPage(page); };
+        if (opts && opts.test && !opts.test()) return null;
+        nav.appendChild(btn);
+        return btn;
+      }
+      function navLink(label, onClick, isActive){
+        var btn = el('<button class="nav-item">'+label+'</button>');
+        if (isActive) btn.classList.add('active');
+        btn.onclick = onClick;
+        nav.appendChild(btn);
+        return btn;
+      }
+
+      // Primary tabs
+      navItem('Home','home', { test: ()=> !!state.user });
+      navItem('Profile','profile', { test: ()=> !!state.user });
+      navItem('Balance','balance', { test: ()=> !!state.user });
+      navItem('Calendar','calendar', { test: ()=> !!state.user });
+      navItem('Guests','guests', { test: ()=> !!state.user });
+
+      // Sports group with submenu
+      if (state.user){
+        var group = el('<div class="group"></div>');
+        var trigger = el('<button class="nav-item">Sports ▾</button>');
+        trigger.onclick = function(){
+          state.ui.sportsOpen = !state.ui.sportsOpen;
+          submenu.classList.toggle('open', state.ui.sportsOpen);
+        };
+        group.appendChild(trigger);
+
+        var submenu = el('<div class="submenu '+(state.ui.sportsOpen?'open':'')+'"></div>');
+        var sports = (state.boot && state.boot.sports) ? state.boot.sports : [];
+        if (!sports.length) sports = ['Soccer','Basketball','Volleyball','Tennis'];
+        sports.forEach(function(sp){
+          var sbtn = el('<button class="nav-item subitem">'+sp+'</button>');
+          if (state.page==='sport' && state.sport===sp) sbtn.classList.add('active');
+          sbtn.onclick = function(){ setSport(sp); };
+          submenu.appendChild(sbtn);
+        });
+        group.appendChild(submenu);
+        nav.appendChild(group);
+      }
+
+      // Admin items
+      var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
+      if (state.user && hasAdminSports){
+        nav.appendChild(el('<div class="nav-sep"></div>'));
+        navItem('Events','admin_events');
+        navItem('Receipts','admin_receipts');
+      }
+
+      // Auth
+      nav.appendChild(el('<div class="nav-sep"></div>'));
+      if (state.user){
+        navLink('Sign Out', function(){ if (confirm('Sign out?')) signOut(); }, false);
+      } else {
+        navLink('Sign In / Sign Up', function(){ setPage('landing'); }, state.page==='landing');
+      }
+    }
+
+    /* ===================== MENU TOGGLING ===================== */
+const MOBILE_MAX = 2000; // S25 Ultra and smaller use slide-in drawer
+
+function isMobileBP(){ return window.matchMedia(`(max-width: ${MOBILE_MAX}px)`).matches; }
+
+function toggleMenu(){
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('backdrop');
+  if (isMobileBP()){
+    const willOpen = !sb.classList.contains('open');
+    sb.classList.toggle('open', willOpen);
+    if (bd) bd.classList.toggle('show', willOpen);
+  } else {
+    sb.classList.toggle('collapsed');
+  }
+}
+
+function closeMenu(){
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('backdrop');
+  sb.classList.remove('open');        // mobile state
+  sb.classList.remove('collapsed');   // desktop state
+  if (bd) bd.classList.remove('show');
+}
+
+function wireMenuButtons(){
+  const btn = document.getElementById('btnMenu');
+  if (btn) btn.onclick = (e)=>{ e.stopPropagation(); toggleMenu(); };
+  const bd = document.getElementById('backdrop');
+  if (bd) bd.onclick = closeMenu;
+}
+
+// Normalize classes when crossing the breakpoint
+window.addEventListener('resize', ()=>{
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('backdrop');
+  if (isMobileBP()){
+    // entering mobile: ensure desktop state is cleared
+    sb.classList.remove('collapsed');
+  } else {
+    // leaving mobile: hide drawer/backdrop
+    sb.classList.remove('open');
+    if (bd) bd.classList.remove('show');
+  }
+});
+
+// Call once after the DOM is ready (or keep your existing render() call that does this)
+wireMenuButtons();
+
+
+    /* ===================== AUTH VIEWS ===================== */
+    function pageLanding(){
+      var hasLogo = (state.boot && state.boot.logoUrl);
+      var node = el(
+        '<div class="card stack">'+
+          '<div style="display:flex;align-items:center;gap:12px">'+
+            (hasLogo?('<img class="logo" src="'+state.boot.logoUrl+'" alt="logo"/>'):'')+
+            '<div style="font-size:var(--fs-xl);font-weight:800">Welcome to Saifee Sports</div>'+
+          '</div>'+
+          '<div class="stack">'+
+            '<div class="label">Sign In</div>'+
+            '<form id="si_form" class="stack">'+
+              '<input id="si_its" class="input" placeholder="ITS (8 digits)" maxlength="8" inputmode="numeric" pattern="[0-9]*">'+
+              '<input id="si_whatsapp" class="input" placeholder="Whatsapp Number (10 digits)" type="password" maxlength="10" inputmode="numeric" pattern="[0-9]*">'+
+              '<button class="btn" id="btnSignIn" type="submit">Sign In</button>'+
+            '</form>'+
+            '<div class="label">New here?</div>'+
+            '<button class="btn secondary" id="btnSignUp">Create Profile</button>'+
+            '<div class="tiny" id="si_err" style="color:var(--err)"></div>'+
+          '</div>'+
+        '</div>'
+      );
+      layout(node);
+      $('#btnSignUp').onclick = function(){ setPage('create'); };
+
+      function onlyDigits(id, max){
+        var el2 = document.getElementById(id);
+        if(!el2) return;
+        el2.addEventListener('input', function(){ this.value = this.value.replace(/\D+/g,'').slice(0,max); });
+      }
+      onlyDigits('si_its',8); onlyDigits('si_whatsapp',10);
+
+      $('#si_form').addEventListener('submit', function(e){ e.preventDefault(); actSignIn(); });
+    }
+    function actSignIn(){
+      var its=$('#si_its').value.trim(); var whatsapp=$('#si_whatsapp').value.trim(); var err=$('#si_err'); err.textContent='';
+      if(!/^\d{8}$/.test(its)) { err.textContent='Enter an 8-digit ITS'; return; }
+      if(!/^\d{10}$/.test(whatsapp)) { err.textContent='Enter a 10-digit Whatsapp Number'; return; }
+      google.script.run.withSuccessHandler(function(res){
+  if(!res||!res.ok){ err.textContent=(res&&res.error)||'Invalid credentials'; return; }
+  state.user=res.user; saveSession();
+
+  // Load admin data but DON'T render yet (let the animation show)
+  AdminAPI.bootstrap(state.user.its, function(b){
+    state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[]}, b||{});
+  }, console.warn);
+
+  var hasLogo = (state.boot && state.boot.logoUrl);
+  var anim = el('<div class="card stack" style="align-items:center;text-align:center">'
+    +(hasLogo?('<img class="logo" src="'+state.boot.logoUrl+'"/>'):'')
+    +'<div>Welcome, '+(state.user.first_name||'Athlete')+'!</div></div>');
+  layout(anim);
+
+  // After the animation delay, navigate (setPage will render)
+  setTimeout(function(){
+    setPage(res.requireValidation ? 'edit' : 'home');
+  }, 900);
+}).api_signIn({its:its, whatsapp:whatsapp});
+
+    }
+
+    /* ===================== SHARED HELPERS ===================== */
+    function withinCheckInWindow(evt){
+      var start = parseDT(evt && evt.start_datetime);
+      if (!start) return false;
+      var end   = parseDT(evt && evt.end_datetime);
+      var nowTs = now();
+      var openAt  = new Date(start.getTime() - 30*60*1000);
+      var closeAt = end ? new Date(end.getTime() - 30*60*1000) : new Date(start.getTime() + 30*60*1000);
+      return nowTs >= openAt && nowTs <= closeAt;
+    }
+    function doCheckIn(eventId, itsOrGuest, btnEl){
+      if(!navigator.geolocation){ alert('Location not available on this device/browser.'); return; }
+      var originalText = btnEl ? btnEl.textContent : '';
+      if (btnEl){ btnEl.disabled = true; btnEl.textContent = 'Checking…'; }
+      navigator.geolocation.getCurrentPosition(function(pos){
+        var lat = pos.coords.latitude, lng = pos.coords.longitude;
+        google.script.run
+          .withSuccessHandler(function(r){
+            if(!r || !r.ok){
+              alert((r && r.error) || 'Check-in failed');
+              if (btnEl){ btnEl.disabled = false; btnEl.textContent = originalText; }
+              return;
+            }
+            if (btnEl){
+              btnEl.disabled = true;
+              btnEl.textContent = 'Checked In';
+              btnEl.classList.add('checked-in');
+            } else {
+              alert('Check-in successfully recorded!');
+            }
+          })
+          .withFailureHandler(function(e){
+            alert('Check-in failed: ' + (e && e.message || e));
+            if (btnEl){ btnEl.disabled = false; btnEl.textContent = originalText; }
+          })
+          .api_checkInWithLocation(state.user.its, eventId, (itsOrGuest || state.user.its), lat, lng);
+      }, function(err){
+        alert('Could not get your location: ' + (err && err.message ? err.message : 'Unknown error'));
+        if (btnEl){ btnEl.disabled = false; btnEl.textContent = originalText; }
+      }, { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+    }
+    function refreshCheckinButtonsVisibility(){
+      document.querySelectorAll('.js-checkin-btn').forEach(function(btn){
+        if (btn.classList.contains('checked-in')) return;
+        var start = btn.getAttribute('data-start');
+        var end   = btn.getAttribute('data-end');
+        if (!start){ btn.style.display = 'none'; return; }
+        var evt = { start_datetime: start, end_datetime: end };
+        var can = withinCheckInWindow(evt);
+        btn.style.display = can ? 'inline-flex' : 'none';
+        btn.disabled = !can;
+      });
+    }
+    function computeStatusBadge(st){
+      var s = String(st||'none').toLowerCase();
+      if (s==='active')   return '<span class="badge ok">Active</span>';
+      if (s==='waitlist') return '<span class="badge warn">Waitlist</span>';
+      if (s==='dropout')  return '<span class="badge warn">Dropped Out</span>';
+      return '';
+    }
+
+    /* ===================== HOME (one column) ===================== */
+    function pageHome(){ if(!guard())return;
+
+      // clear prior timers
+      if (homeTimers.cd){ clearInterval(homeTimers.cd); homeTimers.cd = null; }
+      if (homeTimers.uiRefresh){ clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
+
+      var node = el(
+        '<div class="stack">'+
+          '<div class="card stack">'+
+            '<div class="label">Your Next Event</div>'+
+            '<div id="home_cd" class="countdown muted">Looking for your next registration…</div>'+
+            '<div id="home_cd_sub" class="tiny"></div>'+
+            '<div><button class="btn js-checkin-btn" id="home_checkin" style="display:none"></button></div>'+
+          '</div>'+
+          '<div class="card stack">'+
+            '<div class="label">Balance</div>'+
+            '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
+          '</div>'+
+          '<div class="card stack">'+
+            '<div class="label">Your Events</div>'+
+            '<div id="home_self"></div>'+
+          '</div>'+
+          '<div class="card stack">'+
+            '<div class="label">Guest Events</div>'+
+            '<div id="home_guests"><div class="tiny muted">Loading…</div></div>'+
+          '</div>'+
+          '<div class="card stack">'+
+            '<div class="label">Upcoming Events</div>'+
+            '<div id="home_upcoming"></div>'+
+          '</div>'+
+        '</div>'
+      );
+      layout(node);
+
+      // Balance
+      google.script.run.withSuccessHandler(function(res){
+        $('#home_balance').textContent = money(res.balance||0);
+      }).api_balance(state.user.its);
+
+      // Self + guest lists + nextSelf
+      google.script.run.withSuccessHandler(function(h){
+        var selfList   = (h && h.self)   || [];
+        var guestList  = (h && h.guests) || [];
+        var nextSelf   = (h && h.nextSelf) || null;
+
+        var nowTs = now(); var today=new Date(nowTs);
+        function isSameDay(d){ return d && d.getFullYear()===today.getFullYear() && d.getMonth()===today.getMonth() && d.getDate()===today.getDate(); }
+        function isFutureOngoingOrToday(e){
+          var end   = parseDT(e && e.end_datetime);
+          var start = parseDT(e && e.start_datetime);
+          if (end) return (end > nowTs) || isSameDay(end) || isSameDay(start);
+          return (start && start > nowTs) || isSameDay(start);
+        }
+        selfList  = selfList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
+        guestList = guestList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
+
+        // ===== Your Events (with per-row Check In when eligible) =====
+        (function renderSelfRows(){
+          var box = $('#home_self');
+          if (!selfList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+          box.innerHTML = selfList.map(function(e){
+            var badge = computeStatusBadge(e.status);
+            var title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
+            var sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') +
+                        (e.address ? ('<br/>' + addrHtml(e.address)) : '');
+            var eid   = (e.id || e.event_id || '');
+            var actId = 'self_actions_'+eid;
+            return ''+
+              '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+                '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+                '<div id="'+actId+'" style="display:flex;gap:8px;align-items:center">'+
+                  (badge||'')+
+                  '<span class="tiny muted" data-role="wait">…</span>'+
+                  '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
+                '</div>'+
+              '</div>';
+          }).join('');
+
+          // wire view
+          box.querySelectorAll('button[data-act="view"]').forEach(function(b){
+            b.addEventListener('click', function(){ var id=b.getAttribute('data-eid'); if(id) openEvent(id); });
+          });
+
+          // decide check-in eligibility per event
+          selfList.forEach(function(e){
+            var eid = (e.id || e.event_id || '');
+            var act = document.getElementById('self_actions_'+eid);
+            if (!act) return;
+
+            google.script.run.withSuccessHandler(function(res){
+              var w = act.querySelector('[data-role="wait"]'); if (w) w.remove();
+              var mine = (res && res.live || []).find(function(r){ return !r.is_guest && String(r.person)===String(state.user.its); });
+              var checked = !!(mine && mine.checked_in_at);
+              var can = (String(e.status||'').toLowerCase()==='active') && withinCheckInWindow(e) && !checked;
+
+              if (checked){
+                var btn = document.createElement('button');
+                btn.className = 'btn js-checkin-btn checked-in';
+                btn.textContent = 'Checked In';
+                btn.disabled = true;
+                btn.setAttribute('data-start', e.start_datetime||'');
+                btn.setAttribute('data-end',   e.end_datetime||'');
+                act.insertBefore(btn, act.querySelector('[data-act="view"]'));
+              } else if (can){
+                var btn2 = document.createElement('button');
+                btn2.className = 'btn js-checkin-btn';
+                btn2.textContent = 'Check In';
+                btn2.setAttribute('data-start', e.start_datetime||'');
+                btn2.setAttribute('data-end',   e.end_datetime||'');
+                btn2.onclick = function(){ doCheckIn(eid, state.user.its, btn2); };
+                act.insertBefore(btn2, act.querySelector('[data-act="view"]'));
+              }
+              refreshCheckinButtonsVisibility();
+            }).api_eventDetails(eid);
+          });
+        })();
+
+        // ===== Guest events (my guests, with per-row Check In) =====
+        (function renderGuestRows(){
+          var box = $('#home_guests');
+          if (!guestList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+          box.innerHTML = '';
+
+          guestList.forEach(function(ev){
+            var eid = (ev.id || ev.event_id || '');
+            google.script.run.withSuccessHandler(function(res){
+              var live = (res && res.live) || [];
+              var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
+              if (!mine.length) return;
+
+              mine.forEach(function(r){
+                var title = (ev.sport ? (ev.sport+' - ') : '') + (ev.name||'Event') + ' — ' + (r.name || 'Guest');
+                var sub   = (ev.start_datetime ? (fmtDT(ev.start_datetime)) : '') + (ev.address ? ('<br/>' + addrHtml(ev.address)) : '');
+                var badge = computeStatusBadge(r.status);
+                var rowId = 'g_row_'+eid+'_'+r.person;
+                var actId = 'g_actions_'+eid+'_'+r.person;
+
+                var rowHtml =
+                  '<div id="'+rowId+'" style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+                    '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+                    '<div id="'+actId+'" style="display:flex;gap:8px;align-items:center">'+
+                      (badge||'')+
+                      '<span class="tiny muted" data-role="wait">…</span>'+
+                      '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
+                    '</div>'+
+                  '</div>';
+
+                var t=document.createElement('template'); t.innerHTML=rowHtml.trim();
+                var rowNode = t.content.firstChild;
+                box.appendChild(rowNode);
+
+                // build check-in button for this guest row
+                var act = document.getElementById(actId);
+                var checked = !!r.checked_in_at;
+                var can = (String(r.status||'').toLowerCase()==='active') && withinCheckInWindow(ev) && !checked;
+
+                var w = act.querySelector('[data-role="wait"]'); if (w) w.remove();
+
+                if (checked){
+                  var btn = document.createElement('button');
+                  btn.className = 'btn js-checkin-btn checked-in';
+                  btn.textContent = 'Checked In';
+                  btn.disabled = true;
+                  btn.setAttribute('data-start', ev.start_datetime||'');
+                  btn.setAttribute('data-end',   ev.end_datetime||'');
+                  act.insertBefore(btn, act.querySelector('[data-act="view"]'));
+                } else if (can){
+                  var btn2 = document.createElement('button');
+                  btn2.className = 'btn js-checkin-btn';
+                  btn2.textContent = 'Check In';
+                  btn2.setAttribute('data-start', ev.start_datetime||'');
+                  btn2.setAttribute('data-end',   ev.end_datetime||'');
+                  btn2.onclick = function(){ doCheckIn(eid, r.person, btn2); };
+                  act.insertBefore(btn2, act.querySelector('[data-act="view"]'));
+                }
+
+                // Wire view button
+                rowNode.querySelector('button[data-act="view"]').addEventListener('click', function(){
+                  openEvent(eid);
+                });
+
+                refreshCheckinButtonsVisibility();
+              });
+            }).api_eventDetails(eid);
+          });
+        })();
+
+        // ===== Countdown block (with top Check In button) =====
+        var cd  = $('#home_cd'); var sub = $('#home_cd_sub'); var chk = $('#home_checkin');
+        function pickSelfEventForCountdown(nowVal){
+          var current = selfList.find(function(e){ var s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
+          if (current) return current;
+          return selfList.find(function(e){ var s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
+        }
+        var next = nextSelf || pickSelfEventForCountdown(now());
+
+        function wireTopCheckinFor(evt){
+          if (!chk || !evt) return;
+          chk.style.display='none'; chk.textContent='Check In Now'; chk.classList.remove('checked-in');
+          chk.setAttribute('data-start', evt.start_datetime||''); chk.setAttribute('data-end', evt.end_datetime||'');
+          google.script.run.withSuccessHandler(function(res){
+            var mine = (res && res.live || []).find(function(r){ return !r.is_guest && String(r.person)===String(state.user.its); });
+            var already = !!(mine && mine.checked_in_at);
+            var can = withinCheckInWindow(evt) && !already;
+            if (already){ chk.style.display='inline-flex'; chk.disabled=true; chk.classList.add('checked-in'); chk.textContent='Checked In'; }
+            else if (can){ chk.style.display='inline-flex'; chk.disabled=false; chk.textContent='Check In Now'; }
+            else { chk.style.display='none'; chk.disabled=true; }
+          }).api_eventDetails(evt.id);
+          chk.onclick = function(){ if (!chk.disabled) doCheckIn(evt.id, state.user.its, chk); };
+        }
+
+        if (!next){
+          cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
+        } else {
+          wireTopCheckinFor(next);
+          function tick(){
+            var nowVal=now(); var tgt=parseDT(next.start_datetime); var diff=tgt - nowVal;
+            if (diff <= 0){
+              var since = nowVal - tgt;
+              if (since <= 30*60*1000){
+                cd.textContent='Your event has begun';
+                sub.innerHTML = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
+                refreshCheckinButtonsVisibility();
+                return;
+              } else {
+                next = pickSelfEventForCountdown(nowVal);
+                if (!next){
+                  cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
+                  clearInterval(homeTimers.cd); homeTimers.cd=null; return;
+                }
+                wireTopCheckinFor(next);
+              }
+            } else {
+              cd.textContent = humanCountdown(diff) + ' until ' + ((next.sport? (next.sport+' - '):'') + (next.name||''));
+              sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
+              refreshCheckinButtonsVisibility();
+            }
+          }
+          tick(); homeTimers.cd = setInterval(tick, 1000);
+        }
+        homeTimers.uiRefresh = setInterval(refreshCheckinButtonsVisibility, 10000);
+      }).api_homeListsForUser(state.user.its);
+
+      // Upcoming across all sports
+      google.script.run.withSuccessHandler(function(u){
+        var list = (u && u.events) || []; var box = $('#home_upcoming');
+        if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+        box.innerHTML = list.map(function(e){
+          var title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
+          var sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') + (e.address ? ('<br/>' + addrHtml(e.address)) : '');
+          var eid   = (e.id || e.event_id || '');
+          return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+                   '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+                   '<div><button class="btn secondary" data-eid="'+eid+'">View</button></div>'+
+                 '</div>';
+        }).join('');
+        box.querySelectorAll('button[data-eid]').forEach(function(b){ b.onclick = function(){ openEvent(b.getAttribute('data-eid')); }; });
+      }).api_upcomingEvents(5);
+    }
+
+    /* ===================== PROFILE ===================== */
+    function pageProfile(){ if(!guard())return;
+      var u = state.user || {};
+      var rows = [
+        ['First Name',u.first_name],['Last Name',u.last_name],['ITS',u.its],['Whatsapp',u.whatsapp],['Email',u.email],
+        ['Height',ftIn(u.height_in)],['Weight (lb)',u.weight_lb],['Date of Birth',fmtDate(u.dob)],
+        ['Emergency Name',u.emer_name],['Emergency Phone',u.emer_phone],['Jamaat',u.jamaat],
+        ['Profile Created',fmtDate(u.created_at)],['Profile Updated',fmtDate(u.updated_at)]
+      ];
+      var table = rows.map(function(kv){ return '<tr><td class="label">'+kv[0]+'</td><td>'+(kv[1]||'')+'</td></tr>'; }).join('');
+      var node = el(
+        '<div class="card stack">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+            '<div style="font-size:var(--fs-lg);font-weight:800">'+(u.first_name||'')+' '+(u.last_name||'')+'</div>'+
+            '<button class="btn" id="btnEdit">Edit Profile</button>'+
+          '</div>'+
+          '<table class="table">'+table+'</table>'+
+        '</div>');
+      layout(node);
+      $('#btnEdit').onclick=function(){ setPage('edit'); };
+    }
+
+    /* ===================== BALANCE ===================== */
+  // Reusable helpers (safe to define once)
+function copyText(txt, btn){
+  function done(){
+    if (!btn) return;
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Copied!';
+    setTimeout(()=>{ btn.disabled = false; btn.innerHTML = orig; }, 1200);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(done).catch(function(){
+      legacyCopy(txt); done();
+    });
+  } else {
+    legacyCopy(txt); done();
+  }
+}
+function legacyCopy(txt){
+  const ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'absolute';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+function pageBalance(){ 
+  if(!guard()) return;
+
+  var node = el('<div class="card stack" id="bal_box"><div class="muted">Loading…</div></div>');
+  layout(node);
+
+  google.script.run.withSuccessHandler(function(res){
+    var rows = (res.transactions || []).map(function(t){
+      var dt = fmtDate(t.date || t.created_at);
+      var eventName = t.category || '';
+      var ath = t.memo || '';
+      var amt = Number(t.amount || 0).toFixed(2);
+      var cls = String(t.type) === 'credit' ? 'amt-credit' : 'amt-debit';
+      var sign = String(t.type) === 'credit' ? '+' : '-';
+      return '<tr><td>'+dt+'</td><td>'+eventName+'<br/>'+ath+'</td><td class="right '+cls+'">'+sign+'$'+amt+'</td><td>'+(t.status||'')+'</td></tr>';
+    }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
+
+    var itsVal   = (state.user && state.user.its ? String(state.user.its).trim() : 'YOUR ITS');
+    var memoText = itsVal + ' - Saifee Sports';
+    var email    = 'toloba@dallasjamaat.org';
+
+    // Build UI
+    $('#bal_box').innerHTML =
+      '<div class="label">Current Balance</div>'+
+      '<div style="font-size:var(--fs-xl);font-weight:800">'+money(res.balance || 0)+'</div>'+
+
+      // Instruction block with copy buttons
+      '<div class="muted" style="margin-top:10px;line-height:1.6">'+
+        'Add to balance with Zelle to:<br/>'+
+        '<strong id="zelleEmail">'+email+'</strong> '+
+        '<button id="copyEmailBtn" class="btn btn--sm" aria-label="Copy Zelle email" '+
+          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
+        'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
+        '<span id="zelleMemo" style="font-weight:600">'+memoText+'</span> '+
+        '<button id="copyMemoBtn" class="btn btn--sm" aria-label="Copy memo" '+
+          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
+      '</div>'+
+
+      '<table class="table table--compact" style="margin-top:10px">'+
+        '<thead><tr><th>Date</th><th>Event</th><th class="right">Amount</th><th>Status</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table>';
+
+    // Wire up copy actions
+    var balBox = $('#bal_box');
+    var emailBtn = balBox.querySelector('#copyEmailBtn');
+    var memoBtn  = balBox.querySelector('#copyMemoBtn');
+
+    if (emailBtn) emailBtn.addEventListener('click', function(){ copyText(email, this); });
+    if (memoBtn)  memoBtn.addEventListener('click',  function(){ copyText(memoText, this); });
+  }).api_balance(state.user.its);
+}
+
+
+    /* ===================== CALENDAR ===================== */
+    function pageCalendar(){ if(!guard())return;
+      var node=el('<div class="card"><iframe id="cal" src="" class="w-full" style="height:70vh;border:0;border-radius:12px"></iframe></div>');
+      layout(node);
+      google.script.run.withSuccessHandler(function(res){ $('#cal').src=res.url; }).api_calendarEmbedUrl();
+    }
+
+    /* ===================== GUESTS (Add → Your Guests) ===================== */
+    function pageGuests(){ if(!guard())return;
+      var node=el(
+        '<div class="stack">'+
+          '<div class="card stack">'+
+            '<div class="label">Add Guest</div>'+
+            '<input id="g_its" class="input" placeholder="ITS (8 digits)">'+
+            '<input id="g_first" class="input" placeholder="First Name">'+
+            '<input id="g_last" class="input" placeholder="Last Name">'+
+            '<input id="g_talent" class="input" placeholder="Talent Rating (1–10)" type="number" min="1" max="10">'+
+            '<button class="btn" id="g_add">Add</button>'+
+            '<div class="tiny" id="g_err" style="color:var(--err)"></div>'+
+          '</div>'+
+          '<div class="card stack">'+
+            '<div class="label">Your Guests</div>'+
+            '<div id="g_list" class="stack tiny">Loading…</div>'+
+          '</div>'+
+        '</div>'
+      );
+      layout(node);
+      $('#g_add').onclick = function(){
+        var its=($('#g_its').value||'').trim();
+        var first=($('#g_first').value||'').trim();
+        var last=($('#g_last').value||'').trim();
+        var talent=Number($('#g_talent').value||0);
+        var err=$('#g_err'); err.textContent='';
+        if(!/^\d{8}$/.test(its)) { err.textContent='Guest ITS must be 8 digits'; return; }
+        if(!first) { err.textContent='First Name is required'; return; }
+        if(!last) { err.textContent='Last Name is required'; return; }
+        if(!(talent>=1&&talent<=10)) { err.textContent='Talent must be between 1 and 10'; return; }
+        google.script.run.withSuccessHandler(function(r){
+          if(!r.ok){ err.textContent=r.error||'Failed to add'; return; }
+          $('#g_its').value=''; $('#g_first').value=''; $('#g_last').value=''; $('#g_talent').value='';
+          refreshGuests();
+        }).api_addGuest(state.user.its, { guest_its:its, first_name:first, last_name:last, talent:talent });
+      };
+      function refreshGuests(){
+        google.script.run.withSuccessHandler(function(res){
+          var box=$('#g_list');
+          var rows=(res.guests||[]).map(function(g){
+            return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+g.first_name+" "+g.last_name+" — ITS "+g.guest_its+" — Talent "+g.talent+"</div>";
+          }).join('');
+          box.innerHTML=rows||'<div class="muted">No guests</div>';
+        }).api_listGuests(state.user.its);
+      }
+      refreshGuests();
+    }
+
+    /* ===================== SPORT PAGE ===================== */
+    function pageSport(){ if(!guard())return;
+      if (sportCountdownTimer) { clearInterval(sportCountdownTimer); sportCountdownTimer = null; }
+      var node=el(
+        '<div class="stack">'+
+          '<div class="card stack">'+
+            '<div class="label">Next '+state.sport+' Event</div>'+
+            '<div id="sp_next" class="countdown muted">Looking for upcoming events…</div>'+
+            '<div id="sp_next_sub" class="tiny"></div>'+
+          '</div>'+
+          '<div class="card stack">'+
+            '<div class="label">Upcoming '+state.sport+' Events</div>'+
+            '<div id="sp_list" class="stack"></div>'+
+          '</div>'+
+        '</div>'
+      );
+      layout(node);
+
+      google.script.run.withSuccessHandler(function(res){
+        var all = (res.events||[]).slice();
+        var nowTs = now();
+
+        var list = all
+          .filter(function(e){ var de = parseDT(e.end_datetime); return de && de > nowTs; })
+          .sort(function(a,b){ return new Date(a.start_datetime||0) - new Date(b.start_datetime||0); });
+
+        var nextNode = $('#sp_next'); var nextSub  = $('#sp_next_sub');
+        function pickEvent(nowVal){
+          var current = list.find(function(e){ var s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
+          if (current) return current;
+          return list.find(function(e){ var s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
+        }
+        var upcoming = pickEvent(now());
+        function renderSubline(e){ nextSub.innerHTML = fmtDT(e.start_datetime) + '<br/>' + addrHtml(e.address||''); }
+        function update(){
+          var nowVal = now();
+          if (!upcoming){ upcoming = pickEvent(nowVal); if (!upcoming){ nextNode.textContent = 'No upcoming events'; nextSub.textContent=''; return; } }
+          var start = parseDT(upcoming.start_datetime); var diff  = start - nowVal;
+          if (diff <= 0){
+            var since = nowVal - start;
+            if (since <= 30*60*1000){ nextNode.textContent = state.sport+' event has begun'; renderSubline(upcoming); return; }
+            else { upcoming = pickEvent(nowVal); if (!upcoming){ nextNode.textContent='No upcoming events'; nextSub.textContent=''; return; } }
+          }
+          nextNode.textContent = humanCountdown(diff) + ' until ' + ((upcoming.sport? (upcoming.sport+' - '):'') + (upcoming.name||'')); renderSubline(upcoming);
+        }
+        if (!upcoming){ nextNode.textContent = 'No upcoming events'; nextSub.textContent=''; }
+        else { update(); sportCountdownTimer = setInterval(update, 1000); }
+
+        google.script.run.withSuccessHandler(function(st){
+          var statusMap = (st && (st.self_statuses || st.statuses || st.map)) || {};
+          renderSportEventList(list, statusMap);
+        }).api_myStatusesForSport(state.user.its, state.sport);
+      }).api_listEvents(state.sport);
+    }
+    function renderSportEventList(list, statusMap){
+      var box = $('#sp_list'); var nowTs=now();
+      list = (list||[]).filter(function(e){ var de=parseDT(e.end_datetime); return de && de > nowTs; });
+      if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+      box.innerHTML = '';
+      list.forEach(function(e){
+        var st = String(statusMap[e.id]||'none').toLowerCase();
+        var regStart = parseDT(e.reg_start); var regEnd = parseDT(e.reg_end); var afterClose = (regEnd && now() > regEnd);
+        var regOpen = (!regStart || now() >= regStart) && (!regEnd || now() <= regEnd);
+
+        var badgeHtml = computeStatusBadge(st);
+        var capText = (e.max_capacity && Number(e.max_capacity)>0) ? String(e.max_capacity) : '—';
+
+        var card = el(
+          '<div class="event-card stack">'+
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+              '<div style="font-size:var(--fs-md);font-weight:800">'+(e.sport ? (e.sport+' - ') : '')+(e.name||'Untitled')+'</div>'+
+              '<div>'+badgeHtml+'</div>'+
+            '</div>'+
+            '<div class="tiny">'+(e.address?addrHtml(e.address):'')+'</div>'+
+            '<div class="tiny">Event: '+fmtDT(e.start_datetime)+' – '+fmtDT(e.end_datetime)+'</div>'+
+            '<div class="tiny">Registration: '+(e.reg_start?fmtDT(e.reg_start):'—')+' → '+(e.reg_end?fmtDT(e.reg_end):'—')+'</div>'+
+            '<div class="tiny">Approx Fee: '+money(e.approx_fee||0)+' | Capacity: '+capText+'</div>'+
+            '<div class="event-actions">'+
+              '<button class="btn" data-act="register" '+((!regOpen || st==='active' || st==='waitlist')?'disabled':'')+'>Register Me</button>'+
+              '<button class="btn secondary" data-act="deregister" '+(((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'))?'':'disabled')+'>Deregister</button>'+
+              '<button class="btn secondary" data-act="dropout" '+((afterClose && st==='active')?'':'disabled')+'>Dropout</button>'+
+              '<button class="btn secondary" data-act="view">View</button>'+
+            '</div>'+
+            '<div class="tiny" data-role="hint"></div>'+
+            '</div>'
+        );
+        box.appendChild(card);
+
+        function q(act){ return card.querySelector('[data-act="'+act+'"]'); }
+        function setHint(msg){ var n=card.querySelector('[data-role="hint"]'); n.textContent=msg||''; }
+
+        function updateCapacityLabels(){
+          google.script.run.withSuccessHandler(function(res){
+            var live = (res && res.live) || [];
+            var activeCount = live.filter(function(r){ return String(r.status||'').toLowerCase()==='active'; }).length;
+            var cap = Number(e.max_capacity||0);
+            var reached = (cap>0 && activeCount>=cap);
+            q('register').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
+            setHint(reached ? 'Capacity is full. You will be added to the waitlist.' : '');
+          }).api_eventDetails(e.id);
+        }
+        updateCapacityLabels();
+
+        q('register').onclick  = function(){ actRegister(e.id,false); };
+        q('deregister').onclick= function(){ actDeregister(e.id); };
+        q('dropout').onclick   = function(){ actDropout(e.id); };
+        q('view').onclick      = function(){ openEvent(e.id); };
+      });
+    }
+
+    /* ===================== EVENT DETAIL (Manage Guests under Your Registration) ===================== */
+    function openEvent(id){ if(!guard())return;
+      google.script.run.withSuccessHandler(function(res){
+        var evt=res.event; var live=res.live||[];
+
+        google.script.run.withSuccessHandler(function(st){
+          var map = (st && (st.map || st.statuses || st.billing_statuses)) || {};
+          var myStatus = String(map[evt.id] || 'none').toLowerCase();
+
+          var nowTs = now();
+          var regStart = parseDT(evt.reg_start);
+          var regEnd   = parseDT(evt.reg_end);
+          var regOpen    = (!regStart || nowTs >= regStart) && (!regEnd || nowTs <= regEnd);
+          var afterClose = (regEnd && nowTs > regEnd);
+
+          var myBadge = computeStatusBadge(myStatus);
+          var capText = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
+
+          function computeCheckinPill(r){
+            try{
+              var start = parseDT(evt.start_datetime);
+              if(!start) return '';
+              var windowClose = new Date(start.getTime() + 30*60*1000); // 30m after start
+              var ci = r && r.checked_in_at ? parseDT(r.checked_in_at) : null;
+              if (ci){ return (ci <= start) ? "<span class='badge ok'>On Time</span>" : "<span class='badge warn'>Late</span>"; }
+              else if (now() > windowClose){ return "<span class='badge' style='background:rgba(239,68,68,.15);color:#fecaca;border:1px solid rgba(239,68,68,.35)'>No Show</span>"; }
+              return '';
+            }catch(e){ return ''; }
+          }
+
+          var addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
+
+          var node=el(
+            "<div class='stack'>"+
+              "<div class='card stack'>"+
+                "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
+                  "<div style='font-size:var(--fs-lg);font-weight:800'>"+(evt.sport? (evt.sport+' - '):'')+evt.name+"</div>"+
+                  "<div>"+myBadge+"</div>"+
+                "</div>"+
+                "<div class='tiny'>"+addrSafe+"</div>"+
+                "<div class='tiny'>"+fmtDT(evt.start_datetime)+" – "+fmtDT(evt.end_datetime)+"</div>"+
+                "<div class='tiny'>Registration: "+(evt.reg_start?fmtDT(evt.reg_start):'—')+" → "+(evt.reg_end?fmtDT(evt.reg_end):'—')+"</div>"+
+                "<div class='tiny'>Approx Fee: "+money(evt.approx_fee||0)+" | Capacity: "+capText+"</div>"+
+              "</div>"+
+
+              "<div class='card stack'>"+
+                "<div class='label'>Your Registration</div>"+
+                "<div class='event-actions'>"+
+                  "<button class='btn' id='reg_me'>Register Me</button>"+
+                  "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
+                  "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
+                "</div>"+
+              "</div>"+
+
+              "<div class='card stack'>"+
+                "<div class='label'>Manage your guests for this event</div>"+
+                "<select id='gx_sel' class='input'><option value=''>Select a guest…</option></select>"+
+                "<div style='display:flex;gap:8px;flex-wrap:wrap'>"+
+                  "<button class='btn' id='reg_guest'>Register Guest</button>"+
+                "</div>"+
+                "<div class='tiny' id='gx_hint'></div>"+
+                "<div id='my_guest_list' class='stack' style='margin-top:6px'></div>"+
+              "</div>"+
+
+              "<div class='card stack'>"+
+                "<div class='label'>Live Roster List</div>"+
+                "<div id='live_list'></div>"+
+                "<div class='tiny' id='cap_hint'></div>"+
+              "</div>"+
+            "</div>"
+          );
+          layout(node);
+
+          // Live roster
+          (function renderLive(){
+            var html = live.map(function(r){
+              var st = String(r.status||'').toLowerCase();
+              var statusBadge = (st==='active')? "<span class='badge ok'>Active</span>" :
+                                (st==='waitlist')? "<span class='badge warn'>Waitlist</span>" :
+                                (st==='dropout')? "<span class='badge warn'>Dropped Out</span>" : "";
+              var checkinBadge = computeCheckinPill(r);
+              return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+r.name+" "+statusBadge+" "+checkinBadge+"</div>";
+            }).join('');
+            $('#live_list').innerHTML = html || "<div class='muted'>No registrations yet</div>";
+          })();
+
+          // Guests for dropdown + my guest actions
+          google.script.run.withSuccessHandler(function(g){
+            var sel = $('#gx_sel'); var hint= $('#gx_hint');
+            var guests = (g && g.guests) || [];
+            guests.forEach(function(gu){
+              var opt = document.createElement('option');
+              opt.value = gu.guest_its;
+              opt.textContent = gu.first_name+' '+gu.last_name+' — ITS '+gu.guest_its;
+              sel.appendChild(opt);
+            });
+            if(!guests.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
+            if(!regOpen || !guests.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
+
+            var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
+            var gl = $('#my_guest_list');
+            if (!mine.length){ gl.innerHTML = "<div class='muted tiny'>No guests of yours are on this event yet.</div>"; }
+            else {
+              gl.innerHTML = mine.map(function(r){
+                var st = String(r.status||'').toLowerCase();
+                var statusBadge = (st==='active') ? " <span class='badge ok'>Active</span>" :
+                                  (st==='waitlist') ? " <span class='badge warn'>Waitlist</span>" :
+                                  (st==='dropout') ? " <span class='badge warn'>Dropped Out</span>" : "";
+                var checkinBadge = computeCheckinPill(r);
+                var canDereg = ((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'));
+                var canDrop  = (afterClose && st==='active');
+                return ""+
+                "<div class='event-card' style='padding:8px;margin-top:6px'>"+
+                  "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
+                    "<div><b>"+r.name+"</b> "+statusBadge+" "+checkinBadge+"</div>"+
+                    "<div class='event-actions'>"+
+                      "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-dereg' "+(canDereg?'':'disabled')+">Deregister</button>"+
+                      "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-drop' "+(canDrop?'':'disabled')+">Dropout</button>"+
+                    "</div>"+
+                  "</div>"+
+                "</div>";
+              }).join('');
+              gl.querySelectorAll('[data-act="g-dereg"]').forEach(function(b){
+                b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
+                  google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to deregister guest'); openEvent(evt.id); })
+                    .api_deregister(state.user.its, evt.id, guestIts);
+                });});
+              gl.querySelectorAll('[data-act="g-drop"]').forEach(function(b){
+                b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
+                  google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to drop out guest'); openEvent(evt.id); })
+                    .api_dropout(state.user.its, evt.id, guestIts);
+                });});
+            }
+          }).api_listGuests(state.user.its);
+
+          // Self buttons
+          (function applySelfButtons(){
+            var canRegister = regOpen && (myStatus==='none' || myStatus==='dropout');
+            var canDeregister = ((regOpen && (myStatus==='active' || myStatus==='waitlist')) || (!regOpen && myStatus==='waitlist'));
+            var canDropout = afterClose && myStatus==='active';
+            $('#reg_me').disabled = !canRegister;
+            $('#dereg_me').disabled = !canDeregister;
+            $('#dropout_me').disabled = !canDropout;
+          })();
+
+          // Capacity text
+          (function updateCapacityLabelsDetail(){
+            var cap = Number(evt.max_capacity||0);
+            google.script.run.withSuccessHandler(function(r){
+              var live2 = (r && r.live) || [];
+              var activeCount = live2.filter(function(x){ return String(x.status||'').toLowerCase()==='active'; }).length;
+              var reached = (cap>0 && activeCount>=cap);
+              $('#reg_me').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
+              var rg = $('#reg_guest'); if (rg) rg.textContent = reached ? 'Register Guest on Waitlist' : 'Register Guest';
+              $('#cap_hint').textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
+            }).api_eventDetails(id);
+          })();
+
+          // Wire self actions
+          $('#reg_me').onclick     = function(){ actRegister(evt.id,false); };
+          $('#dereg_me').onclick   = function(){ actDeregister(evt.id); };
+          $('#dropout_me').onclick = function(){ actDropout(evt.id); };
+
+          // Wire guest action
+          $('#reg_guest').onclick  = function(){
+            var v=($('#gx_sel').value||'').trim();
+            if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
+            google.script.run.withSuccessHandler(function(resp){
+              if(!resp||!resp.ok){ alert((resp&&resp.error)||'Failed'); return; }
+              openEvent(id);
+            }).api_register(state.user.its, id, v, true);
+          };
+        }).api_myStatusesForEvents(state.user.its, [id]);
+      }).api_eventDetails(id);
+    }
+
+    /* ===================== CREATE / EDIT PROFILE ===================== */
+    function pageCreateOrEdit(edit){
+      var u=edit?(state.user||{}):{};
+      var node=el(
+        "<div class='card stack'>"+
+          "<div style='display:flex;gap:10px;align-items:center;justify-content:space-between'>"+
+            "<div style='font-size:var(--fs-md);font-weight:800'>"+(edit?"Edit Profile":"Create Profile")+"</div>"+
+            "<button class='btn secondary' id='btnBack'>Back</button>"+
+          "</div>"+
+          "<div class='form-grid'>"+
+            "<div class='stack'>"+
+              "<label class='label'>Whatsapp Number</label>"+
+              "<input id='f_whatsapp' class='input' placeholder='7861102153' value='"+(u.whatsapp||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>ITS</label>"+
+              "<input id='f_its' class='input' placeholder='30442153' value='"+(u.its||"") +"' "+(edit?'disabled':'')+">"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Email</label>"+
+              "<input id='f_email' class='input' placeholder='name@example.com' value='"+(u.email||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>First Name</label>"+
+              "<input id='f_first' class='input' placeholder='Burhanuddin' value='"+(u.first_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Last Name</label>"+
+              "<input id='f_last' class='input' placeholder='Saifee' value='"+(u.last_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Profile Picture</label>"+
+              "<input id='f_pic' type='file' accept='image/*' class='input'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Height</label>"+
+              "<select id='f_height' class='input'></select>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Weight (lb)</label>"+
+              "<input id='f_weight' class='input' placeholder='180' value='"+(u.weight_lb||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Date of Birth</label>"+
+              "<input id='f_dob' type='date' class='input' value='"+(u.dob||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Emergency Contact Name</label>"+
+              "<input id='f_emer_name' class='input' placeholder='Saifuddin Saifee' value='"+(u.emer_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Emergency Phone Number</label>"+
+              "<input id='f_emer_phone' class='input' placeholder='7861102153' value='"+(u.emer_phone||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Jamaat</label>"+
+              "<select id='f_jamaat' class='input'></select>"+
+            "</div>"+
+            (edit? '' :
+              "<div class='card' style='background:#0e1626'>"+
+                "<div class='label'>Waiver</div>"+
+                "<div style='max-height:180px;overflow:auto;font-size:var(--fs-xs);white-space:pre-line'>"+waiverText()+"</div>"+
+                "<label style='display:flex;gap:8px;align-items:flex-start;margin-top:8px'>"+
+                  "<input id='f_waiver' type='checkbox'>"+
+                  "<span class='tiny'>I have read and agree to the waiver terms.</span>"+
+                "</label>"+
+              "</div>"
+            )+
+          "</div>"+
+          "<div style='display:flex;gap:10px;justify-content:flex-end'>"+
+            "<button class='btn' id='f_save'>"+(edit?'Save Changes':'Create Profile')+"</button>"+
+          "</div>"+
+          "<div class='tiny' id='f_err' style='color:var(--err)'></div>"+
+        "</div>"
+      );
+      layout(node);
+      $('#btnBack').onclick=function(){ setPage('landing'); };
+      var h=$('#f_height');
+      for(var ft=4;ft<=7;ft++){ for(var i=0;i<12;i++){ var v=ft*12+i; var o=document.createElement('option'); o.value=v; o.textContent=ft+'ft '+i+'in'; h.appendChild(o); } }
+      if(u.height_in) h.value=u.height_in;
+      var jamaats=["Dallas","Plano","Atlanta","Austin","Bakersfield","Boston","Calgary","Charlotte","Chicago","Chicago North","Columbia","Columbus","Connecticut","Detroit","Edmonton","Houston","Los Angeles","Miami","Minneapolis","Mississauga","Montreal","New Jersey","New York","Orange County","Ottawa","Philadelphia","Poconos","Portland","Raleigh","San Antonio","San Diego","San Francisco","San Jose","Seattle","South Jersey","Spartanburg","Tampa","Toronto","Vancouver","Virginia","Washington, DC","Woodlands"];
+      var jSel=$('#f_jamaat'); jamaats.forEach(function(j){ var o=document.createElement('option'); o.value=j; o.text=j; jSel.appendChild(o); }); if(u.jamaat) jSel.value=u.jamaat;
+      $('#f_save').onclick=function(){ saveProfile(!!edit); };
+    }
+    function waiverText(){ return "I HEREBY ASSUME ALL OF THE RISKS OF PARTICIPATING IN ANY/ALL ACTIVITIES ASSOCIATED WITH EVENTS BY SAIFEE SPORTS ... (same text as before)"; }
+    function validateProfile(d, requireWaiver){
+      var phone=/^\d{10}$/; var its=/^\d{8}$/; var email=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      if(!its.test(d.its)) return 'ITS must be 8 digits';
+      if(!phone.test(d.whatsapp)) return 'Whatsapp Number must be 10 digits';
+      if(!email.test(d.email)) return 'Provide a valid email';
+      var w=Number(d.weight_lb); if(d.weight_lb && !(w>=50&&w<=350)) return 'Weight must be between 50 and 350';
+      var dob=new Date(d.dob); var age=(Date.now()-dob.getTime())/(365.25*24*3600*1000);
+      if(!(age>4&&age<90)) return 'Age must be between 4 and 90';
+      if(requireWaiver){ if(!$('#f_waiver').checked) return 'You must accept the waiver'; if(!$('#f_pic').files[0]) return 'Profile picture is required'; }
+      return '';
+    }
+    function saveProfile(edit){
+      function setErr(m){ $('#f_err').textContent=m; }
+      var data={ whatsapp:$('#f_whatsapp').value.trim(), its:$('#f_its').value.trim(), email:$('#f_email').value.trim(), first_name:$('#f_first').value.trim(), last_name:$('#f_last').value.trim(),
+        height_in:$('#f_height').value, weight_lb:$('#f_weight').value.trim(), dob:$('#f_dob').value,
+        emer_name:$('#f_emer_name').value.trim(), emer_phone:$('#f_emer_phone').value.trim(), jamaat:$('#f_jamaat').value };
+      var err=validateProfile(data,!edit); if(err){setErr(err);return;}
+      var file=$('#f_pic').files[0];
+      function finish(pic){
+        if(!edit){
+          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Create failed'); state.user=Object.assign({},data,{profile_pic_url:pic}); setPage('home'); }).api_createProfile(Object.assign({},data,{profile_pic_url:pic}));
+        } else {
+          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Save failed'); if(pic) state.user.profile_pic_url=pic; state.user=Object.assign({},state.user,data); setPage('home'); }).api_updateProfile(state.user.its, pic?Object.assign({},data,{profile_pic_url:pic}):data);
+        }
+      }
+      if(file){
+        var fr=new FileReader();
+        fr.onload=function(){ google.script.run.withSuccessHandler(function(u){ finish(u.url); }).api_uploadProfilePic(fr.result,file.name,edit?state.user.its:data.its); };
+        fr.readAsDataURL(file);
+      } else finish(null);
+    }
+
+    /* ===================== REGISTRATION ACTIONS ===================== */
+    function actRegister(eventId,isGuest){
+      var target;
+      if (isGuest){
+        var sel = $('#gx_sel');
+        if (sel){ target = (sel.value||'').trim(); }
+        else { var gx = $('#gx'); target = gx ? (gx.value||'').trim() : ''; }
+        if(!/^\d{8}$/.test(target)) { alert('Please select a guest.'); return; }
+        google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_register(state.user.its,eventId,target,true);
+        return;
+      } else { target = state.user.its; }
+      google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_register(state.user.its,eventId,target,false);
+    }
+    function actDeregister(eventId){
+      var target = state.user.its;
+      google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_deregister(state.user.its,eventId,target);
+    }
+    function actDropout(eventId){
+      var target = state.user.its;
+      google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_dropout(state.user.its, eventId, target);
+    }
+
+    /* ===================== ADMIN: EVENTS (one column) ===================== */
+    function pageAdminEvents(){ if(!guard())return;
+      const node = el(`
+        <div class="card stack">
+          <div class="label">Create or Edit Event</div>
+          <div class="form-grid">
+            <div class="stack">
+              <label class="label">Prefill from event</label>
+              <select id="ae_copy" class="input"></select>
+            </div>
+            <div class="stack">
+              <label class="label">Sport</label>
+              <select id="ae_sport" class="input"></select>
+            </div>
+            <div class="stack">
+              <label class="label">Event Name</label>
+              <input id="ae_name" class="input" placeholder="Name">
+            </div>
+            <div class="stack">
+              <label class="label">Address (pick or type)</label>
+              <input id="ae_addr" class="input" list="addr_list" placeholder="Address">
+              <datalist id="addr_list"></datalist>
+            </div>
+            <div class="stack">
+              <label class="label">Start</label>
+              <input id="ae_start" class="input" type="datetime-local">
+            </div>
+            <div class="stack">
+              <label class="label">End</label>
+              <input id="ae_end" class="input" type="datetime-local">
+            </div>
+            <div class="stack">
+              <label class="label">Registration Opens</label>
+              <input id="ae_reg_start" class="input" type="datetime-local">
+            </div>
+            <div class="stack">
+              <label class="label">Registration Closes</label>
+              <input id="ae_reg_end" class="input" type="datetime-local">
+            </div>
+            <div class="stack">
+              <label class="label">Approximate Fee</label>
+              <input id="ae_fee" class="input" type="number" step="0.01" min="0">
+            </div>
+            <div class="stack">
+              <label class="label">Maximum Capacity</label>
+              <input id="ae_capacity" class="input" type="number" step="1" min="1" placeholder="e.g., 24">
+              <div class="tiny">Capacity controls waitlist automatically.</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+            <button class="btn" id="ae_save_new">Save as New</button>
+            <button class="btn secondary" id="ae_update" disabled>Update Event</button>
+            <button class="btn danger" id="ae_delete" disabled>Delete Event</button>
+          </div>
+          <div class="tiny" id="ae_err" style="color:var(--err)"></div>
+        </div>
+      `);
+      layout(node);
+
+      const hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
+      if (!hasAdminSports && state.user && state.user.its){
+        AdminAPI.bootstrap(state.user.its, b=>{ state.admin=Object.assign(state.admin,b||{}); render(); }, console.warn);
+        return;
+      }
+
+      const toLocalDTInput = (s)=> {
+        if(!s) return '';
+        var d=new Date(s); if(isNaN(d)) return '';
+        var yyyy=d.getFullYear(); var mm=('0'+(d.getMonth()+1)).slice(-2); var dd=('0'+d.getDate()).slice(-2);
+        var hh=('0'+d.getHours()).slice(-2); var mi=('0'+d.getMinutes()).slice(-2);
+        return yyyy+'-'+mm+'-'+dd+'T'+hh+':'+mi;
+      };
+
+      const sportSel = $('#ae_sport');
+      (state.admin.adminSports||[]).forEach(sp=>{ const o=document.createElement('option'); o.value=sp; o.textContent=sp; sportSel.appendChild(o); });
+
+      const dl=$('#addr_list');
+      (state.admin.pastAddresses||[]).forEach(a=>{ const o=document.createElement('option'); o.value=a; dl.appendChild(o); });
+
+      // Prefill selector
+      const cp=$('#ae_copy');
+      const placeholder = document.createElement('option'); placeholder.value=''; placeholder.textContent='Choose'; cp.appendChild(placeholder);
+      (state.admin.adminEvents||[]).forEach(e=>{
+        const o=document.createElement('option');
+        o.value=e.id; o.textContent = (e.sport || '')+' - '+e.name+' - '+fmtDT(e.start_datetime);
+        cp.appendChild(o);
+      });
+
+      // Inputs
+      const startInput     = $('#ae_start');
+      const endInput       = $('#ae_end');
+      const regStartInput  = $('#ae_reg_start');
+      const regEndInput    = $('#ae_reg_end');
+      const feeInput       = $('#ae_fee');
+      const capInput       = $('#ae_capacity');
+      const nameInput      = $('#ae_name');
+      const addrInput      = $('#ae_addr');
+
+      // Track baseline to shift ranges if desired
+      let prefillBase = null; const MS_DAY = 24*60*60*1000;
+      const override = { end:false, reg_start:false, reg_end:false };
+      endInput.addEventListener('input', ()=> override.end = true);
+      regStartInput.addEventListener('input', ()=> override.reg_start = true);
+      regEndInput.addEventListener('input', ()=> override.reg_end = true);
+
+      function enableEditButtons(enabled){ $('#ae_update').disabled = !enabled; $('#ae_delete').disabled = !enabled; }
+
+      cp.onchange = ()=>{
+        const id = cp.value; state.tmp = state.tmp || {}; state.tmp.editId = id || null; enableEditButtons(!!id);
+        if(!id) return;
+        const e = (state.admin.adminEvents||[]).find(ev => String(ev.id)===String(id)); if (!e) return;
+        sportSel.value = e.sport || sportSel.value; nameInput.value = e.name || ''; addrInput.value = e.address || '';
+        startInput.value    = toLocalDTInput(e.start_datetime);
+        endInput.value      = toLocalDTInput(e.end_datetime);
+        regStartInput.value = toLocalDTInput(e.reg_start);
+        regEndInput.value   = toLocalDTInput(e.reg_end);
+        feeInput.value = (Number(e.approx_fee||0)).toFixed(2);
+        capInput.value = e.max_capacity ? String(e.max_capacity) : '';
+        prefillBase = { start:parseDT(e.start_datetime), end:parseDT(e.end_datetime), reg_start:parseDT(e.reg_start), reg_end:parseDT(e.reg_end) };
+        override.end = override.reg_start = override.reg_end = false;
+      };
+
+      startInput.addEventListener('input', ()=>{
+        if (!prefillBase || !prefillBase.start) return;
+        const newStart = new Date(startInput.value); if (isNaN(newStart)) return;
+        const deltaDays = Math.round((newStart - prefillBase.start)/MS_DAY); if (!Number.isFinite(deltaDays)) return;
+        if (prefillBase.end && !override.end){ endInput.value = toLocalDTInput(new Date(prefillBase.end.getTime() + deltaDays*MS_DAY)); }
+        if (prefillBase.reg_start && !override.reg_start){ regStartInput.value = toLocalDTInput(new Date(prefillBase.reg_start.getTime() + deltaDays*MS_DAY)); }
+        if (prefillBase.reg_end && !override.reg_end){ regEndInput.value = toLocalDTInput(new Date(prefillBase.reg_end.getTime() + deltaDays*MS_DAY)); }
+      });
+
+      function getPayload(withId){
+        const payload = {
+          sport: sportSel.value,
+          name: (nameInput.value||'').trim(),
+          address: (addrInput.value||'').trim(),
+          start_datetime: startInput.value,
+          end_datetime: endInput.value,
+          reg_start: regStartInput.value,
+          reg_end: regEndInput.value,
+          approx_fee: Number(feeInput.value||0),
+          max_capacity: Number(capInput.value||0)
+        };
+        if (withId && state.tmp && state.tmp.editId) payload.id = state.tmp.editId;
+        return payload;
+      }
+      function requireEventFields(p){
+        const errEl = $('#ae_err'); errEl.textContent='';
+        const required = ['sport','name','address','start_datetime','end_datetime','reg_start','reg_end'];
+        for (let i=0;i<required.length;i++){ const k=required[i]; if(!p[k]){ errEl.textContent='Please fill '+k.replace(/_/g,' '); return false; } }
+        if (!(p.approx_fee>=0)){ errEl.textContent='Approximate fee must be 0 or more'; return false; }
+        if (!(p.max_capacity && p.max_capacity>0 && Math.floor(p.max_capacity)===p.max_capacity)){ errEl.textContent='Maximum capacity must be a positive whole number'; return false; }
+        return true;
+      }
+      function refreshAdmin(){
+        AdminAPI.bootstrap(state.user.its, b=>{
+          state.admin = Object.assign(state.admin, b||{});
+          setPage('admin_events');
+        }, e=> showErr('#ae_err', e));
+      }
+
+      $('#ae_save_new').onclick = ()=>{
+        const payload = getPayload(false); if(!requireEventFields(payload)) return; delete payload.id;
+        AdminAPI.eventSave(state.user.its, payload, ()=>{ alert('Event created.'); state.tmp = state.tmp || {}; state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); refreshAdmin(); }, e=> showErr('#ae_err', e));
+      };
+      $('#ae_update').onclick = ()=>{
+        if(!(state.tmp && state.tmp.editId)){ showErr('#ae_err','Choose an event to update.'); return; }
+        const payload = getPayload(true); if(!requireEventFields(payload)) return;
+        AdminAPI.eventSave(state.user.its, payload, ()=>{ alert('Event updated.'); refreshAdmin(); }, e=> showErr('#ae_err', e));
+      };
+      $('#ae_delete').onclick = ()=>{
+        if(!(state.tmp && state.tmp.editId)){ showErr('#ae_err','Choose an event to delete.'); return; }
+        if(!confirm('Delete this event? This will also remove it from Google Calendar.')) return;
+        AdminAPI.eventDelete(state.user.its, state.tmp.editId, ()=>{ alert('Event deleted.'); state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); refreshAdmin(); }, e=> showErr('#ae_err', e));
+      };
+    }
+
+    /* ===================== ADMIN: RECEIPTS (one column) ===================== */
+    function pageAdminReceipts(){ if(!guard())return;
+      var node = el(
+        '<div class="card stack">'+
+          '<div class="label">Upload Receipt</div>'+
+          '<div class="form-grid">'+
+            '<div class="stack">'+
+              '<label class="label">Event</label>'+
+              '<select id="ar_event" class="input"></select>'+
+            '</div>'+
+            '<div class="stack">'+
+              '<label class="label">Amount</label>'+
+              '<input id="ar_amount" class="input" type="number" step="0.01" min="0">'+
+            '</div>'+
+            '<div class="stack">'+
+              '<label class="label">Category</label>'+
+              '<select id="ar_cat" class="input">'+
+                '<option value="Space Rental">Space Rental</option>'+
+                '<option value="Food">Food</option>'+
+                '<option value="Equiptment Rental">Equiptment Rental</option>'+
+                '<option value="Shirts">Shirts</option>'+
+                '<option value="Referees">Referees</option>'+
+                '<option value="Trophies">Trophies</option>'+
+                '<option value="Printing">Printing</option>'+
+                '<option value="Labor">Labor</option>'+
+                '<option value="Photography">Photography</option>'+
+                '<option value="Karamat">Karamat</option>'+
+                '<option value="Other">Other</option>'+
+              '</select>'+
+            '</div>'+
+            '<div class="stack">'+
+              '<label class="label">Receipt Date</label>'+
+              '<input id="ar_date" class="input" type="date">'+
+            '</div>'+
+            '<div class="stack">'+
+              '<label class="label">Extra Notes (optional)</label>'+
+              '<input id="ar_notes" class="input" placeholder="Notes">'+
+            '</div>'+
+            '<div class="stack">'+
+              '<label class="label">Upload Receipt</label>'+
+              '<input id="ar_file" class="input" type="file" accept="image/*,application/pdf" required>'+
+              '<div class="tiny">A receipt image/PDF is required.</div>'+
+            '</div>'+
+          '</div>'+
+          '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px">'+
+            '<button class="btn" id="ar_save">Save Receipt</button>'+
+            '<button class="btn secondary" id="ar_finalize">Finalize Now</button>'+
+          '</div>'+
+          '<div class="tiny" id="ar_err" style="color:var(--err)"></div>'+
+        '</div>'
+      );
+      layout(node);
+
+      var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
+      if (!hasAdminSports && state.user && state.user.its){
+        AdminAPI.bootstrap(state.user.its, function(b){ state.admin=Object.assign(state.admin,b||{}); pageAdminReceipts(); }, console.warn);
+        return;
+      }
+
+      AdminAPI.receiptsList(state.user.its, function(res){
+        var sel = $('#ar_event');
+        var first=document.createElement('option'); first.value=''; first.textContent='Choose'; sel.appendChild(first);
+        (res.events||[]).forEach(function(e){ var o=document.createElement('option'); o.value=e.id; o.textContent=e.label; sel.appendChild(o); });
+      }, function(e){ showErr('#ar_err', e); });
+
+      $('#ar_save').onclick = function(){
+        var sel = $('#ar_event'); var errEl = $('#ar_err'); errEl.textContent='';
+        var amt = Number($('#ar_amount').value||NaN);
+        var cat = $('#ar_cat').value;
+        var date = $('#ar_date').value;
+        var fileElt = $('#ar_file'); var f = fileElt.files[0];
+        if(!sel.value){ errEl.textContent='Please choose an event.'; return; }
+        if(!(amt>=0)){ errEl.textContent='Please enter a valid amount (≥ 0).'; return; }
+        if(!cat){ errEl.textContent='Please choose a category.'; return; }
+        if(!date){ errEl.textContent='Please choose a receipt date.'; return; }
+        if(!f){ errEl.textContent='Please attach a receipt image/PDF.'; return; }
+        var reader = new FileReader();
+        reader.onload = function(){
+          var payload = { event_id: sel.value, amount: amt, category: cat, receipt_date: date, notes: $('#ar_notes').value, imageDataUrl: reader.result };
+          AdminAPI.receiptSave(state.user.its, payload, function(){ alert('Receipt saved.'); $('#ar_amount').value=''; $('#ar_notes').value=''; fileElt.value=''; }, function(e){ showErr('#ar_err', e); });
+        };
+        reader.onerror = function(err){ showErr('#ar_err', err); };
+        reader.readAsDataURL(f);
+      };
+
+      $('#ar_finalize').onclick = function(){
+        var sel = $('#ar_event'); var errEl = $('#ar_err'); errEl.textContent='';
+        if(!sel.value){ errEl.textContent='Please choose an event to finalize.'; return; }
+        var btn = $('#ar_finalize');
+        btn.disabled = true;
+        AdminAPI.receiptsFinalizeNow(state.user.its, sel.value, function(r){
+          btn.disabled = false;
+          if(!r || !r.ok){ errEl.textContent = (r && (r.message || r.error)) || 'Failed to finalize.'; return; }
+          alert('Finalized: $'+Number(r.amount||0).toFixed(2)+' per person ('+(r.posted||0)+' billable).');
+        }, function(e){ btn.disabled = false; showErr('#ar_err', e); });
+      };
+    }
+
+    /* ===================== ROUTER + RENDER ===================== */
+    function render(){
+  buildNav();
+  wireMenuButtons(); // bind hamburger + backdrop every render
+
+  if(state.page==='landing') return pageLanding();
+  if(state.page==='create') return pageCreateOrEdit(false);
+  if(state.page==='edit') return pageCreateOrEdit(true);
+  if(state.page==='home') return pageHome();
+  if(state.page==='profile') return pageProfile();
+  if(state.page==='balance') return pageBalance();
+  if(state.page==='calendar') return pageCalendar();
+  if(state.page==='guests') return pageGuests();
+  if(state.page==='sport') return pageSport();
+  if(state.page==='admin_events') return pageAdminEvents();
+  if(state.page==='admin_receipts') return pageAdminReceipts();
+  pageLanding();
+}
+
+  </script>
+
+<script>
+/* Minimal google.script.run polyfill for Cloudflare Pages.
+   Calls /gas?method=... (GET for cacheable reads) or POST {method,args}.
+*/
+(function(){
+  if (window.google && google.script && google.script.run) return;
+
+  // Public, non-user-specific methods only (safe to cache at the edge):
+  const CACHEABLE_READS = new Set([
+    'api_listEvents','api_upcomingEvents','api_eventDetails'
+  ]);
+
+  function makeRunner(base){
+    let ok = null, fail = null;
+
+    const runner = new Proxy(function(){}, {
+      get(_t, prop){
+        if (prop === 'withSuccessHandler') return (fn)=>{ ok=fn; return runner; };
+        if (prop === 'withFailureHandler') return (fn)=>{ fail=fn; return runner; };
+        return function(...args){
+          const method = String(prop);
+          (async ()=>{
+            try{
+              let res;
+              if (CACHEABLE_READS.has(method)) {
+                const url = base + '?method=' + encodeURIComponent(method) +
+                            '&args=' + encodeURIComponent(JSON.stringify(args||[]));
+                res = await fetch(url, { method:'GET' });
+              } else {
+                res = await fetch(base, {
+                  method:'POST',
+                  headers:{ 'Content-Type':'application/json' },
+                  body: JSON.stringify({ method, args })
+                });
+              }
+              if (!res.ok) throw new Error('HTTP '+res.status);
+              const data = await res.json();
+              (ok||function(){})(data);
+            } catch(e){
+              (fail||console.error)(e);
+            } finally { ok=null; fail=null; }
+          })();
+          return runner; // keep the chaining API
+        };
+      }
+    });
+    return runner;
+  }
+
+  window.google = window.google || {};
+  google.script = google.script || {};
+  google.script.run = makeRunner('/gas');
+})();
+</script>
+
 </body>
 </html>
