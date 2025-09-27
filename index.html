@@ -446,12 +446,24 @@
         navItem('Events','admin_events');
         navItem('Receipts','admin_receipts');
 
-        // Special MFL Captain link if present
-        if ((state.admin.adminSports||[]).some(s => String(s).toLowerCase()==='mfl captain')){
-          navLink('MFL Captain', function(){
-            window.open('https://docs.google.com/spreadsheets/d/1ilZiU4tIxqljSCSFYets0A-W5L3ipAeJqhKO2K7j6mI/edit?usp=sharing','_blank','noopener');
-          }, false);
-        }
+        // --- Dynamic Autodraft links for "<Sport> Captain" roles ---
+        google.script.run.withSuccessHandler(function(r){
+          try{
+            var map = (r && r.map) || {};
+            var roles = (state.admin && state.admin.adminSports) || [];
+            var captainSports = roles
+              .map(function(s){ s = String(s||''); var m = s.match(/^(.*)\s+Captain$/i); return m ? m[1].trim() : null; })
+              .filter(Boolean);
+
+            captainSports.forEach(function(sp){
+              var url = map[String(sp).toLowerCase()];
+              if (!url) return;
+              var a = el('<a class="nav-item" target="_blank" rel="noopener">'+sp+' Autodraft</a>');
+              a.href = url;
+              nav.appendChild(a);
+            });
+          }catch(_){}
+        }).api_autodraftMap();
       }
 
       // Auth
@@ -978,7 +990,8 @@
       if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
       box.innerHTML = '';
       list.forEach(function(e){
-        var st = String(statusMap[e.id]||'none').toLowerCase();
+        // Robustly read status by multiple possible keys
+        var st = String(statusMap[e.id] || statusMap[e.event_id] || 'none').toLowerCase();
         var regStart = parseDT(e.reg_start); var regEnd = parseDT(e.reg_end); var afterClose = (regEnd && now() > regEnd);
         var regOpen = (!regStart || now() >= regStart) && (!regEnd || now() <= regEnd);
 
@@ -1009,7 +1022,10 @@
         function q(act){ return card.querySelector('[data-act="'+act+'"]'); }
         function setHint(msg){ var n=card.querySelector('[data-role="hint"]'); n.textContent=msg||''; }
 
+        const eid = String(e.id || e.event_id || e.eventId || e.ID || '');
+
         function updateCapacityLabels(){
+          if (!eid) return;
           google.script.run.withSuccessHandler(function(res){
             var live = (res && res.live) || [];
             var activeCount = live.filter(function(r){ return String(r.status||'').toLowerCase()==='active'; }).length;
@@ -1017,14 +1033,14 @@
             var reached = (cap>0 && activeCount>=cap);
             q('register').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
             setHint(reached ? 'Capacity is full. You will be added to the waitlist.' : '');
-          }).api_eventDetails(e.id);
+          }).api_eventDetails(eid);
         }
         updateCapacityLabels();
 
-        q('register').onclick  = function(){ actRegister(e.id,false); };
-        q('deregister').onclick= function(){ actDeregister(e.id); };
-        q('dropout').onclick   = function(){ actDropout(e.id); };
-        q('view').onclick      = function(){ openEvent(String(e.id)); };
+        q('register').onclick  = function(){ if (!eid) return alert('Event ID missing'); actRegister(eid,false); };
+        q('deregister').onclick= function(){ if (!eid) return alert('Event ID missing'); actDeregister(eid); };
+        q('dropout').onclick   = function(){ if (!eid) return alert('Event ID missing'); actDropout(eid); };
+        q('view').onclick      = function(){ if (!eid) return alert('Event ID missing'); openEvent(eid); };
       });
     }
 
@@ -1480,7 +1496,7 @@
             '<div class="stack"><label class="label">Extra Notes (optional)</label><input id="ar_notes" class="input" placeholder="Notes"></div>'+
             '<div class="stack"><label class="label">Upload Receipt</label><input id="ar_file" class="input" type="file" accept="image/*,application/pdf" required><div class="tiny">A receipt image/PDF is required.</div></div>'+
           '</div>'+
-          '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px>'+
+          '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px">'+
             '<button class="btn" id="ar_save">Save Receipt</button>'+
             '<button class="btn secondary" id="ar_finalize">Finalize Now</button>'+
           '</div>'+
