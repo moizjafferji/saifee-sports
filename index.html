@@ -1,6 +1,58 @@
 <!DOCTYPE html>
 <html>
 <head>
+
+<script>
+/* ==== JSON + fetch + global error diagnostics ==== */
+(function(){
+  // 1) confirm we’re early
+  console.info('[diag] shim starting at', Date.now());
+
+  // 2) wrap JSON.parse
+  const _parse = JSON.parse;
+  JSON.parse = function(str, ...rest){
+    try { return _parse.call(this, str, ...rest); }
+    catch (err){
+      try {
+        console.groupCollapsed('⛔ JSON.parse failed');
+        console.log('typeof input:', typeof str);
+        console.log('first 400 chars:', String(str).slice(0, 400));
+        console.log('stack:', (err && err.stack) || err);
+        console.groupEnd();
+      } catch(_) {}
+      throw err;
+    }
+  };
+
+  // 3) sniff JSON network responses that aren’t valid JSON
+  const _fetch = window.fetch;
+  window.fetch = async function(...args){
+    const res = await _fetch.apply(this, args);
+    const ct = (res.headers && res.headers.get('content-type')) || '';
+    if (ct.includes('application/json')) {
+      const clone = res.clone();
+      const text = await clone.text();
+      try { _parse(text); }
+      catch(e){
+        console.error('⛔ Bad JSON from fetch', args[0], '| first 400 chars:', text.slice(0,400));
+      }
+    }
+    return res;
+  };
+
+  // 4) catch everything else
+  window.addEventListener('error', e=>{
+    console.error('🌐 window.error:', e.message, e.filename+':'+e.lineno+':'+e.colno, e.error && e.error.stack);
+  });
+  window.addEventListener('unhandledrejection', e=>{
+    console.error('🌐 unhandledrejection:', e.reason);
+  });
+
+  console.info('[diag] shim ready');
+})();
+</script>
+
+  
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Saifee Sports</title>
@@ -202,26 +254,6 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   display: none !important;
 }
   </style>
-
-<script>
-/* Safe JSON.parse shim + logger — add before any other scripts */
-(function () {
-  var _parse = JSON.parse;
-  JSON.parse = function (input) {
-    try { return _parse.call(this, input); }
-    catch (err) {
-      // Don’t crash the app — log and return null
-      try {
-        console.error('[Safe JSON.parse] Failed:', 
-          (typeof input === 'string' ? input.slice(0, 200) : input),
-          '\nStack:\n', new Error().stack, '\nOriginal error:', err);
-      } catch(_) {}
-      return null;
-    }
-  };
-})();
-</script>
-
   
   <script>
   (async () => {
