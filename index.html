@@ -197,58 +197,6 @@
   
 <body>
 
-  <script>
-/* Polyfill google.script.run when not hosted by Apps Script */
-(function(){
-  if (window.google && window.google.script && window.google.script.run) return;
-
-  // If your Cloudflare forwarding maps POST /exec → your Apps Script web app doPost,
-  // leave this as '/exec'. Otherwise put the full /exec URL of your deployed web app.
-  const WEBAPP_BASE = 'https://script.google.com/macros/s/AKfycbzX-frQagHCzW8Ys9EFmMPmP640LuSy5avgDhyuMIIg1uGlcfzPSdl-K18eSdO10PG4uA/exec'; // e.g. 'https://script.google.com/macros/s/AKfycb.../exec'
-
-  function makeRunner() {
-    let ok = function(){}, fail = function(e){ console.error(e); };
-    const api = {
-      withSuccessHandler(fn){ if (typeof fn === 'function') ok = fn; return proxy; },
-      withFailureHandler(fn){ if (typeof fn === 'function') fail = fn; return proxy; }
-    };
-    const handler = {
-      get(_t, prop){
-        if (prop === 'withSuccessHandler') return api.withSuccessHandler;
-        if (prop === 'withFailureHandler') return api.withFailureHandler;
-        // Call any backend function name: google.script.run.fnName(arg1, arg2, ...)
-        return function(...args){
-          const payload = { fn: prop, args: args || [] };
-          fetch(WEBAPP_BASE, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          })
-          .then(async (res) => {
-            const ct = (res.headers.get('content-type') || '').toLowerCase();
-            const text = await res.text();
-            let data = null;
-            if (ct.includes('application/json')) {
-              data = JSON.parse(text);
-            } else {
-              try { data = JSON.parse(text); }
-              catch(_) { throw new Error('Non-JSON response ('+res.status+'): ' + text.slice(0,200)); }
-            }
-            ok(data);
-          })
-          .catch(fail);
-        };
-      }
-    };
-    const proxy = new Proxy({}, handler);
-    return proxy;
-  }
-
-  window.google = { script: { run: makeRunner() } };
-  console.log('[shim] google.script.run polyfilled (POST → ' + location.origin + '/exec)');
-})();
-</script>
-
   
   <div class="app" id="appShell">
     <div class="backdrop" id="backdrop"></div>
@@ -277,6 +225,65 @@
       <div class="container"><div id="root"></div></div>
     </main>
   </div>
+
+  
+<script>
+/* google.script.run polyfill for Cloudflare Pages
+   - Per-call handler isolation (matches real GAS behavior)
+   - GET for cacheable public reads; POST for everything else
+*/
+(function () {
+  if (window.google && google.script && google.script.run) return;
+
+  const CACHEABLE_READS = new Set([
+    'api_listEvents', 'api_upcomingEvents', 'api_eventDetails' // public-only reads
+  ]);
+
+  function runner(base, ctx = { ok: null, fail: null }) {
+    return new Proxy(function () {}, {
+      get(_t, prop) {
+        if (prop === 'withSuccessHandler') {
+          return (fn) => runner(base, { ...ctx, ok: fn });
+        }
+        if (prop === 'withFailureHandler') {
+          return (fn) => runner(base, { ...ctx, fail: fn });
+        }
+        // Treat any other property as a method name
+        return function (...args) {
+          const method = String(prop);
+          (async () => {
+            try {
+              let res;
+              if (CACHEABLE_READS.has(method)) {
+                const url = base + '?method=' + encodeURIComponent(method) +
+                            '&args=' + encodeURIComponent(JSON.stringify(args || []));
+                res = await fetch(url, { method: 'GET' });
+              } else {
+                res = await fetch(base, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ method, args })
+                });
+              }
+              if (!res.ok) throw new Error('HTTP ' + res.status);
+              const data = await res.json();
+              (ctx.ok || function(){})(data);
+            } catch (e) {
+              (ctx.fail || console.error)(e);
+            }
+          })();
+          // After a call, return a fresh runner with empty handlers (like GAS)
+          return runner(base, {});
+        };
+      }
+    });
+  }
+
+  window.google = window.google || {};
+  google.script = google.script || {};
+  google.script.run = runner('/gas');
+})();
+</script>
 
   <script>
     /* ===================== GLOBAL STATE ===================== */
