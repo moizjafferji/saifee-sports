@@ -202,6 +202,26 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   display: none !important;
 }
   </style>
+
+<script>
+/* Safe JSON.parse shim + logger — add before any other scripts */
+(function () {
+  var _parse = JSON.parse;
+  JSON.parse = function (input) {
+    try { return _parse.call(this, input); }
+    catch (err) {
+      // Don’t crash the app — log and return null
+      try {
+        console.error('[Safe JSON.parse] Failed:', 
+          (typeof input === 'string' ? input.slice(0, 200) : input),
+          '\nStack:\n', new Error().stack, '\nOriginal error:', err);
+      } catch(_) {}
+      return null;
+    }
+  };
+})();
+</script>
+
   
   <script>
   (async () => {
