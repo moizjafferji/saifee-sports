@@ -332,6 +332,11 @@
     function addrHtml(addr){
       return addr ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener">'+addr+'</a>') : '';
     }
+    function titleCase_(s){
+      return String(s||'').split(' ').map(function(w){
+        return w ? (w.charAt(0).toUpperCase()+w.slice(1)) : w;
+      }).join(' ');
+    }
 
     // Session keep-alive
     function saveSession(){ try { localStorage.setItem('saifee_user', JSON.stringify(state.user||null)); } catch(e){} }
@@ -446,24 +451,29 @@
         navItem('Events','admin_events');
         navItem('Receipts','admin_receipts');
 
-        // --- Dynamic Autodraft links for "<Sport> Captain" roles ---
-        google.script.run.withSuccessHandler(function(r){
-          try{
-            var map = (r && r.map) || {};
-            var roles = (state.admin && state.admin.adminSports) || [];
-            var captainSports = roles
-              .map(function(s){ s = String(s||''); var m = s.match(/^(.*)\s+Captain$/i); return m ? m[1].trim() : null; })
-              .filter(Boolean);
+        // ===== Dynamic Autodraft links for "<Sport> Captain" =====
+        (function(){
+          var adminSports = (state.admin && state.admin.adminSports) || [];
+          if (!adminSports.length) return;
 
-            captainSports.forEach(function(sp){
-              var url = map[String(sp).toLowerCase()];
-              if (!url) return;
-              var a = el('<a class="nav-item" target="_blank" rel="noopener">'+sp+' Autodraft</a>');
-              a.href = url;
-              nav.appendChild(a);
+          // Extract sports where the user is a "<sport> captain"
+          var captainSports = {};
+          adminSports.forEach(function(s){
+            var m = String(s||'').toLowerCase().match(/^(.+)\s+captain$/);
+            if (m && m[1]) captainSports[m[1].trim()] = true;
+          });
+          if (!Object.keys(captainSports).length) return;
+
+          // Fetch map from "Autodraft" sheet and add links
+          google.script.run.withSuccessHandler(function(res){
+            var map = (res && res.map) || {};
+            Object.keys(captainSports).forEach(function(sk){
+              var url = map[sk]; if (!url) return; // no row for this sport
+              var label = titleCase_(sk) + ' Autodraft';
+              navLink(label, function(){ window.open(url, '_blank', 'noopener'); }, false);
             });
-          }catch(_){}
-        }).api_autodraftMap();
+          }).api_autodraftMap();
+        })();
       }
 
       // Auth
@@ -990,8 +1000,7 @@
       if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
       box.innerHTML = '';
       list.forEach(function(e){
-        // Robustly read status by multiple possible keys
-        var st = String(statusMap[e.id] || statusMap[e.event_id] || 'none').toLowerCase();
+        var st = String(statusMap[e.id]||'none').toLowerCase();
         var regStart = parseDT(e.reg_start); var regEnd = parseDT(e.reg_end); var afterClose = (regEnd && now() > regEnd);
         var regOpen = (!regStart || now() >= regStart) && (!regEnd || now() <= regEnd);
 
@@ -1022,10 +1031,7 @@
         function q(act){ return card.querySelector('[data-act="'+act+'"]'); }
         function setHint(msg){ var n=card.querySelector('[data-role="hint"]'); n.textContent=msg||''; }
 
-        const eid = String(e.id || e.event_id || e.eventId || e.ID || '');
-
         function updateCapacityLabels(){
-          if (!eid) return;
           google.script.run.withSuccessHandler(function(res){
             var live = (res && res.live) || [];
             var activeCount = live.filter(function(r){ return String(r.status||'').toLowerCase()==='active'; }).length;
@@ -1033,14 +1039,18 @@
             var reached = (cap>0 && activeCount>=cap);
             q('register').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
             setHint(reached ? 'Capacity is full. You will be added to the waitlist.' : '');
-          }).api_eventDetails(eid);
+          }).api_eventDetails(e.id || e.event_id);
         }
         updateCapacityLabels();
 
-        q('register').onclick  = function(){ if (!eid) return alert('Event ID missing'); actRegister(eid,false); };
-        q('deregister').onclick= function(){ if (!eid) return alert('Event ID missing'); actDeregister(eid); };
-        q('dropout').onclick   = function(){ if (!eid) return alert('Event ID missing'); actDropout(eid); };
-        q('view').onclick      = function(){ if (!eid) return alert('Event ID missing'); openEvent(eid); };
+        q('register').onclick  = function(){ actRegister((e.id || e.event_id),false); };
+        q('deregister').onclick= function(){ actDeregister((e.id || e.event_id)); };
+        q('dropout').onclick   = function(){ actDropout((e.id || e.event_id)); };
+        q('view').onclick = function(){
+          var eid = (e.id || e.event_id || '');
+          if (!eid) { alert('Missing event id'); return; }
+          openEvent(String(eid));
+        };
       });
     }
 
@@ -1137,15 +1147,16 @@
           // Guests dropdown + my guests list
           google.script.run.withSuccessHandler(function(g){
             var sel = $('#gx_sel'); var hint= $('#gx_hint');
-            var guests = (g && g.guests) || [];
-            guests.forEach(function(gu){
+            var guests = (g && g.guests) || {};
+            var arr = Array.isArray(guests) ? guests : (guests.guests || []);
+            arr.forEach(function(gu){
               var opt = document.createElement('option');
               opt.value = gu.guest_its;
               opt.textContent = gu.first_name+' '+gu.last_name+' — ITS '+gu.guest_its;
               sel.appendChild(opt);
             });
-            if(!guests.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
-            if(!regOpen || !guests.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
+            if(!arr.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
+            if(!regOpen || !arr.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
 
             var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
             var gl = $('#my_guest_list');
@@ -1257,7 +1268,7 @@
             )+
           "</div>"+
           "<div style='display:flex;gap:10px;justify-content:flex-end'><button class='btn' id='f_save'>"+(edit?'Save Changes':'Create Profile')+"</button></div>"+
-          "<div class='tiny' id='f_err' style='color:var(--err)'></div>"+
+          "<div class='tiny' id='f_err' style='color:var(--err)"></div>"+
         "</div>"
       );
       layout(node);
@@ -1386,7 +1397,7 @@
       const regStartInput  = $('#ae_reg_start');
       const regEndInput    = $('#ae_reg_end');
       const feeInput       = $('#ae_fee');
-      const capInput       = $('#ae_capacity');
+      const capInput       = $('#ae_capacity'];
       const nameInput      = $('#ae_name');
       const addrInput      = $('#ae_addr');
 
@@ -1496,7 +1507,7 @@
             '<div class="stack"><label class="label">Extra Notes (optional)</label><input id="ar_notes" class="input" placeholder="Notes"></div>'+
             '<div class="stack"><label class="label">Upload Receipt</label><input id="ar_file" class="input" type="file" accept="image/*,application/pdf" required><div class="tiny">A receipt image/PDF is required.</div></div>'+
           '</div>'+
-          '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px">'+
+          '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px>'+
             '<button class="btn" id="ar_save">Save Receipt</button>'+
             '<button class="btn secondary" id="ar_finalize">Finalize Now</button>'+
           '</div>'+
