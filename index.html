@@ -194,7 +194,62 @@
     #sidebar .hamburger, #btnNavCollapse{ display: none !important; }
   </style>
 </head>
+  
 <body>
+
+  <script>
+/* Polyfill google.script.run when not hosted by Apps Script */
+(function(){
+  if (window.google && window.google.script && window.google.script.run) return;
+
+  // If your Cloudflare forwarding maps POST /exec → your Apps Script web app doPost,
+  // leave this as '/exec'. Otherwise put the full /exec URL of your deployed web app.
+  const WEBAPP_BASE = '/exec'; // e.g. 'https://script.google.com/macros/s/AKfycb.../exec'
+
+  function makeRunner() {
+    let ok = function(){}, fail = function(e){ console.error(e); };
+    const api = {
+      withSuccessHandler(fn){ if (typeof fn === 'function') ok = fn; return proxy; },
+      withFailureHandler(fn){ if (typeof fn === 'function') fail = fn; return proxy; }
+    };
+    const handler = {
+      get(_t, prop){
+        if (prop === 'withSuccessHandler') return api.withSuccessHandler;
+        if (prop === 'withFailureHandler') return api.withFailureHandler;
+        // Call any backend function name: google.script.run.fnName(arg1, arg2, ...)
+        return function(...args){
+          const payload = { fn: prop, args: args || [] };
+          fetch(WEBAPP_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+          .then(async (res) => {
+            const ct = (res.headers.get('content-type') || '').toLowerCase();
+            const text = await res.text();
+            let data = null;
+            if (ct.includes('application/json')) {
+              data = JSON.parse(text);
+            } else {
+              try { data = JSON.parse(text); }
+              catch(_) { throw new Error('Non-JSON response ('+res.status+'): ' + text.slice(0,200)); }
+            }
+            ok(data);
+          })
+          .catch(fail);
+        };
+      }
+    };
+    const proxy = new Proxy({}, handler);
+    return proxy;
+  }
+
+  window.google = { script: { run: makeRunner() } };
+  console.log('[shim] google.script.run polyfilled (POST → ' + location.origin + '/exec)');
+})();
+</script>
+
+  
   <div class="app" id="appShell">
     <div class="backdrop" id="backdrop"></div>
 
