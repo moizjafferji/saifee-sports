@@ -6,11 +6,9 @@
   <title>Saifee Sports</title>
   <style>
     :root{
-      /* Colors */
       --bg:#0b1220; --surface:#0f172a; --card:#0e1626; --muted:#9fb3c8; --text:#e6eef8;
       --accent:#3b82f6; --ok:#16a34a; --warn:#f59e0b; --err:#ef4444; --border:#223;
 
-      /* Fluid type scale */
       --fs-xxxs: clamp(20px, 8vw, 24px);
       --fs-xxs: clamp(20px, 10vw, 30px);
       --fs-xs:  clamp(25px, 13vw, 35px);
@@ -19,13 +17,11 @@
       --fs-lg:  clamp(40px, 22vw, 50px);
       --fs-xl:  clamp(45px, 25vw, 55px);
 
-      /* Layout */
       --sidebar-w: clamp(200px, 30vw, 300px);
       --radius: 16px;
       --pad: 14px;
       --gap: 12px;
       --elev: 0 10px 28px rgba(0,0,0,.35);
-
       --topbar-h: clamp(56px, 9vh, 110px);
     }
     *{ box-sizing:border-box }
@@ -37,7 +33,6 @@
       font-size:var(--fs-md); line-height:1.35;
     }
 
-    /* ===== App layout ===== */
     .app{ display:flex; min-height:100dvh; width:100%; position:relative; }
     .sidebar{
       width:var(--sidebar-w);
@@ -58,7 +53,6 @@
       padding: calc(var(--pad) + 6px);
     }
 
-    /* ===== Mobile top bar + slide-in sidebar ===== */
     .topbar{
       min-height: var(--topbar-h);
       display:flex;
@@ -68,66 +62,32 @@
       padding: 10px var(--pad);
       border-bottom:1px solid var(--border);
     }
-
     .hamburger{
-      min-width:88px;
-      min-height:44px;
-      line-height:1;
-      touch-action:manipulation;
-      -webkit-tap-highlight-color: transparent;
+      min-width:88px; min-height:44px; line-height:1;
+      touch-action:manipulation; -webkit-tap-highlight-color: transparent;
       background:transparent; color:var(--text);
       border:1px solid var(--border); border-radius:10px;
       padding:8px 12px; font-weight:700; cursor:pointer;
     }
     .brand{ display:flex; align-items:center; gap:10px; font-size:var(--fs-lg); font-weight:800; letter-spacing:.3px }
     .brand .logo{ width:28px; height:28px; object-fit:contain; border-radius:8px; border:1px solid var(--border); background:#0d1423 }
-    /* Sidebar logo only: triple the size */
-    #sidebar .logo{
-      width: 126px;
-      height: 126px;
-    }
+    #sidebar .logo{ width: 126px; height: 126px; }
 
     @media (max-width: 1433px){
-      .sidebar{
-        position: fixed;
-        left: 0;
-        top: var(--topbar-h);
-        height: calc(100dvh - var(--topbar-h));
-        z-index: 180;
-        transform: translateX(-100%);
-      }
+      .sidebar{ position: fixed; left: 0; top: var(--topbar-h); height: calc(100dvh - var(--topbar-h)); z-index: 180; transform: translateX(-100%); }
       .sidebar.open{ transform: translateX(0); }
       .content{ padding-top: 0; }
-
-      .backdrop{
-        position: fixed;
-        left: 0; right: 0;
-        top: var(--topbar-h);
-        bottom: 0;
-        background: rgba(0,0,0,.45);
-        display: none;
-        z-index: 160;
-      }
+      .backdrop{ position: fixed; left: 0; right: 0; top: var(--topbar-h); bottom: 0; background: rgba(0,0,0,.45); display: none; z-index: 160; }
       .backdrop.show{ display: block; }
     }
+    @media (min-width: 601px){ .sidebar.collapsed{ position:fixed; left:0; top:0; height:100dvh; z-index:180; transform: translateX(-100%); } }
 
-    /* ===== Desktop collapse (triggered by .sidebar.collapsed) ===== */
-    @media (min-width: 601px){
-      .sidebar.collapsed{
-        position:fixed; left:0; top:0; height:100dvh; z-index:180;
-        transform: translateX(-100%);
-      }
-      /* no backdrop on desktop */
-    }
-
-    /* ===== Nav ===== */
     .nav-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
     .brand-left{ display:flex; align-items:center; gap:10px; }
     .logo{ width:42px; height:42px; object-fit:contain; border-radius:10px; border:1px solid var(--border); background:#0d1423; }
     .nav{ display:flex; flex-direction:column; gap:6px; }
     .nav a, .nav button.nav-item{
-      display:flex; align-items:center; gap:10px;
-      width:100%; padding:10px 12px;
+      display:flex; align-items:center; gap:10px; width:100%; padding:10px 12px;
       border-radius: 12px; border:1px solid transparent;
       background:transparent; color:#d7e5fb; text-decoration:none; cursor:pointer;
       font-size:var(--fs-sm);
@@ -139,7 +99,6 @@
     .submenu.open{ display:flex; flex-direction:column; gap:6px; }
     .subitem{ padding-left:10px; font-size:var(--fs-xs) }
 
-    /* ===== Shared UI ===== */
     .stack{ display:flex; flex-direction:column; gap: var(--gap); }
     .row{ display:flex; gap: var(--gap); flex-wrap: wrap; }
     .col{ flex:1 1 320px; min-width:280px; }
@@ -169,7 +128,6 @@
     .table--compact th { font-size: var(--fs-xs); }
 
     .right{ text-align:right }
-
     .badge{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:var(--fs-xxs); border:1px solid transparent }
     .badge.ok{ background:rgba(22,163,74,.15); color:#8ee5a3; border-color:rgba(22,163,74,.35) }
     .badge.warn{ background:rgba(245,158,11,.15); color:#ffd089; border-color:rgba(245,158,11,.35) }
@@ -180,27 +138,19 @@
     .amt-credit{ color:#16a34a; font-weight:700 }
     .amt-debit{ color:#ef4444; font-weight:700 }
 
-    /* Forms are one-column by design */
     .form-grid{ display:grid; grid-template-columns: 1fr; gap: var(--gap); }
 
-    /* Utilities */
     .hide{ display:none !important }
     .w-full{ width:100% }
-
-    /* Scale text reliably on mobile */
     html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 
-    /* Desktop collapse behavior */
     #sidebar .hamburger, #btnNavCollapse{ display: none !important; }
   </style>
 </head>
-  
-<body>
 
+<body>
   <div class="app" id="appShell">
     <div class="backdrop" id="backdrop"></div>
-
-    <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="nav-head">
         <div class="brand-left">
@@ -212,7 +162,6 @@
       <nav class="nav" id="nav"></nav>
     </aside>
 
-    <!-- Main content -->
     <main class="content">
       <div class="topbar">
         <button class="hamburger" id="btnMenu">☰ Menu</button>
@@ -226,27 +175,19 @@
   </div>
 
 <script>
-/* google.script.run polyfill for Cloudflare Pages
-   - Per-call handler isolation (matches real GAS behavior)
-   - GET for cacheable public reads; POST for everything else
-*/
+/* google.script.run polyfill for Cloudflare Pages */
 (function () {
   if (window.google && google.script && google.script.run) return;
 
   const CACHEABLE_READS = new Set([
-    'api_listEvents', 'api_upcomingEvents', 'api_eventDetails' // public-only reads
+    'api_listEvents','api_upcomingEvents','api_eventDetails'
   ]);
 
   function runner(base, ctx = { ok: null, fail: null }) {
     return new Proxy(function () {}, {
       get(_t, prop) {
-        if (prop === 'withSuccessHandler') {
-          return (fn) => runner(base, { ...ctx, ok: fn });
-        }
-        if (prop === 'withFailureHandler') {
-          return (fn) => runner(base, { ...ctx, fail: fn });
-        }
-        // Treat any other property as a method name
+        if (prop === 'withSuccessHandler') return (fn) => runner(base, { ...ctx, ok: fn });
+        if (prop === 'withFailureHandler') return (fn) => runner(base, { ...ctx, fail: fn });
         return function (...args) {
           const method = String(prop);
           (async () => {
@@ -270,7 +211,6 @@
               (ctx.fail || console.error)(e);
             }
           })();
-          // After a call, return a fresh runner with empty handlers (like GAS)
           return runner(base, {});
         };
       }
@@ -287,7 +227,7 @@
   /* ===================== GLOBAL STATE ===================== */
   var state = {
     boot:null, user:null, page:'landing', sport:'Soccer', error:'', tmp:{},
-    admin:{ adminSports:[], pastAddresses:[], adminEvents:[] },
+    admin:{ adminSports:[], pastAddresses:[], adminEvents:[], autodraftMap:{} },
     ui:{ menuOpen:false, sportsOpen:false }
   };
   var sportCountdownTimer = null;
@@ -330,15 +270,8 @@
   function addrHtml(addr){
     return addr ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener">'+addr+'</a>') : '';
   }
-  function titleCase_(s){
-    return String(s||'').split(' ').map(function(w){
-      return w ? (w.charAt(0).toUpperCase()+w.slice(1)) : w;
-    }).join(' ');
-  }
-  function getEventId(obj){
-    if (!obj) return '';
-    var id = obj.id || obj.event_id || obj.eventId || obj.ID || obj.EventID || '';
-    return String(id||'').trim();
+  function getEventId(e){
+    return (e && (e.id || e.event_id || e.eventId || e.ID || e.EventId)) || '';
   }
 
   // Session keep-alive
@@ -349,9 +282,18 @@
       if (saved && saved.its){
         state.user = saved;
         if (!state.page || state.page === 'landing') state.page = 'home';
+
+        // Admin bootstrap + Autodraft map
         AdminAPI.bootstrap(saved.its, function(b){
-          state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[]}, b||{});
-          render();
+          state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],autodraftMap:{}}, b||{});
+          if (!state.admin.autodraftMap || !Object.keys(state.admin.autodraftMap).length){
+            AdminAPI.autodraftMap(saved.its, function(m){
+              state.admin.autodraftMap = (m && (m.map || m)) || {};
+              render();
+            }, console.warn);
+          } else {
+            render();
+          }
         }, console.warn);
       }
     } catch(e){}
@@ -359,7 +301,7 @@
   function signOut(){
     try { localStorage.removeItem('saifee_user'); } catch(e){}
     state.user = null;
-    state.admin = { adminSports:[], pastAddresses:[], adminEvents:[] };
+    state.admin = { adminSports:[], pastAddresses:[], adminEvents:[], autodraftMap:{} };
     setPage('landing');
   }
 
@@ -390,9 +332,13 @@
     receiptsList:function(its, cb, eb){ callServer('Receipts_listForAdmin', [its], cb, eb, 'api_receipts_listForAdmin'); },
     receiptSave:function(its, payload, cb, eb){ callServer('Receipts_save', [its, payload], cb, eb, 'api_receipts_save'); },
     receiptsFinalizeNow:function(its, eventId, cb, eb){ callServer('Receipts_finalizeNow', [its, eventId], cb, eb, 'api_receipts_finalizeNow'); },
-    /* NEW: admin remove */
+    /* Admin remove */
     removeRegistration:function(its, eventId, personIts, cb, eb){
       callServer('Events_adminRemoveRegistration', [its, eventId, personIts], cb, eb, 'api_admin_removeRegistration');
+    },
+    /* Autodraft map (dynamic Captain tools) */
+    autodraftMap:function(its, cb, eb){
+      callServer('Events_adminAutodraftMap', [its], cb, eb, 'api_autodraftMap');
     }
   };
 
@@ -454,36 +400,29 @@
       navItem('Events','admin_events');
       navItem('Receipts','admin_receipts');
 
-      // ===== Dynamic Autodraft links for "<Sport> Captain" =====
+      // Captain Tools (dynamic from Autodraft sheet)
       (function(){
-        var adminSports = (state.admin && state.admin.adminSports) || [];
-        if (!adminSports.length) return;
-
-        // Extract sports where the user is a "<sport> captain"
-        var captainSports = {};
-        adminSports.forEach(function(s){
-          var m = String(s||'').toLowerCase().match(/^(.+)\s+captain$/);
-          if (m && m[1]) captainSports[m[1].trim()] = true;
-        });
-        if (!Object.keys(captainSports).length) return;
-
-        // Fetch map from "Autodraft" sheet and add links (case-insensitive match)
-        google.script.run.withSuccessHandler(function(res){
-          var map = (res && res.map) || {};
-          var keys = Object.keys(map);
-
-          function findUrlForSport(skLower){
-            var hitKey = keys.find(function(k){ return String(k||'').toLowerCase().trim() === skLower; });
-            return hitKey ? map[hitKey] : null;
-          }
-
-          Object.keys(captainSports).forEach(function(sk){
-            var url = findUrlForSport(sk); // sk already lower + trimmed from above
-            if (!url) return;
-            var label = titleCase_(sk) + ' Autodraft';
-            navLink(label, function(){ window.open(url, '_blank', 'noopener'); }, false);
+        try{
+          var map = (state.admin && state.admin.autodraftMap) ? state.admin.autodraftMap : {};
+          var caps = (state.admin && state.admin.adminSports || []).filter(function(s){
+            return /captain$/i.test(String(s||''));
           });
-        }).api_autodraftMap();
+          if (caps.length && map && Object.keys(map).length){
+            // Section label
+            var label = el('<div class="label" style="margin:6px 10px 0">Captain Tools</div>');
+            nav.appendChild(label);
+            caps.forEach(function(cap){
+              var base = String(cap).replace(/\s*Captain\s*$/i,'').trim();
+              var gid = map[base] || map[base.toLowerCase()] || map[base.toUpperCase()];
+              if (!gid) return;
+              var capBtn = el('<button class="nav-item">'+base+' Autodraft</button>');
+              capBtn.onclick = function(){
+                window.open('https://docs.google.com/spreadsheets/d/'+gid+'/edit','_blank','noopener');
+              };
+              nav.appendChild(capBtn);
+            });
+          }
+        }catch(_){}
       })();
     }
 
@@ -497,7 +436,7 @@
   }
 
   /* ===================== MENU TOGGLING ===================== */
-  const MOBILE_MAX = 2000; // S25 Ultra and smaller use slide-in drawer
+  const MOBILE_MAX = 2000;
   function isMobileBP(){ return window.matchMedia(`(max-width: ${MOBILE_MAX}px)`).matches; }
   function toggleMenu(){
     const sb = document.getElementById('sidebar');
@@ -513,8 +452,8 @@
   function closeMenu(){
     const sb = document.getElementById('sidebar');
     const bd = document.getElementById('backdrop');
-    sb.classList.remove('open');        // mobile state
-    sb.classList.remove('collapsed');   // desktop state
+    sb.classList.remove('open');        // mobile
+    sb.classList.remove('collapsed');   // desktop
     if (bd) bd.classList.remove('show');
   }
   function wireMenuButtons(){
@@ -523,7 +462,6 @@
     const bd = document.getElementById('backdrop');
     if (bd) bd.onclick = closeMenu;
   }
-  // Normalize classes when crossing the breakpoint
   window.addEventListener('resize', ()=>{
     const sb = document.getElementById('sidebar');
     const bd = document.getElementById('backdrop');
@@ -578,9 +516,15 @@
       if(!res||!res.ok){ err.textContent=(res&&res.error)||'Invalid credentials'; return; }
       state.user=res.user; saveSession();
 
-      // Load admin data (no re-render until we navigate)
+      // Load admin data + autodraft map
       AdminAPI.bootstrap(state.user.its, function(b){
-        state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[]}, b||{});
+        state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],autodraftMap:{}}, b||{});
+        if (!state.admin.autodraftMap || !Object.keys(state.admin.autodraftMap).length){
+          AdminAPI.autodraftMap(state.user.its, function(m){
+            state.admin.autodraftMap = (m && (m.map || m)) || {};
+            render();
+          }, console.warn);
+        }
       }, console.warn);
 
       var hasLogo = (state.boot && state.boot.logoUrl);
@@ -597,8 +541,7 @@
 
   /* ===================== SHARED HELPERS ===================== */
   function withinCheckInWindow(evt){
-    var start = parseDT(evt && evt.start_datetime);
-    if (!start) return false;
+    var start = parseDT(evt && evt.start_datetime); if (!start) return false;
     var end   = parseDT(evt && evt.end_datetime);
     var nowTs = now();
     var openAt  = new Date(start.getTime() - 30*60*1000);
@@ -656,10 +599,9 @@
     return '';
   }
 
-  /* ===================== HOME (one column) ===================== */
+  /* ===================== HOME ===================== */
   function pageHome(){ if(!guard())return;
 
-    // clear prior timers
     if (homeTimers.cd){ clearInterval(homeTimers.cd); homeTimers.cd = null; }
     if (homeTimers.uiRefresh){ clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
 
@@ -696,7 +638,7 @@
       $('#home_balance').textContent = money(res.balance||0);
     }).api_balance(state.user.its);
 
-    // Self + guest lists + nextSelf
+    // Self + guests + nextSelf
     google.script.run.withSuccessHandler(function(h){
       var selfList   = (h && h.self)   || [];
       var guestList  = (h && h.guests) || [];
@@ -732,8 +674,6 @@
               '</div>'+
             '</div>';
         }).join('');
-
-        // wire view
         box.querySelectorAll('button[data-act="view"]').forEach(function(b){
           b.addEventListener('click', function(){
             var id=b.getAttribute('data-eid'); if(id) openEvent(String(id));
@@ -746,14 +686,12 @@
         var box = $('#home_guests');
         if (!guestList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
         box.innerHTML = '';
-
         guestList.forEach(function(ev){
           var eid = getEventId(ev);
           google.script.run.withSuccessHandler(function(res){
             var live = (res && res.live) || [];
             var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
             if (!mine.length) return;
-
             mine.forEach(function(r){
               var title = (ev.sport ? (ev.sport+' - ') : '') + (ev.name||'Event') + ' — ' + (r.name || 'Guest');
               var sub   = (ev.start_datetime ? (fmtDT(ev.start_datetime)) : '') + (ev.address ? ('<br/>' + addrHtml(ev.address)) : '');
@@ -795,8 +733,8 @@
           if (already){ chk.style.display='inline-flex'; chk.disabled=true; chk.classList.add('checked-in'); chk.textContent='Checked In'; }
           else if (can){ chk.style.display='inline-flex'; chk.disabled=false; chk.textContent='Check In Now'; }
           else { chk.style.display='none'; chk.disabled=true; }
-        }).api_eventDetails(evt.id);
-        chk.onclick = function(){ if (!chk.disabled) doCheckIn(evt.id, state.user.its, chk); };
+        }).api_eventDetails(getEventId(evt));
+        chk.onclick = function(){ if (!chk.disabled) doCheckIn(getEventId(evt), state.user.its, chk); };
       }
 
       if (!next){
@@ -862,14 +800,10 @@
     var table = rows.map(function(kv){ return '<tr><td class="label">'+kv[0]+'</td><td>'+(kv[1]||'')+'</td></tr>'; }).join('');
     var node = el(
       '<div class="card stack">'+
-        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
-          '<div style="font-size:var(--fs-lg);font-weight:800">'+(u.first_name||'')+' '+(u.last_name||'')+'</div>'+
-          '<button class="btn" id="btnEdit">Edit Profile</button>'+
-        '</div>'+
+        '<div style="font-size:var(--fs-lg);font-weight:800">'+(u.first_name||'')+' '+(u.last_name||'')+'</div>'+
         '<table class="table">'+table+'</table>'+
       '</div>');
     layout(node);
-    $('#btnEdit').onclick=function(){ setPage('edit'); };
   }
 
   /* ===================== BALANCE ===================== */
@@ -972,7 +906,6 @@
     google.script.run.withSuccessHandler(function(res){
       var all = (res.events||[]).slice();
       var nowTs = now();
-
       var list = all
         .filter(function(e){ var de = parseDT(e.end_datetime); return de && de > nowTs; })
         .sort(function(a,b){ return new Date(a.start_datetime||0) - new Date(b.start_datetime||0); });
@@ -1005,13 +938,17 @@
       }).api_myStatusesForSport(state.user.its, state.sport);
     }).api_listEvents(state.sport);
   }
+
   function renderSportEventList(list, statusMap){
     var box = $('#sp_list'); var nowTs=now();
     list = (list||[]).filter(function(e){ var de=parseDT(e.end_datetime); return de && de > nowTs; });
     if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
     box.innerHTML = '';
     list.forEach(function(e){
-      var st = String(statusMap[getEventId(e)]||'none').toLowerCase();
+      var eid = getEventId(e);
+      if (!eid) return; // safety
+
+      var st = String(statusMap[eid]||'none').toLowerCase();
       var regStart = parseDT(e.reg_start); var regEnd = parseDT(e.reg_end); var afterClose = (regEnd && now() > regEnd);
       var regOpen = (!regStart || now() >= regStart) && (!regEnd || now() <= regEnd);
 
@@ -1043,7 +980,6 @@
       function setHint(msg){ var n=card.querySelector('[data-role="hint"]'); n.textContent=msg||''; }
 
       function updateCapacityLabels(){
-        var id = getEventId(e);
         google.script.run.withSuccessHandler(function(res){
           var live = (res && res.live) || [];
           var activeCount = live.filter(function(r){ return String(r.status||'').toLowerCase()==='active'; }).length;
@@ -1051,29 +987,25 @@
           var reached = (cap>0 && activeCount>=cap);
           q('register').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
           setHint(reached ? 'Capacity is full. You will be added to the waitlist.' : '');
-        }).api_eventDetails(id);
+        }).api_eventDetails(eid);
       }
       updateCapacityLabels();
 
-      var eid = getEventId(e);
       q('register').onclick  = function(){ actRegister(eid,false); };
       q('deregister').onclick= function(){ actDeregister(eid); };
       q('dropout').onclick   = function(){ actDropout(eid); };
-      q('view').onclick = function(){
-        if (!eid) { alert('Missing event id'); return; }
-        openEvent(String(eid));
-      };
+      q('view').onclick      = function(){ openEvent(String(eid)); };
     });
   }
 
-  /* ===================== EVENT DETAIL (with Admin Remove) ===================== */
+  /* ===================== EVENT DETAIL ===================== */
   function openEvent(id){ if(!guard())return;
     google.script.run.withSuccessHandler(function(res){
       var evt=res.event; var live=res.live||[];
 
       google.script.run.withSuccessHandler(function(st){
         var map = (st && (st.map || st.statuses || st.billing_statuses)) || {};
-        var myStatus = String(map[evt.id] || 'none').toLowerCase();
+        var myStatus = String(map[evt.id] || map[id] || 'none').toLowerCase();
 
         var nowTs = now();
         var regStart = parseDT(evt.reg_start);
@@ -1083,7 +1015,6 @@
 
         var myBadge = computeStatusBadge(myStatus);
         var capText = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
-
         var addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
 
         var node=el(
@@ -1148,9 +1079,9 @@
               var btn = ev.target.closest('button[data-act=\"admin-remove\"]'); if(!btn) return;
               var personIts = btn.getAttribute('data-person');
               if(!confirm('Remove this person from the event? This may auto-promote someone from waitlist.')) return;
-              AdminAPI.removeRegistration(state.user.its, evt.id, personIts, function(r){
+              AdminAPI.removeRegistration(state.user.its, evt.id || id, personIts, function(r){
                 if(!r || !r.ok){ alert((r && r.error) || 'Failed to remove'); return; }
-                openEvent(evt.id);
+                openEvent(evt.id || id);
               }, function(e){ alert('Failed: '+(e && (e.message||e))); });
             }, { once:true });
           }
@@ -1159,16 +1090,15 @@
         // Guests dropdown + my guests list
         google.script.run.withSuccessHandler(function(g){
           var sel = $('#gx_sel'); var hint= $('#gx_hint');
-          var guests = (g && g.guests) || {};
-          var arr = Array.isArray(guests) ? guests : (guests.guests || []);
-          arr.forEach(function(gu){
+          var guests = (g && g.guests) || [];
+          guests.forEach(function(gu){
             var opt = document.createElement('option');
             opt.value = gu.guest_its;
             opt.textContent = gu.first_name+' '+gu.last_name+' — ITS '+gu.guest_its;
             sel.appendChild(opt);
           });
-          if(!arr.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
-          if(!regOpen || !arr.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
+          if(!guests.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
+          if(!regOpen || !guests.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
 
           var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
           var gl = $('#my_guest_list');
@@ -1194,14 +1124,14 @@
             }).join('');
             gl.querySelectorAll('[data-act="g-dereg"]').forEach(function(b){
               b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
-                google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to deregister guest'); openEvent(evt.id); })
-                  .api_deregister(state.user.its, evt.id, guestIts);
-              });});
+                google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to deregister guest'); openEvent(evt.id || id); })
+                  .api_deregister(state.user.its, evt.id || id, guestIts);
+            });});
             gl.querySelectorAll('[data-act="g-drop"]').forEach(function(b){
               b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
-                google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to drop out guest'); openEvent(evt.id); })
-                  .api_dropout(state.user.its, evt.id, guestIts);
-              });});
+                google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to drop out guest'); openEvent(evt.id || id); })
+                  .api_dropout(state.user.its, evt.id || id, guestIts);
+            });});
           }
         }).api_listGuests(state.user.its);
 
@@ -1225,13 +1155,13 @@
             $('#reg_me').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
             var rg = $('#reg_guest'); if (rg) rg.textContent = reached ? 'Register Guest on Waitlist' : 'Register Guest';
             $('#cap_hint').textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
-          }).api_eventDetails(id);
+          }).api_eventDetails(evt.id || id);
         })();
 
         // Wire self actions
-        $('#reg_me').onclick     = function(){ actRegister(evt.id,false); };
-        $('#dereg_me').onclick   = function(){ actDeregister(evt.id); };
-        $('#dropout_me').onclick = function(){ actDropout(evt.id); };
+        $('#reg_me').onclick     = function(){ actRegister(evt.id || id,false); };
+        $('#dereg_me').onclick   = function(){ actDeregister(evt.id || id); };
+        $('#dropout_me').onclick = function(){ actDropout(evt.id || id); };
 
         // Wire guest action
         $('#reg_guest').onclick  = function(){
@@ -1239,8 +1169,8 @@
           if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
           google.script.run.withSuccessHandler(function(resp){
             if(!resp||!resp.ok){ alert((resp&&resp.error)||'Failed'); return; }
-            openEvent(id);
-          }).api_register(state.user.its, id, v, true);
+            openEvent(evt.id || id);
+          }).api_register(state.user.its, evt.id || id, v, true);
         };
       }).api_myStatusesForEvents(state.user.its, [id]);
     }).api_eventDetails(id);
@@ -1280,7 +1210,7 @@
           )+
         "</div>"+
         "<div style='display:flex;gap:10px;justify-content:flex-end'><button class='btn' id='f_save'>"+(edit?'Save Changes':'Create Profile')+"</button></div>"+
-        "<div class='tiny' id='f_err' style='color:var(--err)'></div>"+
+        "<div class='tiny' id='f_err' style='color:var(--err)"></div>"+
       "</div>"
     );
     layout(node);
@@ -1399,12 +1329,10 @@
     const placeholder = document.createElement('option'); placeholder.value=''; placeholder.textContent='Choose'; cp.appendChild(placeholder);
     (state.admin.adminEvents||[]).forEach(e=>{
       const o=document.createElement('option');
-      o.value=getEventId(e);
-      o.textContent = (e.sport || '')+' - '+e.name+' - '+fmtDT(e.start_datetime);
+      o.value=getEventId(e); o.textContent = (e.sport || '')+' - '+e.name+' - '+fmtDT(e.start_datetime);
       cp.appendChild(o);
     });
 
-    // Inputs
     const startInput     = $('#ae_start');
     const endInput       = $('#ae_end');
     const regStartInput  = $('#ae_reg_start');
@@ -1414,7 +1342,6 @@
     const nameInput      = $('#ae_name');
     const addrInput      = $('#ae_addr');
 
-    // Track baseline to shift ranges if desired
     let prefillBase = null; const MS_DAY = 24*60*60*1000;
     const override = { end:false, reg_start:false, reg_end:false };
     endInput.addEventListener('input', ()=> override.end = true);
@@ -1574,11 +1501,10 @@
     };
   }
 
-  /* ===================== ROUTER + RENDER ===================== */
+  /* ===================== ROUTER ===================== */
   function render(){
     buildNav();
     wireMenuButtons();
-
     if(state.page==='landing') return pageLanding();
     if(state.page==='create') return pageCreateOrEdit(false);
     if(state.page==='edit') return pageCreateOrEdit(true);
