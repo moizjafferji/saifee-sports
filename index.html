@@ -146,6 +146,8 @@
     .label{ font-size:var(--fs-xs); color:#BF0A30; }
     .tiny{ font-size:var(--fs-xxs); color:var(--muted); }
     .muted{ color:var(--muted) }
+    .btn.sm{ padding:6px 10px; font-size:var(--fs-xxs); }
+
 
     .btn{
       display:inline-flex; align-items:center; justify-content:center; gap:8px;
@@ -304,7 +306,7 @@
       render();
     }).api_bootstrap();
 
-    /* ===================== UTILS ===================== */
+    /* ===================== UTILS ===================== */    
     function $(sel, root){ return (root||document).querySelector(sel); }
     function el(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
     function layout(n){ var root=document.getElementById('root'); root.innerHTML=''; root.appendChild(n); }
@@ -1215,34 +1217,37 @@
           );
           layout(node);
 
-          (function renderLive(){
-            var isAdminOfSport = (state.admin && state.admin.adminSports || []).includes((res && res.event && res.event.sport) || '');
-            var html = live.map(function(r){
-              var st = String(r.status||'').toLowerCase();
-              var statusBadge = (st==='active')? "<span class='badge ok'>Active</span>" :
-                                (st==='waitlist')? "<span class='badge warn'>Waitlist</span>" :
-                                (st==='dropout')? "<span class='badge warn'>Dropped Out</span>" : "";
-              var checkinBadge = computeCheckinPill(r);
-              var cancelBtn = (isAdminOfSport && st!=='cancelled')
-                ? " <button class='btn danger tiny' data-act='admin-cancel' data-person='"+r.person+"'>Cancel</button>"
-                : "";
-              return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+r.name+" "+statusBadge+" "+checkinBadge+cancelBtn+"</div>";
-            }).join('');
-            $('#live_list').innerHTML = html || "<div class='muted'>No registrations yet</div>";
+          // Live roster — per-row Remove (admins only; "Captain" NOT allowed)
+(function renderLive(){
+  var admin = isAdminForSport(evt.sport);  // strict admin check
+  var html = live.map(function(r){
+    var st = String(r.status||'').toLowerCase();
+    var statusBadge = computeStatusBadge(st);
+    var checkinBadge = computeCheckinPill(r);
+    var canRemove = admin && (st==='active' || st==='waitlist');
+    var removeBtn = canRemove
+      ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
+      : "";
+    return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
+             r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
+           "</div>";
+  }).join('');
+  $('#live_list').innerHTML = html || "<div class='muted'>No registrations yet</div>";
 
-            if (isAdminOfSport){
-              $('#live_list').querySelectorAll('button[data-act="admin-cancel"]').forEach(function(b){
-                b.addEventListener('click', function(){
-                  var person = b.getAttribute('data-person');
-                  if (!confirm('Cancel this registration?')) return;
-                  google.script.run.withSuccessHandler(function(r){
-                    if(!r || !r.ok){ alert((r && r.error) || 'Cancel failed'); return; }
-                    openEvent(id);
-                  }).api_admin_cancelRegistration(state.user.its, id, person);
-                });
-              });
-            }
-          })();
+  if (admin){
+    $('#live_list').querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var person = b.getAttribute('data-person');
+        if (!confirm('Remove this registration and promote the next from waitlist?')) return;
+        google.script.run.withSuccessHandler(function(r){
+          if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
+          openEvent(id);
+        }).api_admin_cancelRegistration(state.user.its, id, person);
+      });
+    });
+  }
+})();
+
 
           google.script.run.withSuccessHandler(function(g){
             var sel = $('#gx_sel'); var hint= $('#gx_hint');
@@ -1448,25 +1453,28 @@
 
     /* ===================== REGISTRATION ACTIONS ===================== */
     function actRegister(eventId,isGuest){
-      var target;
-      if (isGuest){
-        var sel = $('#gx_sel');
-        if (sel){ target = (sel.value||'').trim(); }
-        else { var gx = $('#gx'); target = gx ? (gx.value||'').trim() : ''; }
-        if(!/^\d{8}$/.test(target)) { alert('Please select a guest.'); return; }
-        google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_register(state.user.its,eventId,target,true);
-        return;
-      } else { target = state.user.its; }
-      google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_register(state.user.its,eventId,target,false);
-    }
-    function actDeregister(eventId){
-      var target = state.user.its;
-      google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_deregister(state.user.its,eventId,target);
-    }
-    function actDropout(eventId){
-      var target = state.user.its;
-      google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_dropout(state.user.its, eventId, target);
-    }
+  if (isGuest){
+    const sel = document.querySelector('#gx_sel');
+    const target = sel ? (sel.value||'').trim() : '';
+    if(!/^\d{8}$/.test(target)) { alert('Please select a guest.'); return; }
+
+    google.script.run.withSuccessHandler(function(res){
+      if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+      // Create a pending hold on the OWNER (me) for THIS guest registration
+      google.script.run.api_billing_createPendingHold(state.user.its, eventId, target);
+      if (state.page==='sport') pageSport(); else openEvent(eventId);
+    }).api_register(state.user.its, eventId, target, true);
+    return;
+  }
+
+  // Self registration
+  google.script.run.withSuccessHandler(function(res){
+    if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+    // Pending hold for me
+    google.script.run.api_billing_createPendingHold(state.user.its, eventId, state.user.its);
+    if (state.page==='sport') pageSport(); else openEvent(eventId);
+  }).api_register(state.user.its, eventId, state.user.its, false);
+}
 
     /* ===================== ADMIN: EVENTS ===================== */
     function pageAdminEvents(){ if(!guard())return;
