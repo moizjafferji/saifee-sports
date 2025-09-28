@@ -61,21 +61,21 @@
 
     /* ===== Mobile top bar + slide-in sidebar ===== */
     .topbar{
-  min-height: var(--topbar-h);
-  display:flex;                       /* was: none */
-  position:sticky; top:0; z-index:200;/* higher than backdrop+sidebar */
-  background:linear-gradient(180deg, rgba(12,16,29,.95), rgba(12,16,29,.70));
-  backdrop-filter: blur(6px);
-  padding: 10px var(--pad);
-  border-bottom:1px solid var(--border);
-}
+      min-height: var(--topbar-h);
+      display:flex;
+      position:sticky; top:0; z-index:200;
+      background:linear-gradient(180deg, rgba(12,16,29,.95), rgba(12,16,29,.70));
+      backdrop-filter: blur(6px);
+      padding: 10px var(--pad);
+      border-bottom:1px solid var(--border);
+    }
 
     .hamburger{
-       min-width:88px;
-  min-height:44px;       /* larger tap target */
-  line-height:1;
-  touch-action:manipulation;
-  -webkit-tap-highlight-color: transparent;
+      min-width:88px;
+      min-height:44px;
+      line-height:1;
+      touch-action:manipulation;
+      -webkit-tap-highlight-color: transparent;
       background:transparent; color:var(--text);
       border:1px solid var(--border); border-radius:10px;
       padding:8px 12px; font-weight:700; cursor:pointer;
@@ -83,45 +83,42 @@
     .brand{ display:flex; align-items:center; gap:10px; font-size:var(--fs-lg); font-weight:800; letter-spacing:.3px }
     .brand .logo{ width:28px; height:28px; object-fit:contain; border-radius:8px; border:1px solid var(--border); background:#0d1423 }
     /* Sidebar logo only: triple the size */
-#sidebar .logo{
-  width: 126px;
-  height: 126px;
-}
+    #sidebar .logo{
+      width: 126px;
+      height: 126px;
+    }
 
     @media (max-width: 1433px){
-  .sidebar{
-    position: fixed;
-    left: 0;
-    top: var(--topbar-h);                 /* start below topbar */
-    height: calc(100dvh - var(--topbar-h));
-    z-index: 180;
-    transform: translateX(-100%);
-  }
-  .sidebar.open{ transform: translateX(0); }
-  .content{ padding-top: 0; }
+      .sidebar{
+        position: fixed;
+        left: 0;
+        top: var(--topbar-h);
+        height: calc(100dvh - var(--topbar-h));
+        z-index: 180;
+        transform: translateX(-100%);
+      }
+      .sidebar.open{ transform: translateX(0); }
+      .content{ padding-top: 0; }
 
-  .backdrop{
-    position: fixed;
-    left: 0; right: 0;
-    top: var(--topbar-h);                 /* don’t cover the topbar/logo */
-    bottom: 0;
-    background: rgba(0,0,0,.45);
-    display: none;
-    z-index: 160;
-  }
-  .backdrop.show{ display: block; }
-}
+      .backdrop{
+        position: fixed;
+        left: 0; right: 0;
+        top: var(--topbar-h);
+        bottom: 0;
+        background: rgba(0,0,0,.45);
+        display: none;
+        z-index: 160;
+      }
+      .backdrop.show{ display: block; }
+    }
 
-    /* ===== Desktop collapse (hide sidebar with ☰ as well) ===== */
     /* ===== Desktop collapse (triggered by .sidebar.collapsed) ===== */
-@media (min-width: 601px){
-  .sidebar.collapsed{
-    position:fixed; left:0; top:0; height:100dvh; z-index:180;
-    transform: translateX(-100%);
-  }
-  /* no backdrop on desktop */
-}
-
+    @media (min-width: 601px){
+      .sidebar.collapsed{
+        position:fixed; left:0; top:0; height:100dvh; z-index:180;
+        transform: translateX(-100%);
+      }
+    }
 
     /* ===== Nav ===== */
     .nav-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
@@ -165,14 +162,14 @@
       background:#0e1626; color:var(--text); font-size:var(--fs-sm);
     }
     .table{ width:100%; border-collapse:collapse }
-.table th,.table td{
-  padding:10px;
-  border-bottom:1px solid var(--border);
-  text-align:left;
-  vertical-align: top;
-}
-.table--compact td { font-size: var(--fs-xxxs); }
-.table--compact th { font-size: var(--fs-xs); }
+    .table th,.table td{
+      padding:10px;
+      border-bottom:1px solid var(--border);
+      text-align:left;
+      vertical-align: top;
+    }
+    .table--compact td { font-size: var(--fs-xxxs); }
+    .table--compact th { font-size: var(--fs-xs); }
 
     .right{ text-align:right }
 
@@ -192,27 +189,24 @@
     /* Utilities */
     .hide{ display:none !important }
     .w-full{ width:100% }
-    /* Make text scale reliably on iOS/Android and bump sizes on small screens */
-html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 
-/* Desktop collapse behavior */
-/* Hide the hamburger that shows inside the sidebar header */
-#sidebar .hamburger,
-#btnNavCollapse{
-  display: none !important;
-}
+    /* Make text scale reliably on iOS/Android and bump sizes on small screens */
+    html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+
+    /* Hide the hamburger that shows inside the sidebar header (desktop) */
+    #sidebar .hamburger,
+    #btnNavCollapse{
+      display: none !important;
+    }
   </style>
 
 <script>
-/* google.script.run polyfill for Cloudflare Pages
-   - Per-call handler isolation (matches real GAS behavior)
-   - GET for cacheable public reads; POST for everything else
-*/
+/* google.script.run polyfill for Cloudflare Pages */
 (function () {
   if (window.google && google.script && google.script.run) return;
 
   const CACHEABLE_READS = new Set([
-    'api_listEvents', 'api_upcomingEvents', 'api_eventDetails' // public-only reads
+    'api_listEvents', 'api_upcomingEvents', 'api_eventDetails'
   ]);
 
   function runner(base, ctx = { ok: null, fail: null }) {
@@ -224,7 +218,6 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
         if (prop === 'withFailureHandler') {
           return (fn) => runner(base, { ...ctx, fail: fn });
         }
-        // Treat any other property as a method name
         return function (...args) {
           const method = String(prop);
           (async () => {
@@ -248,7 +241,6 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
               (ctx.fail || console.error)(e);
             }
           })();
-          // After a call, return a fresh runner with empty handlers (like GAS)
           return runner(base, {});
         };
       }
@@ -295,7 +287,7 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     /* ===================== GLOBAL STATE ===================== */
     var state = {
       boot:null, user:null, page:'landing', sport:'Soccer', error:'', tmp:{},
-      admin:{ adminSports:[], pastAddresses:[], adminEvents:[] },
+      admin:{ adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} },
       ui:{ menuOpen:false, sportsOpen:false }
     };
     var sportCountdownTimer = null;
@@ -350,7 +342,7 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
           state.user = saved;
           if (!state.page || state.page === 'landing') state.page = 'home';
           AdminAPI.bootstrap(saved.its, function(b){
-            state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[]}, b||{});
+            state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b||{});
             render();
           }, console.warn);
         }
@@ -359,7 +351,7 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     function signOut(){
       try { localStorage.removeItem('saifee_user'); } catch(e){}
       state.user = null;
-      state.admin = { adminSports:[], pastAddresses:[], adminEvents:[] };
+      state.admin = { adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} };
       setPage('landing');
     }
 
@@ -443,12 +435,24 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
         nav.appendChild(group);
       }
 
-      // Admin items
+      // Admin items (Events/Receipts)
       var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
       if (state.user && hasAdminSports){
         nav.appendChild(el('<div class="nav-sep"></div>'));
         navItem('Events','admin_events');
         navItem('Receipts','admin_receipts');
+      }
+
+      // Captain tabs from bootstrap (independent of normal admin)
+      if (state.user){
+        var caps = (state.admin && state.admin.captainLinks) || {};
+        var capSports = Object.keys(caps);
+        if (capSports.length){
+          nav.appendChild(el('<div class="nav-sep"></div>'));
+          capSports.forEach(function(sp){
+            navItem(sp+' Captain', 'captain_'+sp);
+          });
+        }
       }
 
       // Auth
@@ -461,54 +465,49 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     }
 
     /* ===================== MENU TOGGLING ===================== */
-const MOBILE_MAX = 2000; // S25 Ultra and smaller use slide-in drawer
+    const MOBILE_MAX = 2000;
 
-function isMobileBP(){ return window.matchMedia(`(max-width: ${MOBILE_MAX}px)`).matches; }
+    function isMobileBP(){ return window.matchMedia(`(max-width: ${MOBILE_MAX}px)`).matches; }
 
-function toggleMenu(){
-  const sb = document.getElementById('sidebar');
-  const bd = document.getElementById('backdrop');
-  if (isMobileBP()){
-    const willOpen = !sb.classList.contains('open');
-    sb.classList.toggle('open', willOpen);
-    if (bd) bd.classList.toggle('show', willOpen);
-  } else {
-    sb.classList.toggle('collapsed');
-  }
-}
+    function toggleMenu(){
+      const sb = document.getElementById('sidebar');
+      const bd = document.getElementById('backdrop');
+      if (isMobileBP()){
+        const willOpen = !sb.classList.contains('open');
+        sb.classList.toggle('open', willOpen);
+        if (bd) bd.classList.toggle('show', willOpen);
+      } else {
+        sb.classList.toggle('collapsed');
+      }
+    }
 
-function closeMenu(){
-  const sb = document.getElementById('sidebar');
-  const bd = document.getElementById('backdrop');
-  sb.classList.remove('open');        // mobile state
-  sb.classList.remove('collapsed');   // desktop state
-  if (bd) bd.classList.remove('show');
-}
+    function closeMenu(){
+      const sb = document.getElementById('sidebar');
+      const bd = document.getElementById('backdrop');
+      sb.classList.remove('open');
+      sb.classList.remove('collapsed');
+      if (bd) bd.classList.remove('show');
+    }
 
-function wireMenuButtons(){
-  const btn = document.getElementById('btnMenu');
-  if (btn) btn.onclick = (e)=>{ e.stopPropagation(); toggleMenu(); };
-  const bd = document.getElementById('backdrop');
-  if (bd) bd.onclick = closeMenu;
-}
+    function wireMenuButtons(){
+      const btn = document.getElementById('btnMenu');
+      if (btn) btn.onclick = (e)=>{ e.stopPropagation(); toggleMenu(); };
+      const bd = document.getElementById('backdrop');
+      if (bd) bd.onclick = closeMenu;
+    }
 
-// Normalize classes when crossing the breakpoint
-window.addEventListener('resize', ()=>{
-  const sb = document.getElementById('sidebar');
-  const bd = document.getElementById('backdrop');
-  if (isMobileBP()){
-    // entering mobile: ensure desktop state is cleared
-    sb.classList.remove('collapsed');
-  } else {
-    // leaving mobile: hide drawer/backdrop
-    sb.classList.remove('open');
-    if (bd) bd.classList.remove('show');
-  }
-});
+    window.addEventListener('resize', ()=>{
+      const sb = document.getElementById('sidebar');
+      const bd = document.getElementById('backdrop');
+      if (isMobileBP()){
+        sb.classList.remove('collapsed');
+      } else {
+        sb.classList.remove('open');
+        if (bd) bd.classList.remove('show');
+      }
+    });
 
-// Call once after the DOM is ready (or keep your existing render() call that does this)
-wireMenuButtons();
-
+    wireMenuButtons();
 
     /* ===================== AUTH VIEWS ===================== */
     function pageLanding(){
@@ -549,26 +548,23 @@ wireMenuButtons();
       if(!/^\d{8}$/.test(its)) { err.textContent='Enter an 8-digit ITS'; return; }
       if(!/^\d{10}$/.test(whatsapp)) { err.textContent='Enter a 10-digit Whatsapp Number'; return; }
       google.script.run.withSuccessHandler(function(res){
-  if(!res||!res.ok){ err.textContent=(res&&res.error)||'Invalid credentials'; return; }
-  state.user=res.user; saveSession();
+        if(!res||!res.ok){ err.textContent=(res&&res.error)||'Invalid credentials'; return; }
+        state.user=res.user; saveSession();
 
-  // Load admin data but DON'T render yet (let the animation show)
-  AdminAPI.bootstrap(state.user.its, function(b){
-    state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[]}, b||{});
-  }, console.warn);
+        AdminAPI.bootstrap(state.user.its, function(b){
+          state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b||{});
+        }, console.warn);
 
-  var hasLogo = (state.boot && state.boot.logoUrl);
-  var anim = el('<div class="card stack" style="align-items:center;text-align:center">'
-    +(hasLogo?('<img class="logo" src="'+state.boot.logoUrl+'"/>'):'')
-    +'<div>Welcome, '+(state.user.first_name||'Athlete')+'!</div></div>');
-  layout(anim);
+        var hasLogo = (state.boot && state.boot.logoUrl);
+        var anim = el('<div class="card stack" style="align-items:center;text-align:center">'
+          +(hasLogo?('<img class="logo" src="'+state.boot.logoUrl+'"/>'):'')
+          +'<div>Welcome, '+(state.user.first_name||'Athlete')+'!</div></div>');
+        layout(anim);
 
-  // After the animation delay, navigate (setPage will render)
-  setTimeout(function(){
-    setPage(res.requireValidation ? 'edit' : 'home');
-  }, 900);
-}).api_signIn({its:its, whatsapp:whatsapp});
-
+        setTimeout(function(){
+          setPage(res.requireValidation ? 'edit' : 'home');
+        }, 900);
+      }).api_signIn({its:its, whatsapp:whatsapp});
     }
 
     /* ===================== SHARED HELPERS ===================== */
@@ -632,10 +628,9 @@ wireMenuButtons();
       return '';
     }
 
-    /* ===================== HOME (one column) ===================== */
+    /* ===================== HOME ===================== */
     function pageHome(){ if(!guard())return;
 
-      // clear prior timers
       if (homeTimers.cd){ clearInterval(homeTimers.cd); homeTimers.cd = null; }
       if (homeTimers.uiRefresh){ clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
 
@@ -667,12 +662,10 @@ wireMenuButtons();
       );
       layout(node);
 
-      // Balance
       google.script.run.withSuccessHandler(function(res){
         $('#home_balance').textContent = money(res.balance||0);
       }).api_balance(state.user.its);
 
-      // Self + guest lists + nextSelf
       google.script.run.withSuccessHandler(function(h){
         var selfList   = (h && h.self)   || [];
         var guestList  = (h && h.guests) || [];
@@ -689,7 +682,6 @@ wireMenuButtons();
         selfList  = selfList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
         guestList = guestList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
 
-        // ===== Your Events (with per-row Check In when eligible) =====
         (function renderSelfRows(){
           var box = $('#home_self');
           if (!selfList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
@@ -711,12 +703,10 @@ wireMenuButtons();
               '</div>';
           }).join('');
 
-          // wire view
           box.querySelectorAll('button[data-act="view"]').forEach(function(b){
             b.addEventListener('click', function(){ var id=b.getAttribute('data-eid'); if(id) openEvent(id); });
           });
 
-          // decide check-in eligibility per event
           selfList.forEach(function(e){
             var eid = (e.id || e.event_id || '');
             var act = document.getElementById('self_actions_'+eid);
@@ -750,7 +740,6 @@ wireMenuButtons();
           });
         })();
 
-        // ===== Guest events (my guests, with per-row Check In) =====
         (function renderGuestRows(){
           var box = $('#home_guests');
           if (!guestList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
@@ -784,7 +773,6 @@ wireMenuButtons();
                 var rowNode = t.content.firstChild;
                 box.appendChild(rowNode);
 
-                // build check-in button for this guest row
                 var act = document.getElementById(actId);
                 var checked = !!r.checked_in_at;
                 var can = (String(r.status||'').toLowerCase()==='active') && withinCheckInWindow(ev) && !checked;
@@ -809,7 +797,6 @@ wireMenuButtons();
                   act.insertBefore(btn2, act.querySelector('[data-act="view"]'));
                 }
 
-                // Wire view button
                 rowNode.querySelector('button[data-act="view"]').addEventListener('click', function(){
                   openEvent(eid);
                 });
@@ -820,7 +807,6 @@ wireMenuButtons();
           });
         })();
 
-        // ===== Countdown block (with top Check In button) =====
         var cd  = $('#home_cd'); var sub = $('#home_cd_sub'); var chk = $('#home_checkin');
         function pickSelfEventForCountdown(nowVal){
           var current = selfList.find(function(e){ var s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
@@ -876,7 +862,6 @@ wireMenuButtons();
         homeTimers.uiRefresh = setInterval(refreshCheckinButtonsVisibility, 10000);
       }).api_homeListsForUser(state.user.its);
 
-      // Upcoming across all sports
       google.script.run.withSuccessHandler(function(u){
         var list = (u && u.events) || []; var box = $('#home_upcoming');
         if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
@@ -916,88 +901,81 @@ wireMenuButtons();
     }
 
     /* ===================== BALANCE ===================== */
-  // Reusable helpers (safe to define once)
-function copyText(txt, btn){
-  function done(){
-    if (!btn) return;
-    const orig = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = 'Copied!';
-    setTimeout(()=>{ btn.disabled = false; btn.innerHTML = orig; }, 1200);
-  }
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(txt).then(done).catch(function(){
-      legacyCopy(txt); done();
-    });
-  } else {
-    legacyCopy(txt); done();
-  }
-}
-function legacyCopy(txt){
-  const ta = document.createElement('textarea');
-  ta.value = txt;
-  ta.setAttribute('readonly', '');
-  ta.style.position = 'absolute';
-  ta.style.left = '-9999px';
-  document.body.appendChild(ta);
-  ta.select();
-  document.execCommand('copy');
-  document.body.removeChild(ta);
-}
+    function copyText(txt, btn){
+      function done(){
+        if (!btn) return;
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = 'Copied!';
+        setTimeout(()=>{ btn.disabled = false; btn.innerHTML = orig; }, 1200);
+      }
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(txt).then(done).catch(function(){
+          legacyCopy(txt); done();
+        });
+      } else {
+        legacyCopy(txt); done();
+      }
+    }
+    function legacyCopy(txt){
+      const ta = document.createElement('textarea');
+      ta.value = txt;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'absolute';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
 
-function pageBalance(){ 
-  if(!guard()) return;
+    function pageBalance(){ 
+      if(!guard()) return;
 
-  var node = el('<div class="card stack" id="bal_box"><div class="muted">Loading…</div></div>');
-  layout(node);
+      var node = el('<div class="card stack" id="bal_box"><div class="muted">Loading…</div></div>');
+      layout(node);
 
-  google.script.run.withSuccessHandler(function(res){
-    var rows = (res.transactions || []).map(function(t){
-      var dt = fmtDate(t.date || t.created_at);
-      var eventName = t.category || '';
-      var ath = t.memo || '';
-      var amt = Number(t.amount || 0).toFixed(2);
-      var cls = String(t.type) === 'credit' ? 'amt-credit' : 'amt-debit';
-      var sign = String(t.type) === 'credit' ? '+' : '-';
-      return '<tr><td>'+dt+'</td><td>'+eventName+'<br/>'+ath+'</td><td class="right '+cls+'">'+sign+'$'+amt+'</td><td>'+(t.status||'')+'</td></tr>';
-    }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
+      google.script.run.withSuccessHandler(function(res){
+        var rows = (res.transactions || []).map(function(t){
+          var dt = fmtDate(t.date || t.created_at);
+          var eventName = t.category || '';
+          var ath = t.memo || '';
+          var amt = Number(t.amount || 0).toFixed(2);
+          var cls = String(t.type) === 'credit' ? 'amt-credit' : 'amt-debit';
+          var sign = String(t.type) === 'credit' ? '+' : '-';
+          return '<tr><td>'+dt+'</td><td>'+eventName+'<br/>'+ath+'</td><td class="right '+cls+'">'+sign+'$'+amt+'</td><td>'+(t.status||'')+'</td></tr>';
+        }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
 
-    var itsVal   = (state.user && state.user.its ? String(state.user.its).trim() : 'YOUR ITS');
-    var memoText = itsVal + ' - Saifee Sports';
-    var email    = 'toloba@dallasjamaat.org';
+        var itsVal   = (state.user && state.user.its ? String(state.user.its).trim() : 'YOUR ITS');
+        var memoText = itsVal + ' - Saifee Sports';
+        var email    = 'toloba@dallasjamaat.org';
 
-    // Build UI
-    $('#bal_box').innerHTML =
-      '<div class="label">Current Balance</div>'+
-      '<div style="font-size:var(--fs-xl);font-weight:800">'+money(res.balance || 0)+'</div>'+
+        $('#bal_box').innerHTML =
+          '<div class="label">Current Balance</div>'+
+          '<div style="font-size:var(--fs-xl);font-weight:800)">'+money(res.balance || 0)+'</div>'+
+          '<div class="muted" style="margin-top:10px;line-height:1.6">'+
+            'Add to balance with Zelle to:<br/>'+
+            '<strong id="zelleEmail">'+email+'</strong> '+
+            '<button id="copyEmailBtn" class="btn btn--sm" aria-label="Copy Zelle email" '+
+              'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
+            'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
+            '<span id="zelleMemo" style="font-weight:600">'+memoText+'</span> '+
+            '<button id="copyMemoBtn" class="btn btn--sm" aria-label="Copy memo" '+
+              'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
+          '</div>'+
+          '<table class="table table--compact" style="margin-top:10px">'+
+            '<thead><tr><th>Date</th><th>Event</th><th class="right">Amount</th><th>Status</th></tr></thead>'+
+            '<tbody>'+rows+'</tbody>'+
+          '</table>';
 
-      // Instruction block with copy buttons
-      '<div class="muted" style="margin-top:10px;line-height:1.6">'+
-        'Add to balance with Zelle to:<br/>'+
-        '<strong id="zelleEmail">'+email+'</strong> '+
-        '<button id="copyEmailBtn" class="btn btn--sm" aria-label="Copy Zelle email" '+
-          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
-        'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
-        '<span id="zelleMemo" style="font-weight:600">'+memoText+'</span> '+
-        '<button id="copyMemoBtn" class="btn btn--sm" aria-label="Copy memo" '+
-          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
-      '</div>'+
+        var balBox = $('#bal_box');
+        var emailBtn = balBox.querySelector('#copyEmailBtn');
+        var memoBtn  = balBox.querySelector('#copyMemoBtn');
 
-      '<table class="table table--compact" style="margin-top:10px">'+
-        '<thead><tr><th>Date</th><th>Event</th><th class="right">Amount</th><th>Status</th></tr></thead>'+
-        '<tbody>'+rows+'</tbody>'+
-      '</table>';
-
-    // Wire up copy actions
-    var balBox = $('#bal_box');
-    var emailBtn = balBox.querySelector('#copyEmailBtn');
-    var memoBtn  = balBox.querySelector('#copyMemoBtn');
-
-    if (emailBtn) emailBtn.addEventListener('click', function(){ copyText(email, this); });
-    if (memoBtn)  memoBtn.addEventListener('click',  function(){ copyText(memoText, this); });
-  }).api_balance(state.user.its);
-}
-
+        if (emailBtn) emailBtn.addEventListener('click', function(){ copyText(email, this); });
+        if (memoBtn)  memoBtn.addEventListener('click',  function(){ copyText(memoText, this); });
+      }).api_balance(state.user.its);
+    }
 
     /* ===================== CALENDAR ===================== */
     function pageCalendar(){ if(!guard())return;
@@ -1006,7 +984,7 @@ function pageBalance(){
       google.script.run.withSuccessHandler(function(res){ $('#cal').src=res.url; }).api_calendarEmbedUrl();
     }
 
-    /* ===================== GUESTS (Add → Your Guests) ===================== */
+    /* ===================== GUESTS ===================== */
     function pageGuests(){ if(!guard())return;
       var node=el(
         '<div class="stack">'+
@@ -1164,7 +1142,7 @@ function pageBalance(){
       });
     }
 
-    /* ===================== EVENT DETAIL (Manage Guests under Your Registration) ===================== */
+    /* ===================== EVENT DETAIL ===================== */
     function openEvent(id){ if(!guard())return;
       google.script.run.withSuccessHandler(function(res){
         var evt=res.event; var live=res.live||[];
@@ -1186,7 +1164,7 @@ function pageBalance(){
             try{
               var start = parseDT(evt.start_datetime);
               if(!start) return '';
-              var windowClose = new Date(start.getTime() + 30*60*1000); // 30m after start
+              var windowClose = new Date(start.getTime() + 30*60*1000);
               var ci = r && r.checked_in_at ? parseDT(r.checked_in_at) : null;
               if (ci){ return (ci <= start) ? "<span class='badge ok'>On Time</span>" : "<span class='badge warn'>Late</span>"; }
               else if (now() > windowClose){ return "<span class='badge' style='background:rgba(239,68,68,.15);color:#fecaca;border:1px solid rgba(239,68,68,.35)'>No Show</span>"; }
@@ -1237,20 +1215,35 @@ function pageBalance(){
           );
           layout(node);
 
-          // Live roster
           (function renderLive(){
+            var isAdminOfSport = (state.admin && state.admin.adminSports || []).includes((res && res.event && res.event.sport) || '');
             var html = live.map(function(r){
               var st = String(r.status||'').toLowerCase();
               var statusBadge = (st==='active')? "<span class='badge ok'>Active</span>" :
                                 (st==='waitlist')? "<span class='badge warn'>Waitlist</span>" :
                                 (st==='dropout')? "<span class='badge warn'>Dropped Out</span>" : "";
               var checkinBadge = computeCheckinPill(r);
-              return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+r.name+" "+statusBadge+" "+checkinBadge+"</div>";
+              var cancelBtn = (isAdminOfSport && st!=='cancelled')
+                ? " <button class='btn danger tiny' data-act='admin-cancel' data-person='"+r.person+"'>Cancel</button>"
+                : "";
+              return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+r.name+" "+statusBadge+" "+checkinBadge+cancelBtn+"</div>";
             }).join('');
             $('#live_list').innerHTML = html || "<div class='muted'>No registrations yet</div>";
+
+            if (isAdminOfSport){
+              $('#live_list').querySelectorAll('button[data-act="admin-cancel"]').forEach(function(b){
+                b.addEventListener('click', function(){
+                  var person = b.getAttribute('data-person');
+                  if (!confirm('Cancel this registration?')) return;
+                  google.script.run.withSuccessHandler(function(r){
+                    if(!r || !r.ok){ alert((r && r.error) || 'Cancel failed'); return; }
+                    openEvent(id);
+                  }).api_admin_cancelRegistration(state.user.its, id, person);
+                });
+              });
+            }
           })();
 
-          // Guests for dropdown + my guest actions
           google.script.run.withSuccessHandler(function(g){
             var sel = $('#gx_sel'); var hint= $('#gx_hint');
             var guests = (g && g.guests) || [];
@@ -1299,7 +1292,6 @@ function pageBalance(){
             }
           }).api_listGuests(state.user.its);
 
-          // Self buttons
           (function applySelfButtons(){
             var canRegister = regOpen && (myStatus==='none' || myStatus==='dropout');
             var canDeregister = ((regOpen && (myStatus==='active' || myStatus==='waitlist')) || (!regOpen && myStatus==='waitlist'));
@@ -1309,7 +1301,6 @@ function pageBalance(){
             $('#dropout_me').disabled = !canDropout;
           })();
 
-          // Capacity text
           (function updateCapacityLabelsDetail(){
             var cap = Number(evt.max_capacity||0);
             google.script.run.withSuccessHandler(function(r){
@@ -1322,12 +1313,10 @@ function pageBalance(){
             }).api_eventDetails(id);
           })();
 
-          // Wire self actions
           $('#reg_me').onclick     = function(){ actRegister(evt.id,false); };
           $('#dereg_me').onclick   = function(){ actDeregister(evt.id); };
           $('#dropout_me').onclick = function(){ actDropout(evt.id); };
 
-          // Wire guest action
           $('#reg_guest').onclick  = function(){
             var v=($('#gx_sel').value||'').trim();
             if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
@@ -1479,7 +1468,7 @@ function pageBalance(){
       google.script.run.withSuccessHandler(function(res){ if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; } if (state.page==='sport') pageSport(); else openEvent(eventId); }).api_dropout(state.user.its, eventId, target);
     }
 
-    /* ===================== ADMIN: EVENTS (one column) ===================== */
+    /* ===================== ADMIN: EVENTS ===================== */
     function pageAdminEvents(){ if(!guard())return;
       const node = el(`
         <div class="card stack">
@@ -1558,7 +1547,6 @@ function pageBalance(){
       const dl=$('#addr_list');
       (state.admin.pastAddresses||[]).forEach(a=>{ const o=document.createElement('option'); o.value=a; dl.appendChild(o); });
 
-      // Prefill selector
       const cp=$('#ae_copy');
       const placeholder = document.createElement('option'); placeholder.value=''; placeholder.textContent='Choose'; cp.appendChild(placeholder);
       (state.admin.adminEvents||[]).forEach(e=>{
@@ -1567,7 +1555,6 @@ function pageBalance(){
         cp.appendChild(o);
       });
 
-      // Inputs
       const startInput     = $('#ae_start');
       const endInput       = $('#ae_end');
       const regStartInput  = $('#ae_reg_start');
@@ -1577,7 +1564,6 @@ function pageBalance(){
       const nameInput      = $('#ae_name');
       const addrInput      = $('#ae_addr');
 
-      // Track baseline to shift ranges if desired
       let prefillBase = null; const MS_DAY = 24*60*60*1000;
       const override = { end:false, reg_start:false, reg_end:false };
       endInput.addEventListener('input', ()=> override.end = true);
@@ -1656,57 +1642,57 @@ function pageBalance(){
       };
     }
 
-    /* ===================== ADMIN: RECEIPTS (one column) ===================== */
+    /* ===================== ADMIN: RECEIPTS ===================== */
     function pageAdminReceipts(){ if(!guard())return;
-      var node = el(
-        '<div class="card stack">'+
-          '<div class="label">Upload Receipt</div>'+
-          '<div class="form-grid">'+
-            '<div class="stack">'+
-              '<label class="label">Event</label>'+
-              '<select id="ar_event" class="input"></select>'+
-            '</div>'+
-            '<div class="stack">'+
-              '<label class="label">Amount</label>'+
-              '<input id="ar_amount" class="input" type="number" step="0.01" min="0">'+
-            '</div>'+
-            '<div class="stack">'+
-              '<label class="label">Category</label>'+
-              '<select id="ar_cat" class="input">'+
-                '<option value="Space Rental">Space Rental</option>'+
-                '<option value="Food">Food</option>'+
-                '<option value="Equiptment Rental">Equiptment Rental</option>'+
-                '<option value="Shirts">Shirts</option>'+
-                '<option value="Referees">Referees</option>'+
-                '<option value="Trophies">Trophies</option>'+
-                '<option value="Printing">Printing</option>'+
-                '<option value="Labor">Labor</option>'+
-                '<option value="Photography">Photography</option>'+
-                '<option value="Karamat">Karamat</option>'+
-                '<option value="Other">Other</option>'+
-              '</select>'+
-            '</div>'+
-            '<div class="stack">'+
-              '<label class="label">Receipt Date</label>'+
-              '<input id="ar_date" class="input" type="date">'+
-            '</div>'+
-            '<div class="stack">'+
-              '<label class="label">Extra Notes (optional)</label>'+
-              '<input id="ar_notes" class="input" placeholder="Notes">'+
-            '</div>'+
-            '<div class="stack">'+
-              '<label class="label">Upload Receipt</label>'+
-              '<input id="ar_file" class="input" type="file" accept="image/*,application/pdf" required>'+
-              '<div class="tiny">A receipt image/PDF is required.</div>'+
-            '</div>'+
-          '</div>'+
-          '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px">'+
-            '<button class="btn" id="ar_save">Save Receipt</button>'+
-            '<button class="btn secondary" id="ar_finalize">Finalize Now</button>'+
-          '</div>'+
-          '<div class="tiny" id="ar_err" style="color:var(--err)"></div>'+
-        '</div>'
-      );
+      const node = el(`
+        <div class="card stack">
+          <div class="label">Upload Receipt</div>
+          <div class="form-grid">
+            <div class="stack">
+              <label class="label">Event</label>
+              <select id="ar_event" class="input"></select>
+            </div>
+            <div class="stack">
+              <label class="label">Amount</label>
+              <input id="ar_amount" class="input" type="number" step="0.01" min="0">
+            </div>
+            <div class="stack">
+              <label class="label">Category</label>
+              <select id="ar_cat" class="input">
+                <option value="Space Rental">Space Rental</option>
+                <option value="Food">Food</option>
+                <option value="Equiptment Rental">Equiptment Rental</option>
+                <option value="Shirts">Shirts</option>
+                <option value="Referees">Referees</option>
+                <option value="Trophies">Trophies</option>
+                <option value="Printing">Printing</option>
+                <option value="Labor">Labor</option>
+                <option value="Photography">Photography</option>
+                <option value="Karamat">Karamat</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="stack">
+              <label class="label">Receipt Date</label>
+              <input id="ar_date" class="input" type="date">
+            </div>
+            <div class="stack">
+              <label class="label">Extra Notes (optional)</label>
+              <input id="ar_notes" class="input" placeholder="Notes">
+            </div>
+            <div class="stack">
+              <label class="label">Upload Receipt</label>
+              <input id="ar_file" class="input" type="file" accept="image/*,application/pdf" required>
+              <div class="tiny">A receipt image/PDF is required.</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px">
+            <button class="btn" id="ar_save">Save Receipt</button>
+            <button class="btn secondary" id="ar_finalize">Finalize Now</button>
+          </div>
+          <div class="tiny" id="ar_err" style="color:var(--err)"></div>
+        </div>
+      `);
       layout(node);
 
       var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
@@ -1754,25 +1740,48 @@ function pageBalance(){
       };
     }
 
+    /* ===================== Captain page ===================== */
+    function pageCaptain(sport){
+      if(!guard()) return;
+      var links = (state.admin && state.admin.captainLinks) || {};
+      var url = links[sport];
+      var node = el(
+        '<div class="card stack">'+
+          '<div class="label">'+sport+' Captain</div>'+
+          (url
+            ? '<div class="stack"><div class="tiny">This opens your draft sheet:</div>'+
+              '<div><a class="btn" href="'+url+'" target="_blank" rel="noopener">Open '+sport+' Draft Sheet</a></div>'+
+              '<iframe src="'+url+'" style="width:100%;height:70vh;border:0;border-radius:12px;margin-top:8px"></iframe></div>'
+            : '<div class="muted">No draft sheet is configured for '+sport+'.</div>'
+          )+
+        '</div>'
+      );
+      layout(node);
+    }
+
     /* ===================== ROUTER + RENDER ===================== */
     function render(){
-  buildNav();
-  wireMenuButtons(); // bind hamburger + backdrop every render
+      buildNav();
+      wireMenuButtons();
 
-  if(state.page==='landing') return pageLanding();
-  if(state.page==='create') return pageCreateOrEdit(false);
-  if(state.page==='edit') return pageCreateOrEdit(true);
-  if(state.page==='home') return pageHome();
-  if(state.page==='profile') return pageProfile();
-  if(state.page==='balance') return pageBalance();
-  if(state.page==='calendar') return pageCalendar();
-  if(state.page==='guests') return pageGuests();
-  if(state.page==='sport') return pageSport();
-  if(state.page==='admin_events') return pageAdminEvents();
-  if(state.page==='admin_receipts') return pageAdminReceipts();
-  pageLanding();
-}
+      if(state.page==='landing') return pageLanding();
+      if(state.page==='create') return pageCreateOrEdit(false);
+      if(state.page==='edit') return pageCreateOrEdit(true);
+      if(state.page==='home') return pageHome();
+      if(state.page==='profile') return pageProfile();
+      if(state.page==='balance') return pageBalance();
+      if(state.page==='calendar') return pageCalendar();
+      if(state.page==='guests') return pageGuests();
+      if(state.page==='sport') return pageSport();
+      if(state.page==='admin_events') return pageAdminEvents();
+      if(state.page==='admin_receipts') return pageAdminReceipts();
 
+      if (state.page && state.page.startsWith('captain_')) {
+        return pageCaptain(state.page.replace('captain_',''));
+      }
+
+      pageLanding();
+    }
   </script>
 </body>
 </html>
