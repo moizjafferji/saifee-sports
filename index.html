@@ -447,30 +447,33 @@
     }
 
     // Admin items (+ Autodraft links)
-    var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
-    if (state.user && hasAdminSports){
-      nav.appendChild(el('<div class="nav-sep"></div>'));
-      navItem('Events','admin_events');
-      navItem('Receipts','admin_receipts');
+    const hasManage  = !!(state.admin && state.admin.manageSports  && state.admin.manageSports.length);
+const hasCaptain = !!(state.admin && state.admin.captainSports && state.admin.captainSports.length);
 
-      // Dynamic "Autodraft" links
-      var caps = new Set((state.admin.adminSports||[])
-                    .filter(s => /captain$/i.test(String(s)))
-                    .map(s => String(s).replace(/captain$/i,'').trim().toLowerCase()));
-      var links = state.admin.autodraftLinks || [];
-      links.forEach(function(l){
-        var sp = String(l.sport||'').trim();
-        if (!sp) return;
-        if (caps.has(sp.toLowerCase())){
-          var title = sp + ' Autodraft';
-          navLink(title, function(){
-            var id = String(l.sheetId||'').trim();
-            if (!id) return;
-            window.open('https://docs.google.com/spreadsheets/d/'+encodeURIComponent(id)+'/edit','_blank','noopener');
-          }, false);
-        }
-      });
-    }
+if (state.user && (hasManage || hasCaptain)) {
+  nav.appendChild(el('<div class="nav-sep"></div>'));
+
+  if (hasManage) {
+    navItem('Events','admin_events');
+    navItem('Receipts','admin_receipts');
+  }
+
+  if (hasCaptain) {
+    const caps = new Set((state.admin.captainSports || []).map(s => String(s).toLowerCase()));
+    const links = state.admin.autodraftLinks || [];
+    links.forEach(function(l){
+      const sp = String(l.sport||'').trim();
+      if (!sp) return;
+      if (caps.has(sp.toLowerCase())) {
+        navLink(sp + ' Autodraft', function(){
+          const id = String(l.sheetId||'').trim();
+          if (id) window.open('https://docs.google.com/spreadsheets/d/'+encodeURIComponent(id)+'/edit','_blank','noopener');
+        }, false);
+      }
+    });
+  }
+}
+
 
     // Auth
     nav.appendChild(el('<div class="nav-sep"></div>'));
@@ -1159,7 +1162,9 @@
     };
 
     const sportSel = $('#ae_sport');
-    (state.admin.adminSports||[]).forEach(sp=>{ const o=document.createElement('option'); o.value=sp; o.textContent=sp; sportSel.appendChild(o); });
+(state.admin.manageSports||[]).forEach(sp=>{
+  const o=document.createElement('option'); o.value=sp; o.textContent=sp; sportSel.appendChild(o);
+});
 
     const dl=$('#addr_list');
     (state.admin.pastAddresses||[]).forEach(a=>{ const o=document.createElement('option'); o.value=a; dl.appendChild(o); });
