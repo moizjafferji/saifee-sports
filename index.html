@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-  
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Saifee Sports</title>
@@ -398,94 +397,89 @@
   });
   wireMenuButtons();
 
-/* ===================== LEFT NAV (single source of truth) ===================== */
-function buildNav(){
-  var nav = $('#nav'); if (!nav) return;
-  nav.innerHTML = '';
+  /* ===================== LEFT NAV ===================== */
+  function buildNav(){
+    var nav = $('#nav'); if (!nav) return;
+    nav.innerHTML = '';
 
-  function navItem(label, page, opts){
-    var btn = el('<button class="nav-item">'+label+'</button>');
-    if (state.page===page) btn.classList.add('active');
-    btn.onclick = function(){ setPage(page); };
-    if (opts && opts.test && !opts.test()) return null;
-    nav.appendChild(btn);
-    return btn;
-  }
-  function navLink(label, onClick, isActive){
-    var btn = el('<button class="nav-item">'+label+'</button>');
-    if (isActive) btn.classList.add('active');
-    btn.onclick = onClick;
-    nav.appendChild(btn);
-    return btn;
-  }
+    function navItem(label, page, opts){
+      var btn = el('<button class="nav-item">'+label+'</button>');
+      if (state.page===page) btn.classList.add('active');
+      btn.onclick = function(){ setPage(page); };
+      if (opts && opts.test && !opts.test()) return null;
+      nav.appendChild(btn);
+      return btn;
+    }
+    function navLink(label, onClick, isActive){
+      var btn = el('<button class="nav-item">'+label+'</button>');
+      if (isActive) btn.classList.add('active');
+      btn.onclick = onClick;
+      nav.appendChild(btn);
+      return btn;
+    }
 
-  // Primary tabs
-  navItem('Home','home', { test: ()=> !!state.user });
-  navItem('Profile','profile', { test: ()=> !!state.user });
-  navItem('Balance','balance', { test: ()=> !!state.user });
-  navItem('Calendar','calendar', { test: ()=> !!state.user });
-  navItem('Guests','guests', { test: ()=> !!state.user });
+    navItem('Home','home', { test: ()=> !!state.user });
+    navItem('Profile','profile', { test: ()=> !!state.user });
+    navItem('Balance','balance', { test: ()=> !!state.user });
+    navItem('Calendar','calendar', { test: ()=> !!state.user });
+    navItem('Guests','guests', { test: ()=> !!state.user });
 
-  // Sports group
-  if (state.user){
-    var group = el('<div class="group"></div>');
-    var trigger = el('<button class="nav-item">Sports ▾</button>');
-    trigger.onclick = function(){
-      state.ui.sportsOpen = !state.ui.sportsOpen;
-      submenu.classList.toggle('open', state.ui.sportsOpen);
-    };
-    group.appendChild(trigger);
+    if (state.user){
+      var group = el('<div class="group"></div>');
+      var trigger = el('<button class="nav-item">Sports ▾</button>');
+      trigger.onclick = function(){
+        state.ui.sportsOpen = !state.ui.sportsOpen;
+        submenu.classList.toggle('open', state.ui.sportsOpen);
+      };
+      group.appendChild(trigger);
 
-    var submenu = el('<div class="submenu '+(state.ui.sportsOpen?'open':'')+'"></div>');
-    var sports = (state.boot && state.boot.sports) ? state.boot.sports : [];
-    if (!sports.length) sports = ['Soccer','Basketball','Volleyball','Tennis'];
-    sports.forEach(function(sp){
-      var sbtn = el('<button class="nav-item subitem">'+sp+'</button>');
-      if (state.page==='sport' && state.sport===sp) sbtn.classList.add('active');
-      sbtn.onclick = function(){ setSport(sp); };
-      submenu.appendChild(sbtn);
-    });
-    group.appendChild(submenu);
-    nav.appendChild(group);
-  }
+      var submenu = el('<div class="submenu '+(state.ui.sportsOpen?'open':'')+'"></div>');
+      var sports = (state.boot && state.boot.sports) ? state.boot.sports : [];
+      if (!sports.length) sports = ['Soccer','Basketball','Volleyball','Tennis'];
+      sports.forEach(function(sp){
+        var sbtn = el('<button class="nav-item subitem">'+sp+'</button>');
+        if (state.page==='sport' && state.sport===sp) sbtn.classList.add('active');
+        sbtn.onclick = function(){ setSport(sp); };
+        submenu.appendChild(sbtn);
+      });
+      group.appendChild(submenu);
+      nav.appendChild(group);
+    }
 
-  // Admin items + dynamic Captain/Autodraft links
-  var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
-  if (state.user && hasAdminSports){
+    // Admin items (+ Autodraft links)
+    var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
+    if (state.user && hasAdminSports){
+      nav.appendChild(el('<div class="nav-sep"></div>'));
+      navItem('Events','admin_events');
+      navItem('Receipts','admin_receipts');
+
+      // Dynamic "Autodraft" links
+      var caps = new Set((state.admin.adminSports||[])
+                    .filter(s => /captain$/i.test(String(s)))
+                    .map(s => String(s).replace(/captain$/i,'').trim().toLowerCase()));
+      var links = state.admin.autodraftLinks || [];
+      links.forEach(function(l){
+        var sp = String(l.sport||'').trim();
+        if (!sp) return;
+        if (caps.has(sp.toLowerCase())){
+          var title = sp + ' Autodraft';
+          navLink(title, function(){
+            var id = String(l.sheetId||'').trim();
+            if (!id) return;
+            window.open('https://docs.google.com/spreadsheets/d/'+encodeURIComponent(id)+'/edit','_blank','noopener');
+          }, false);
+        }
+      });
+    }
+
+    // Auth
     nav.appendChild(el('<div class="nav-sep"></div>'));
-    navItem('Events','admin_events');
-    navItem('Receipts','admin_receipts');
-
-    // Build "<Sport> Autodraft" links for any "<Sport> Captain" roles
-    var captainSet = new Set(
-      (state.admin.adminSports||[])
-        .map(String)
-        .map(s => s.toLowerCase().trim())
-        .filter(s => s.endsWith(' captain'))
-        .map(s => s.replace(/ captain$/,'').trim()) // => sport name only
-    );
-
-    var links = (state.admin && state.admin.autodraftLinks) ? state.admin.autodraftLinks : [];
-    links.forEach(function(link){
-      var sp = String(link.sport||'').trim();
-      var id = String(link.sheetId||'').trim();
-      if (!sp || !id) return;
-      if (captainSet.has(sp.toLowerCase())){
-        navLink(sp + ' Autodraft', function(){
-          window.open('https://docs.google.com/spreadsheets/d/'+encodeURIComponent(id)+'/edit','_blank','noopener');
-        }, false);
-      }
-    });
+    if (state.user){
+      navLink('Sign Out', function(){ if (confirm('Sign out?')) signOut(); }, false);
+    } else {
+      navLink('Sign In / Sign Up', function(){ setPage('landing'); }, state.page==='landing');
+    }
   }
-
-  // Auth
-  nav.appendChild(el('<div class="nav-sep"></div>'));
-  if (state.user){
-    navLink('Sign Out', function(){ if (confirm('Sign out?')) signOut(); }, false);
-  } else {
-    navLink('Sign In / Sign Up', function(){ setPage('landing'); }, state.page==='landing');
-  }
-}
 
   /* ===================== AUTH VIEWS ===================== */
   function pageLanding(){
@@ -1343,6 +1337,25 @@ function buildNav(){
         alert('Finalized: $'+Number(r.amount||0).toFixed(2)+' per person ('+(r.posted||0)+' billable).');
       }, function(e){ btn.disabled = false; showErr('#ar_err', e); });
     };
+  }
+
+  /* ===================== ROUTER ===================== */
+  function render(){
+    buildNav();
+    wireMenuButtons();
+
+    if(state.page==='landing') return pageLanding();
+    if(state.page==='create') return pageCreateOrEdit(false);
+    if(state.page==='edit') return pageCreateOrEdit(true);
+    if(state.page==='home') return pageHome();
+    if(state.page==='profile') return pageProfile();
+    if(state.page==='balance') return pageBalance();
+    if(state.page==='calendar') return pageCalendar();
+    if(state.page==='guests') return pageGuests();
+    if(state.page==='sport') return pageSport();
+    if(state.page==='admin_events') return pageAdminEvents();
+    if(state.page==='admin_receipts') return pageAdminReceipts();
+    pageLanding();
   }
 </script>
 </body>
