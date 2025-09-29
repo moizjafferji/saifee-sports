@@ -1144,195 +1144,227 @@
       });
     }
 
-    /* ===================== EVENT DETAIL ===================== */
-    function openEvent(id){ if(!guard())return;
-      google.script.run.withSuccessHandler(function(res){
-        var evt=res.event; var live=res.live||[];
+    <!-- ===================== EVENT DETAIL ===================== -->
 
-        google.script.run.withSuccessHandler(function(st){
-          var map = (st && (st.map || st.statuses || st.billing_statuses)) || {};
-          var myStatus = String(map[evt.id] || 'none').toLowerCase();
+// --- Admin helpers (client-side) ---
+// Return true only if the user is an ADMIN for this sport (not Captain)
+function isAdminForSport(sport){
+  if (!sport) return false;
+  try {
+    // Prefer a flat array on state; fall back to state.admin.adminSports
+    var list =
+      (state && Array.isArray(state.adminSports) && state.adminSports) ||
+      (state && state.admin && Array.isArray(state.admin.adminSports) && state.admin.adminSports) ||
+      [];
+    return list.some(function(x){ return String(x) === String(sport); });
+  } catch(e){ return false; }
+}
 
-          var nowTs = now();
-          var regStart = parseDT(evt.reg_start);
-          var regEnd   = parseDT(evt.reg_end);
-          var regOpen    = (!regStart || nowTs >= regStart) && (!regEnd || nowTs <= regEnd);
-          var afterClose = (regEnd && nowTs > regEnd);
+// Ensure adminSports is present on state; fetch once if missing
+function ensureAdminSports(cb){
+  if (state && Array.isArray(state.adminSports) && state.adminSports.length){ cb && cb(); return; }
+  google.script.run.withSuccessHandler(function(r){
+    if (r && Array.isArray(r.adminSports)) { state.adminSports = r.adminSports; }
+    cb && cb();
+  }).api_admin_bootstrap(state.user.its);
+}
+</script>
 
-          var myBadge = computeStatusBadge(myStatus);
-          var capText = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
+<script>
+function openEvent(id){ if(!guard())return;
+  google.script.run.withSuccessHandler(function(res){
+    var evt=res.event; var live=res.live||[];
 
-          function computeCheckinPill(r){
-            try{
-              var start = parseDT(evt.start_datetime);
-              if(!start) return '';
-              var windowClose = new Date(start.getTime() + 30*60*1000);
-              var ci = r && r.checked_in_at ? parseDT(r.checked_in_at) : null;
-              if (ci){ return (ci <= start) ? "<span class='badge ok'>On Time</span>" : "<span class='badge warn'>Late</span>"; }
-              else if (now() > windowClose){ return "<span class='badge' style='background:rgba(239,68,68,.15);color:#fecaca;border:1px solid rgba(239,68,68,.35)'>No Show</span>"; }
-              return '';
-            }catch(e){ return ''; }
-          }
+    google.script.run.withSuccessHandler(function(st){
+      var map = (st && (st.map || st.statuses || st.billing_statuses)) || {};
+      var myStatus = String(map[evt.id] || 'none').toLowerCase();
 
-          var addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
+      var nowTs = now();
+      var regStart = parseDT(evt.reg_start);
+      var regEnd   = parseDT(evt.reg_end);
+      var regOpen    = (!regStart || nowTs >= regStart) && (!regEnd || nowTs <= regEnd);
+      var afterClose = (regEnd && nowTs > regEnd);
 
-          var node=el(
-            "<div class='stack'>"+
-              "<div class='card stack'>"+
-                "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
-                  "<div style='font-size:var(--fs-lg);font-weight:800'>"+(evt.sport? (evt.sport+' - '):'')+evt.name+"</div>"+
-                  "<div>"+myBadge+"</div>"+
-                "</div>"+
-                "<div class='tiny'>"+addrSafe+"</div>"+
-                "<div class='tiny'>"+fmtDT(evt.start_datetime)+" – "+fmtDT(evt.end_datetime)+"</div>"+
-                "<div class='tiny'>Registration: "+(evt.reg_start?fmtDT(evt.reg_start):'—')+" → "+(evt.reg_end?fmtDT(evt.reg_end):'—')+"</div>"+
-                "<div class='tiny'>Approx Fee: "+money(evt.approx_fee||0)+" | Capacity: "+capText+"</div>"+
-              "</div>"+
+      var myBadge = computeStatusBadge(myStatus);
+      var capText = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
 
-              "<div class='card stack'>"+
-                "<div class='label'>Your Registration</div>"+
-                "<div class='event-actions'>"+
-                  "<button class='btn' id='reg_me'>Register Me</button>"+
-                  "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
-                  "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
-                "</div>"+
-              "</div>"+
+      function computeCheckinPill(r){
+        try{
+          var start = parseDT(evt.start_datetime);
+          if(!start) return '';
+          var windowClose = new Date(start.getTime() + 30*60*1000);
+          var ci = r && r.checked_in_at ? parseDT(r.checked_in_at) : null;
+          if (ci){ return (ci <= start) ? "<span class='badge ok'>On Time</span>" : "<span class='badge warn'>Late</span>"; }
+          else if (now() > windowClose){ return "<span class='badge' style='background:rgba(239,68,68,.15);color:#fecaca;border:1px solid rgba(239,68,68,.35)'>No Show</span>"; }
+          return '';
+        }catch(e){ return ''; }
+      }
 
-              "<div class='card stack'>"+
-                "<div class='label'>Manage your guests for this event</div>"+
-                "<select id='gx_sel' class='input'><option value=''>Select a guest…</option></select>"+
-                "<div style='display:flex;gap:8px;flex-wrap:wrap'>"+
-                  "<button class='btn' id='reg_guest'>Register Guest</button>"+
-                "</div>"+
-                "<div class='tiny' id='gx_hint'></div>"+
-                "<div id='my_guest_list' class='stack' style='margin-top:6px'></div>"+
-              "</div>"+
+      var addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
 
-              "<div class='card stack'>"+
-                "<div class='label'>Live Roster List</div>"+
-                "<div id='live_list'></div>"+
-                "<div class='tiny' id='cap_hint'></div>"+
-              "</div>"+
-            "</div>"
-          );
-          layout(node);
+      var node=el(
+        "<div class='stack'>"+
+          "<div class='card stack'>"+
+            "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
+              "<div style='font-size:var(--fs-lg);font-weight:800'>"+(evt.sport? (evt.sport+' - '):'')+evt.name+"</div>"+
+              "<div>"+myBadge+"</div>"+
+            "</div>"+
+            "<div class='tiny'>"+addrSafe+"</div>"+
+            "<div class='tiny'>"+fmtDT(evt.start_datetime)+" – "+fmtDT(evt.end_datetime)+"</div>"+
+            "<div class='tiny'>Registration: "+(evt.reg_start?fmtDT(evt.reg_start):'—')+" → "+(evt.reg_end?fmtDT(evt.reg_end):'—')+"</div>"+
+            "<div class='tiny'>Approx Fee: "+money(evt.approx_fee||0)+" | Capacity: "+capText+"</div>"+
+          "</div>"+
 
-          // Live roster — per-row Remove (admins only; "Captain" NOT allowed)
-(function renderLive(){
-  var admin = isAdminForSport(evt.sport);  // strict admin check
-  var html = live.map(function(r){
-    var st = String(r.status||'').toLowerCase();
-    var statusBadge = computeStatusBadge(st);
-    var checkinBadge = computeCheckinPill(r);
-    var canRemove = admin && (st==='active' || st==='waitlist');
-    var removeBtn = canRemove
-      ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
-      : "";
-    return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
-             r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
-           "</div>";
-  }).join('');
-  $('#live_list').innerHTML = html || "<div class='muted'>No registrations yet</div>";
+          "<div class='card stack'>"+
+            "<div class='label'>Your Registration</div>"+
+            "<div class='event-actions'>"+
+              "<button class='btn' id='reg_me'>Register Me</button>"+
+              "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
+              "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
+            "</div>"+
+          "</div>"+
 
-  if (admin){
-    $('#live_list').querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var person = b.getAttribute('data-person');
-        if (!confirm('Remove this registration and promote the next from waitlist?')) return;
-        google.script.run.withSuccessHandler(function(r){
-          if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
-          openEvent(id);
-        }).api_admin_cancelRegistration(state.user.its, id, person);
-      });
-    });
-  }
-})();
+          "<div class='card stack'>"+
+            "<div class='label'>Manage your guests for this event</div>"+
+            "<select id='gx_sel' class='input'><option value=''>Select a guest…</option></select>"+
+            "<div style='display:flex;gap:8px;flex-wrap:wrap'>"+
+              "<button class='btn' id='reg_guest'>Register Guest</button>"+
+            "</div>"+
+            "<div class='tiny' id='gx_hint'></div>"+
+            "<div id='my_guest_list' class='stack' style='margin-top:6px'></div>"+
+          "</div>"+
 
+          "<div class='card stack'>"+
+            "<div class='label'>Live Roster List</div>"+
+            "<div id='live_list'></div>"+
+            "<div class='tiny' id='cap_hint'></div>"+
+          "</div>"+
+        "</div>"
+      );
+      layout(node);
 
-          google.script.run.withSuccessHandler(function(g){
-            var sel = $('#gx_sel'); var hint= $('#gx_hint');
-            var guests = (g && g.guests) || [];
-            guests.forEach(function(gu){
-              var opt = document.createElement('option');
-              opt.value = gu.guest_its;
-              opt.textContent = gu.first_name+' '+gu.last_name+' — ITS '+gu.guest_its;
-              sel.appendChild(opt);
+      // Live roster — per-row Remove (admins only; "Captain" NOT allowed)
+      (function renderLive(){
+        ensureAdminSports(function(){
+          var listEl = $('#live_list');
+          if (!listEl) return; // safety
+
+          var admin = isAdminForSport(evt.sport); // strict admin check
+
+          var html = live.map(function(r){
+            var st = String(r.status||'').toLowerCase();
+            var statusBadge  = computeStatusBadge(st);
+            var checkinBadge = computeCheckinPill(r);
+            var canRemove = admin && (st==='active' || st==='waitlist');
+            var removeBtn = canRemove
+              ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
+              : "";
+            return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
+                     r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
+                   "</div>";
+          }).join('');
+
+          listEl.innerHTML = html || "<div class='muted'>No registrations yet</div>";
+
+          if (admin){
+            listEl.querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
+              b.addEventListener('click', function(){
+                var person = b.getAttribute('data-person');
+                if (!confirm('Remove this registration and promote the next from waitlist?')) return;
+                google.script.run.withSuccessHandler(function(r){
+                  if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
+                  openEvent(id); // refresh
+                }).api_admin_cancelRegistration(state.user.its, id, person);
+              });
             });
-            if(!guests.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
-            if(!regOpen || !guests.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
+          }
+        });
+      })();
 
-            var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
-            var gl = $('#my_guest_list');
-            if (!mine.length){ gl.innerHTML = "<div class='muted tiny'>No guests of yours are on this event yet.</div>"; }
-            else {
-              gl.innerHTML = mine.map(function(r){
-                var st = String(r.status||'').toLowerCase();
-                var statusBadge = (st==='active') ? " <span class='badge ok'>Active</span>" :
-                                  (st==='waitlist') ? " <span class='badge warn'>Waitlist</span>" :
-                                  (st==='dropout') ? " <span class='badge warn'>Dropped Out</span>" : "";
-                var checkinBadge = computeCheckinPill(r);
-                var canDereg = ((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'));
-                var canDrop  = (afterClose && st==='active');
-                return ""+
-                "<div class='event-card' style='padding:8px;margin-top:6px'>"+
-                  "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
-                    "<div><b>"+r.name+"</b> "+statusBadge+" "+checkinBadge+"</div>"+
-                    "<div class='event-actions'>"+
-                      "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-dereg' "+(canDereg?'':'disabled')+">Deregister</button>"+
-                      "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-drop' "+(canDrop?'':'disabled')+">Dropout</button>"+
-                    "</div>"+
-                  "</div>"+
-                "</div>";
-              }).join('');
-              gl.querySelectorAll('[data-act="g-dereg"]').forEach(function(b){
-                b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
-                  google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to deregister guest'); openEvent(evt.id); })
-                    .api_deregister(state.user.its, evt.id, guestIts);
-                });});
-              gl.querySelectorAll('[data-act="g-drop"]').forEach(function(b){
-                b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
-                  google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to drop out guest'); openEvent(evt.id); })
-                    .api_dropout(state.user.its, evt.id, guestIts);
-                });});
-            }
-          }).api_listGuests(state.user.its);
+      google.script.run.withSuccessHandler(function(g){
+        var sel = $('#gx_sel'); var hint= $('#gx_hint');
+        var guests = (g && g.guests) || [];
+        guests.forEach(function(gu){
+          var opt = document.createElement('option');
+          opt.value = gu.guest_its;
+          opt.textContent = gu.first_name+' '+gu.last_name+' — ITS '+gu.guest_its;
+          sel.appendChild(opt);
+        });
+        if(!guests.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
+        if(!regOpen || !guests.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
 
-          (function applySelfButtons(){
-            var canRegister = regOpen && (myStatus==='none' || myStatus==='dropout');
-            var canDeregister = ((regOpen && (myStatus==='active' || myStatus==='waitlist')) || (!regOpen && myStatus==='waitlist'));
-            var canDropout = afterClose && myStatus==='active';
-            $('#reg_me').disabled = !canRegister;
-            $('#dereg_me').disabled = !canDeregister;
-            $('#dropout_me').disabled = !canDropout;
-          })();
+        var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
+        var gl = $('#my_guest_list');
+        if (!mine.length){ gl.innerHTML = "<div class='muted tiny'>No guests of yours are on this event yet.</div>"; }
+        else {
+          gl.innerHTML = mine.map(function(r){
+            var st = String(r.status||'').toLowerCase();
+            var statusBadge = (st==='active') ? " <span class='badge ok'>Active</span>" :
+                              (st==='waitlist') ? " <span class='badge warn'>Waitlist</span>" :
+                              (st==='dropout') ? " <span class='badge warn'>Dropped Out</span>" : "";
+            var checkinBadge = computeCheckinPill(r);
+            var canDereg = ((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'));
+            var canDrop  = (afterClose && st==='active');
+            return ""+
+            "<div class='event-card' style='padding:8px;margin-top:6px'>"+
+              "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
+                "<div><b>"+r.name+"</b> "+statusBadge+" "+checkinBadge+"</div>"+
+                "<div class='event-actions'>"+
+                  "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-dereg' "+(canDereg?'':'disabled')+">Deregister</button>"+
+                  "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-drop' "+(canDrop?'':'disabled')+">Dropout</button>"+
+                "</div>"+
+              "</div>"+
+            "</div>";
+          }).join('');
+          gl.querySelectorAll('[data-act="g-dereg"]').forEach(function(b){
+            b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
+              google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to deregister guest'); openEvent(evt.id); })
+                .api_deregister(state.user.its, evt.id, guestIts);
+          });});
+          gl.querySelectorAll('[data-act="g-drop"]').forEach(function(b){
+            b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
+              google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to drop out guest'); openEvent(evt.id); })
+                .api_dropout(state.user.its, evt.id, guestIts);
+          });});
+        }
+      }).api_listGuests(state.user.its);
 
-          (function updateCapacityLabelsDetail(){
-            var cap = Number(evt.max_capacity||0);
-            google.script.run.withSuccessHandler(function(r){
-              var live2 = (r && r.live) || [];
-              var activeCount = live2.filter(function(x){ return String(x.status||'').toLowerCase()==='active'; }).length;
-              var reached = (cap>0 && activeCount>=cap);
-              $('#reg_me').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
-              var rg = $('#reg_guest'); if (rg) rg.textContent = reached ? 'Register Guest on Waitlist' : 'Register Guest';
-              $('#cap_hint').textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
-            }).api_eventDetails(id);
-          })();
+      (function applySelfButtons(){
+        var canRegister = regOpen && (myStatus==='none' || myStatus==='dropout');
+        var canDeregister = ((regOpen && (myStatus==='active' || myStatus==='waitlist')) || (!regOpen && myStatus==='waitlist'));
+        var canDropout = afterClose && myStatus==='active';
+        $('#reg_me').disabled = !canRegister;
+        $('#dereg_me').disabled = !canDeregister;
+        $('#dropout_me').disabled = !canDropout;
+      })();
 
-          $('#reg_me').onclick     = function(){ actRegister(evt.id,false); };
-          $('#dereg_me').onclick   = function(){ actDeregister(evt.id); };
-          $('#dropout_me').onclick = function(){ actDropout(evt.id); };
+      (function updateCapacityLabelsDetail(){
+        var cap = Number(evt.max_capacity||0);
+        google.script.run.withSuccessHandler(function(r){
+          var live2 = (r && r.live) || [];
+          var activeCount = live2.filter(function(x){ return String(x.status||'').toLowerCase()==='active'; }).length;
+          var reached = (cap>0 && activeCount>=cap);
+          $('#reg_me').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
+          var rg = $('#reg_guest'); if (rg) rg.textContent = reached ? 'Register Guest on Waitlist' : 'Register Guest';
+          $('#cap_hint').textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
+        }).api_eventDetails(id);
+      })();
 
-          $('#reg_guest').onclick  = function(){
-            var v=($('#gx_sel').value||'').trim();
-            if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
-            google.script.run.withSuccessHandler(function(resp){
-              if(!resp||!resp.ok){ alert((resp&&resp.error)||'Failed'); return; }
-              openEvent(id);
-            }).api_register(state.user.its, id, v, true);
-          };
-        }).api_myStatusesForEvents(state.user.its, [id]);
-      }).api_eventDetails(id);
-    }
+      $('#reg_me').onclick     = function(){ actRegister(evt.id,false); };
+      $('#dereg_me').onclick   = function(){ actDeregister(evt.id); };
+      $('#dropout_me').onclick = function(){ actDropout(evt.id); };
+
+      $('#reg_guest').onclick  = function(){
+        var v=($('#gx_sel').value||'').trim();
+        if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
+        google.script.run.withSuccessHandler(function(resp){
+          if(!resp||!resp.ok){ alert((resp&&resp.error)||'Failed'); return; }
+          openEvent(id);
+        }).api_register(state.user.its, id, v, true);
+      };
+    }).api_myStatusesForEvents(state.user.its, [id]);
+  }).api_eventDetails(id);
+}
 
     /* ===================== CREATE / EDIT PROFILE ===================== */
     function pageCreateOrEdit(edit){
