@@ -10,7 +10,6 @@
       --bg:#0b1220; --surface:#0f172a; --card:#0e1626; --muted:#9fb3c8; --text:#e6eef8;
       --accent:#3b82f6; --ok:#16a34a; --warn:#f59e0b; --err:#ef4444; --border:#223;
 
-      
       /* Fluid type scale */
       --fs-xxxs: clamp(20px, 8vw, 24px);
       --fs-xxs: clamp(20px, 10vw, 30px);
@@ -307,7 +306,7 @@
       render();
     }).api_bootstrap();
 
-    /* ===================== UTILS ===================== */    
+    /* ===================== UTILS ===================== */
     function $(sel, root){ return (root||document).querySelector(sel); }
     function el(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
     function layout(n){ var root=document.getElementById('root'); root.innerHTML=''; root.appendChild(n); }
@@ -624,20 +623,15 @@
       });
     }
     function computeStatusBadge(st){
-  var s = String(st||'none').toLowerCase();
-  if (s==='active')   return '<span class="badge ok">Active</span>';
-  if (s==='waitlist') return '<span class="badge warn">Waitlist</span>';
-  if (s==='dropout')  return '<span class="badge warn">Dropped Out</span>';
-  if (s==='cancelled')return '<span class="badge err">Cancelled</span>';
-  return '';
-}
+      var s = String(st||'none').toLowerCase();
+      if (s==='active')   return '<span class="badge ok">Active</span>';
+      if (s==='waitlist') return '<span class="badge warn">Waitlist</span>';
+      if (s==='dropout')  return '<span class="badge warn">Dropped Out</span>';
+      return '';
+    }
 
     /* ===================== HOME ===================== */
-    function pageHome(){ 
-      var el = document.getElementById('homeName');
-  if (!el) return;
-      
-      if(!guard())return;
+    function pageHome(){ if(!guard())return;
 
       if (homeTimers.cd){ clearInterval(homeTimers.cd); homeTimers.cd = null; }
       if (homeTimers.uiRefresh){ clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
@@ -691,8 +685,6 @@
         guestList = guestList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
 
         (function renderSelfRows(){
-          var box = document.getElementById('selfEventsBox');
-  if (!box) return;
           var box = $('#home_self');
           if (!selfList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
           box.innerHTML = selfList.map(function(e){
@@ -939,7 +931,7 @@
       document.body.removeChild(ta);
     }
 
-    function pageBalance(){ 
+    function pageBalance(){
       if(!guard()) return;
 
       var node = el('<div class="card stack" id="bal_box"><div class="muted">Loading…</div></div>');
@@ -1226,75 +1218,35 @@
           layout(node);
 
           // Live roster — per-row Remove (admins only; "Captain" NOT allowed)
-function renderLive(data) {
-  // Expect data = { ok:true, event, live, capacity_reached }
-  if (!data || !data.ok || !data.event) return;
+(function renderLive(){
+  var admin = isAdminForSport(evt.sport);  // strict admin check
+  var html = live.map(function(r){
+    var st = String(r.status||'').toLowerCase();
+    var statusBadge = computeStatusBadge(st);
+    var checkinBadge = computeCheckinPill(r);
+    var canRemove = admin && (st==='active' || st==='waitlist');
+    var removeBtn = canRemove
+      ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
+      : "";
+    return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
+             r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
+           "</div>";
+  }).join('');
+  $('#live_list').innerHTML = html || "<div class='muted'>No registrations yet</div>";
 
-  var ev   = data.event;
-  var live = data.live || [];
-
-  // Find table safely
-  var table = document.getElementById('liveRosterTable');
-  if (!table) return; // no container on this view
-
-  var tbody = table.querySelector('tbody') || table.appendChild(document.createElement('tbody'));
-  tbody.innerHTML = '';
-
-  var showRemove = isAdminForSport(ev.sport); // only true for real sport admins
-
-  live.forEach(function(row){
-    // row = { name, status, is_guest, person, owner_its, registered_at, checked_in_at }
-    var tr = document.createElement('tr');
-
-    var tdName = document.createElement('td');
-    tdName.textContent = row.name || (row.is_guest ? ('Guest '+row.person) : ('User '+row.person));
-    tr.appendChild(tdName);
-
-    var tdType = document.createElement('td');
-    tdType.textContent = row.is_guest ? 'Guest' : 'User';
-    tr.appendChild(tdType);
-
-    var tdStatus = document.createElement('td');
-    tdStatus.textContent = String(row.status || '').toUpperCase();
-    tr.appendChild(tdStatus);
-
-    var tdAction = document.createElement('td');
-    if (showRemove) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn btn-sm btn-danger';
-      btn.textContent = 'Remove';
-      btn.onclick = function(){
-        if (!confirm('Remove '+ (row.name || row.person) +' from this event?')) return;
-        // Admin cancel → promotes waitlist server-side if available
-        callServer('api_admin_cancelRegistration', CURRENT_USER.its, ev.id, row.person)
-          .then(function(res){
-            if (res && res.ok) {
-              // Refresh the live roster
-              openEvent(ev.id); // or re-call api_eventDetails, then renderLive(...)
-            } else {
-              alert((res && res.error) || 'Failed to remove registration.');
-            }
-          })
-          .catch(function(err){
-            alert('Remove failed: ' + (err && err.message ? err.message : err));
-          });
-      };
-      tdAction.appendChild(btn);
-    }
-    tr.appendChild(tdAction);
-
-    tbody.appendChild(tr);
-  });
-
-  // Optional: update any "capacity reached" pill safely
-  var capEl = document.getElementById('capacityPill');
-  if (capEl) {
-    capEl.textContent = data.capacity_reached ? 'Capacity Reached' : '';
-    capEl.style.display = data.capacity_reached ? '' : 'none';
+  if (admin){
+    $('#live_list').querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var person = b.getAttribute('data-person');
+        if (!confirm('Remove this registration and promote the next from waitlist?')) return;
+        google.script.run.withSuccessHandler(function(r){
+          if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
+          openEvent(id);
+        }).api_admin_cancelRegistration(state.user.its, id, person);
+      });
+    });
   }
-}
-
+})();
 
 
           google.script.run.withSuccessHandler(function(g){
