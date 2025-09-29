@@ -624,12 +624,13 @@
       });
     }
     function computeStatusBadge(st){
-      var s = String(st||'none').toLowerCase();
-      if (s==='active')   return '<span class="badge ok">Active</span>';
-      if (s==='waitlist') return '<span class="badge warn">Waitlist</span>';
-      if (s==='dropout')  return '<span class="badge warn">Dropped Out</span>';
-      return '';
-    }
+  var s = String(st||'none').toLowerCase();
+  if (s==='active')   return '<span class="badge ok">Active</span>';
+  if (s==='waitlist') return '<span class="badge warn">Waitlist</span>';
+  if (s==='dropout')  return '<span class="badge warn">Dropped Out</span>';
+  if (s==='cancelled')return '<span class="badge err">Cancelled</span>';
+  return '';
+}
 
     /* ===================== HOME ===================== */
     function pageHome(){ if(!guard())return;
