@@ -1220,35 +1220,75 @@
           layout(node);
 
           // Live roster — per-row Remove (admins only; "Captain" NOT allowed)
-(function renderLive(){
-  var admin = isAdminForSport(evt.sport);  // strict admin check
-  var html = live.map(function(r){
-    var st = String(r.status||'').toLowerCase();
-    var statusBadge = computeStatusBadge(st);
-    var checkinBadge = computeCheckinPill(r);
-    var canRemove = admin && (st==='active' || st==='waitlist');
-    var removeBtn = canRemove
-      ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
-      : "";
-    return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
-             r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
-           "</div>";
-  }).join('');
-  $('#live_list').innerHTML = html || "<div class='muted'>No registrations yet</div>";
+function renderLive(data) {
+  // Expect data = { ok:true, event, live, capacity_reached }
+  if (!data || !data.ok || !data.event) return;
 
-  if (admin){
-    $('#live_list').querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var person = b.getAttribute('data-person');
-        if (!confirm('Remove this registration and promote the next from waitlist?')) return;
-        google.script.run.withSuccessHandler(function(r){
-          if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
-          openEvent(id);
-        }).api_admin_cancelRegistration(state.user.its, id, person);
-      });
-    });
+  var ev   = data.event;
+  var live = data.live || [];
+
+  // Find table safely
+  var table = document.getElementById('liveRosterTable');
+  if (!table) return; // no container on this view
+
+  var tbody = table.querySelector('tbody') || table.appendChild(document.createElement('tbody'));
+  tbody.innerHTML = '';
+
+  var showRemove = isAdminForSport(ev.sport); // only true for real sport admins
+
+  live.forEach(function(row){
+    // row = { name, status, is_guest, person, owner_its, registered_at, checked_in_at }
+    var tr = document.createElement('tr');
+
+    var tdName = document.createElement('td');
+    tdName.textContent = row.name || (row.is_guest ? ('Guest '+row.person) : ('User '+row.person));
+    tr.appendChild(tdName);
+
+    var tdType = document.createElement('td');
+    tdType.textContent = row.is_guest ? 'Guest' : 'User';
+    tr.appendChild(tdType);
+
+    var tdStatus = document.createElement('td');
+    tdStatus.textContent = String(row.status || '').toUpperCase();
+    tr.appendChild(tdStatus);
+
+    var tdAction = document.createElement('td');
+    if (showRemove) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-sm btn-danger';
+      btn.textContent = 'Remove';
+      btn.onclick = function(){
+        if (!confirm('Remove '+ (row.name || row.person) +' from this event?')) return;
+        // Admin cancel → promotes waitlist server-side if available
+        callServer('api_admin_cancelRegistration', CURRENT_USER.its, ev.id, row.person)
+          .then(function(res){
+            if (res && res.ok) {
+              // Refresh the live roster
+              openEvent(ev.id); // or re-call api_eventDetails, then renderLive(...)
+            } else {
+              alert((res && res.error) || 'Failed to remove registration.');
+            }
+          })
+          .catch(function(err){
+            alert('Remove failed: ' + (err && err.message ? err.message : err));
+          });
+      };
+      tdAction.appendChild(btn);
+    }
+    tr.appendChild(tdAction);
+
+    tbody.appendChild(tr);
+  });
+
+  // Optional: update any "capacity reached" pill safely
+  var capEl = document.getElementById('capacityPill');
+  if (capEl) {
+    capEl.textContent = data.capacity_reached ? 'Capacity Reached' : '';
+    capEl.style.display = data.capacity_reached ? '' : 'none';
   }
-})();
+}
+
 
 
           google.script.run.withSuccessHandler(function(g){
