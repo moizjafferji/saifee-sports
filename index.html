@@ -633,7 +633,11 @@
 }
 
     /* ===================== HOME ===================== */
-    function pageHome(){ if(!guard())return;
+    function pageHome(){ 
+      var el = document.getElementById('homeName');
+  if (!el) return;
+      
+      if(!guard())return;
 
       if (homeTimers.cd){ clearInterval(homeTimers.cd); homeTimers.cd = null; }
       if (homeTimers.uiRefresh){ clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
@@ -687,6 +691,8 @@
         guestList = guestList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
 
         (function renderSelfRows(){
+          var box = document.getElementById('selfEventsBox');
+  if (!box) return;
           var box = $('#home_self');
           if (!selfList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
           box.innerHTML = selfList.map(function(e){
