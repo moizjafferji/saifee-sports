@@ -286,7 +286,6 @@
   </div>
 
   <script>
-    
     /* ===================== GLOBAL STATE ===================== */
     var state = {
       boot:null, user:null, page:'landing', sport:'Soccer', error:'', tmp:{},
@@ -1015,8 +1014,6 @@ function pageBalance(){
     $('#bal_box').innerHTML =
       '<div class="label">Current Balance</div>'+
       '<div style="font-size:var(--fs-xl);font-weight:800)">'+money(res.balance || 0)+'</div>'+
-      // White download button with dark-blue text
-      '<div><button id="downloadCsvBtn" class="btn" style="margin-top:8px;background:#fff;color:#0f2a6b;border:1px solid var(--border)">Download CSV</button></div>'+
       '<div class="muted" style="margin-top:10px;line-height:1.6">'+
         'Add to balance with Zelle to:<br/>'+
         '<strong id="zelleEmail">'+email+'</strong> '+
@@ -1030,7 +1027,9 @@ function pageBalance(){
       '<table class="table table--compact" style="margin-top:10px">'+
         '<thead><tr><th>Date</th><th>Event</th><th>Status</th><th class="right">Amount</th></tr></thead>'+
         '<tbody>'+rows+'</tbody>'+
-      '</table>';
+      '</table>'+
+      '<div><button id="downloadCsvBtn" class="btn" style="margin-top:8px;background:#fff;color:#0f2a6b;border:1px solid var(--border)">Download CSV</button></div>'
+;
 
     var balBox = $('#bal_box');
     var emailBtn = balBox.querySelector('#copyEmailBtn');
