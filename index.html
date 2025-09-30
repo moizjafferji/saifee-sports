@@ -631,116 +631,118 @@
     }
 
     /* ===================== HOME ===================== */
-    function pageHome(){ if(!guard())return;
+function pageHome(){ if(!guard())return;
 
-      if (homeTimers.cd){ clearInterval(homeTimers.cd); homeTimers.cd = null; }
-      if (homeTimers.uiRefresh){ clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
+  if (homeTimers.cd){ clearInterval(homeTimers.cd); homeTimers.cd = null; }
+  if (homeTimers.uiRefresh){ clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
 
-      var node = el(
-        '<div class="stack">'+
-          '<div class="card stack">'+
-            '<div class="label">Your Next Event</div>'+
-            '<div id="home_cd" class="countdown muted">Looking for your next registration…</div>'+
-            '<div id="home_cd_sub" class="tiny"></div>'+
-            '<div><button class="btn js-checkin-btn" id="home_checkin" style="display:none"></button></div>'+
-          '</div>'+
-          '<div class="card stack">'+
-            '<div class="label">Balance</div>'+
-            '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
-          '</div>'+
-          '<div class="card stack">'+
-            '<div class="label">Your Events</div>'+
-            '<div id="home_self"></div>'+
-          '</div>'+
-          '<div class="card stack">'+
-            '<div class="label">Guest Events</div>'+
-            '<div id="home_guests"><div class="tiny muted">Loading…</div></div>'+
-          '</div>'+
-          '<div class="card stack">'+
-            '<div class="label">Upcoming Events</div>'+
-            '<div id="home_upcoming"></div>'+
-          '</div>'+
-        '</div>'
-      );
-      layout(node);
+  var node = el(
+    '<div class="stack">'+
+      '<div class="card stack">'+
+        '<div class="label">Your Next Event</div>'+
+        '<div id="home_cd" class="countdown muted">Looking for your next registration…</div>'+
+        '<div id="home_cd_sub" class="tiny"></div>'+
+        '<div><button class="btn js-checkin-btn" id="home_checkin" style="display:none"></button></div>'+
+      '</div>'+
+      '<div class="card stack">'+
+        '<div class="label">Balance</div>'+
+        '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
+      '</div>'+
+      '<div class="card stack">'+
+        '<div class="label">Your Events</div>'+
+        '<div id="home_self"></div>'+
+      '</div>'+
+      '<div class="card stack">'+
+        '<div class="label">Guest Events</div>'+
+        '<div id="home_guests"><div class="tiny muted">Loading…</div></div>'+
+      '</div>'+
+      '<div class="card stack">'+
+        '<div class="label">Upcoming Events</div>'+
+        '<div id="home_upcoming"></div>'+
+      '</div>'+
+    '</div>'
+  );
+  layout(node);
 
-      google.script.run.withSuccessHandler(function(res){
-        $('#home_balance').textContent = money(res.balance||0);
-      }).api_balance(state.user.its);
+  google.script.run.withSuccessHandler(function(res){
+    $('#home_balance').textContent = money(res.balance||0);
+  }).api_balance(state.user.its);
 
-      google.script.run.withSuccessHandler(function(h){
-        var selfList   = (h && h.self)   || [];
-        var guestList  = (h && h.guests) || [];
-        var nextSelf   = (h && h.nextSelf) || null;
+  google.script.run.withSuccessHandler(function(h){
+    var selfList   = (h && h.self)   || [];
+    var guestList  = (h && h.guests) || [];
+    var nextSelf   = (h && h.nextSelf) || null;
 
-        var nowTs = now(); var today=new Date(nowTs);
-        function isSameDay(d){ return d && d.getFullYear()===today.getFullYear() && d.getMonth()===today.getMonth() && d.getDate()===today.getDate(); }
-        function isFutureOngoingOrToday(e){
-          var end   = parseDT(e && e.end_datetime);
-          var start = parseDT(e && e.start_datetime);
-          if (end) return (end > nowTs) || isSameDay(end) || isSameDay(start);
-          return (start && start > nowTs) || isSameDay(start);
-        }
-        selfList  = selfList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
-        guestList = guestList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
+    var nowTs = now(); var today=new Date(nowTs);
+    function isSameDay(d){ return d && d.getFullYear()===today.getFullYear() && d.getMonth()===today.getMonth() && d.getDate()===today.getDate(); }
+    function isFutureOngoingOrToday(e){
+      var end   = parseDT(e && e.end_datetime);
+      var start = parseDT(e && e.start_datetime);
+      if (end) return (end > nowTs) || isSameDay(end) || isSameDay(start);
+      return (start && start > nowTs) || isSameDay(start);
+    }
+    selfList  = selfList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
+    guestList = guestList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
 
-        (function renderSelfRows(){
-          var box = $('#home_self');
-          if (!selfList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
-          box.innerHTML = selfList.map(function(e){
-            var badge = computeStatusBadge(e.status);
-            var title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
-            var sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') +
-                        (e.address ? ('<br/>' + addrHtml(e.address)) : '');
-            var eid   = (e.id || e.event_id || '');
-            var actId = 'self_actions_'+eid;
-            return ''+
-              '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
-                '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
-                '<div id="'+actId+'" style="display:flex;gap:8px;align-items:center">'+
-                  (badge||'')+
-                  '<span class="tiny muted" data-role="wait">…</span>'+
-                  '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
-                '</div>'+
-              '</div>';
-          }).join('');
+    (function renderSelfRows(){
+      var box = $('#home_self');
+      if (!selfList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+      box.innerHTML = selfList.map(function(e){
+        var badge = computeStatusBadge(e.status);
+        var title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
+        var sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') +
+                    (e.address ? ('<br/>' + addrHtml(e.address)) : '');
+        var eid   = (e.id || e.event_id || '');
+        var actId = 'self_actions_'+eid;
+        return ''+
+          '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+            '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+            '<div id="'+actId+'" style="display:flex;gap:8px;align-items:center">'+
+              (badge||'')+
+              '<span class="tiny muted" data-role="wait">…</span>'+
+              '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
+            '</div>'+
+          '</div>';
+      }).join('');
 
-          box.querySelectorAll('button[data-act="view"]').forEach(function(b){
-            b.addEventListener('click', function(){ var id=b.getAttribute('data-eid'); if(id) openEvent(id); });
-          });
+      box.querySelectorAll('button[data-act="view"]').forEach(function(b){
+        b.addEventListener('click', function(){ var id=b.getAttribute('data-eid'); if(id) openEvent(id); });
+      });
 
-          selfList.forEach(function(e){
-            var eid = (e.id || e.event_id || '');
-            var act = document.getElementById('self_actions_'+eid);
-            if (!act) return;
+      selfList.forEach(function(e){
+        var eid = (e.id || e.event_id || '');
+        var act = document.getElementById('self_actions_'+eid);
+        if (!act) return;
 
-            google.script.run.withSuccessHandler(function(res){
-              var w = act.querySelector('[data-role="wait"]'); if (w) w.remove();
-              var mine = (res && res.live || []).find(function(r){ return !r.is_guest && String(r.person)===String(state.user.its); });
-              var checked = !!(mine && mine.checked_in_at);
-              var can = (String(e.status||'').toLowerCase()==='active') && withinCheckInWindow(e) && !checked;
+        google.script.run.withSuccessHandler(function(res){
+          var w = act.querySelector('[data-role="wait"]'); if (w) w.remove();
+          var mine = (res && res.live || []).find(function(r){ return !r.is_guest && String(r.person)===String(state.user.its); });
+          var checked = !!(mine && mine.checked_in_at);
+          var can = (String(e.status||'').toLowerCase()==='active') && withinCheckInWindow(e) && !checked;
 
-              if (checked){
-                var btn = document.createElement('button');
-                btn.className = 'btn js-checkin-btn checked-in';
-                btn.textContent = 'Checked In';
-                btn.disabled = true;
-                btn.setAttribute('data-start', e.start_datetime||'');
-                btn.setAttribute('data-end',   e.end_datetime||'');
-                act.insertBefore(btn, act.querySelector('[data-act="view"]'));
-              } else if (can){
-                var btn2 = document.createElement('button');
-                btn2.className = 'btn js-checkin-btn';
-                btn2.textContent = 'Check In';
-                btn2.setAttribute('data-start', e.start_datetime||'');
-                btn2.setAttribute('data-end',   e.end_datetime||'');
-                btn2.onclick = function(){ doCheckIn(eid, state.user.its, btn2); };
-                act.insertBefore(btn2, act.querySelector('[data-act="view"]'));
-              }
-              refreshCheckinButtonsVisibility();
-            }).api_eventDetails(eid);
-          });
-        })();
+          if (checked){
+            var btn = document.createElement('button');
+            btn.className = 'btn js-checkin-btn checked-in';
+            btn.textContent = 'Checked In';
+            btn.disabled = true;
+            btn.setAttribute('data-start', e.start_datetime||'');
+            btn.setAttribute('data-end',   e.end_datetime||'');
+            act.insertBefore(btn, act.querySelector('[data-act="view"]'));
+          } else if (can){
+            var btn2 = document.createElement('button');
+            btn2.className = 'btn js-checkin-btn';
+            btn2.textContent = 'Check In';
+            btn2.setAttribute('data-start', e.start_datetime||'');
+            btn2.setAttribute('data-end',   e.end_datetime||'');
+            btn2.onclick = function(){ doCheckIn(eid, state.user.its, btn2); };
+            act.insertBefore(btn2, act.querySelector('[data-act="view"]'));
+          }
+          refreshCheckinButtonsVisibility();
+        }).api_eventDetails(eid);
+      });
+    })();
+
+  
 
         (function renderGuestRows(){
           var box = $('#home_guests');
@@ -815,52 +817,88 @@
           if (current) return current;
           return selfList.find(function(e){ var s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
         }
-        var next = nextSelf || pickSelfEventForCountdown(now());
+var next = pickSelfEventForCountdown(now()) || nextSelf;
 
         function wireTopCheckinFor(evt){
-          if (!chk || !evt) return;
-          chk.style.display='none'; chk.textContent='Check In Now'; chk.classList.remove('checked-in');
-          chk.setAttribute('data-start', evt.start_datetime||''); chk.setAttribute('data-end', evt.end_datetime||'');
-          google.script.run.withSuccessHandler(function(res){
-            var mine = (res && res.live || []).find(function(r){ return !r.is_guest && String(r.person)===String(state.user.its); });
-            var already = !!(mine && mine.checked_in_at);
-            var can = withinCheckInWindow(evt) && !already;
-            if (already){ chk.style.display='inline-flex'; chk.disabled=true; chk.classList.add('checked-in'); chk.textContent='Checked In'; }
-            else if (can){ chk.style.display='inline-flex'; chk.disabled=false; chk.textContent='Check In Now'; }
-            else { chk.style.display='none'; chk.disabled=true; }
-          }).api_eventDetails(evt.id);
-          chk.onclick = function(){ if (!chk.disabled) doCheckIn(evt.id, state.user.its, chk); };
-        }
+  if (!chk || !evt) return;
+
+  // Normalize event id
+  var eid = (evt.id || evt.event_id || '');
+  chk.style.display = 'none';
+  chk.textContent = 'Check In';
+  chk.classList.remove('checked-in');
+
+  // Mirror row-button data attributes
+  chk.setAttribute('data-start', evt.start_datetime || '');
+  chk.setAttribute('data-end',   evt.end_datetime   || '');
+
+  google.script.run.withSuccessHandler(function(res){
+    var mine = (res && res.live || []).find(function(r){
+      return !r.is_guest && String(r.person) === String(state.user.its);
+    });
+    var already = !!(mine && mine.checked_in_at);
+    var can = (String(evt.status || '').toLowerCase() === 'active') && withinCheckInWindow(evt) && !already;
+
+    if (already){
+      chk.style.display = 'inline-flex';
+      chk.disabled = true;
+      chk.classList.add('checked-in');
+      chk.textContent = 'Checked In';
+    } else if (can){
+      chk.style.display = 'inline-flex';
+      chk.disabled = false;
+      chk.textContent = 'Check In';
+      chk.onclick = function(){ if (!chk.disabled) doCheckIn(eid, state.user.its, chk); };
+    } else {
+      chk.style.display = 'none';
+      chk.disabled = true;
+      chk.onclick = null;
+    }
+
+    if (typeof refreshCheckinButtonsVisibility === 'function'){
+      refreshCheckinButtonsVisibility();
+    }
+  }).api_eventDetails(eid);
+}
+
 
         if (!next){
+  cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
+} else {
+  wireTopCheckinFor(next);
+  function tick(){
+    var nowVal = now();
+    var tgt    = parseDT(next.start_datetime);
+    var diff   = tgt - nowVal;
+
+    if (diff <= 0){
+      var since = nowVal - tgt;
+      if (since <= 30*60*1000){
+        // Show "<sport> event has begun" for 30 minutes after start
+        var sportName = (next && next.sport) ? next.sport : (state && state.sport ? state.sport : '');
+        cd.textContent = ((next.sport ? (next.sport+' - ') : '') + (next.name || '')) + ' has begun';
+        sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
+        refreshCheckinButtonsVisibility();
+        return; // keep showing this message during the 30-min window
+      } else {
+        // After 30 minutes past start, move on to the next future event (if any)
+        next = pickSelfEventForCountdown(nowVal);
+        if (!next){
           cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
-        } else {
-          wireTopCheckinFor(next);
-          function tick(){
-            var nowVal=now(); var tgt=parseDT(next.start_datetime); var diff=tgt - nowVal;
-            if (diff <= 0){
-              var since = nowVal - tgt;
-              if (since <= 30*60*1000){
-                cd.textContent='Your event has begun';
-                sub.innerHTML = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
-                refreshCheckinButtonsVisibility();
-                return;
-              } else {
-                next = pickSelfEventForCountdown(nowVal);
-                if (!next){
-                  cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
-                  clearInterval(homeTimers.cd); homeTimers.cd=null; return;
-                }
-                wireTopCheckinFor(next);
-              }
-            } else {
-              cd.textContent = humanCountdown(diff) + ' until ' + ((next.sport? (next.sport+' - '):'') + (next.name||''));
-              sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
-              refreshCheckinButtonsVisibility();
-            }
-          }
-          tick(); homeTimers.cd = setInterval(tick, 1000);
+          clearInterval(homeTimers.cd); homeTimers.cd = null; return;
         }
+        wireTopCheckinFor(next);
+      }
+    } else {
+      // Still counting down to the upcoming event
+      cd.textContent = humanCountdown(diff) + ' until ' + ((next.sport ? (next.sport+' - ') : '') + (next.name || ''));
+      sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
+      refreshCheckinButtonsVisibility();
+    }
+  }
+  tick(); homeTimers.cd = setInterval(tick, 1000);
+}
+
         homeTimers.uiRefresh = setInterval(refreshCheckinButtonsVisibility, 10000);
       }).api_homeListsForUser(state.user.its);
 
@@ -902,89 +940,119 @@
       $('#btnEdit').onclick=function(){ setPage('edit'); };
     }
 
-    /* ===================== BALANCE ===================== */
-    function copyText(txt, btn){
-      function done(){
-        if (!btn) return;
-        const orig = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = 'Copied!';
-        setTimeout(()=>{ btn.disabled = false; btn.innerHTML = orig; }, 1200);
-      }
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(txt).then(done).catch(function(){
-          legacyCopy(txt); done();
-        });
-      } else {
-        legacyCopy(txt); done();
-      }
+   /* ===================== BALANCE ===================== */
+function copyText(txt, btn){
+  function done(){
+    if (!btn) return;
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Copied!';
+    setTimeout(()=>{ btn.disabled = false; btn.innerHTML = orig; }, 1200);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(done).catch(function(){
+      legacyCopy(txt); done();
+    });
+  } else {
+    legacyCopy(txt); done();
+  }
+}
+function legacyCopy(txt){
+  const ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'absolute';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+function pageBalance(){
+  if(!guard()) return;
+
+  var node = el('<div class="card stack" id="bal_box"><div class="muted">Loading…</div></div>');
+  layout(node);
+
+  google.script.run.withSuccessHandler(function(res){
+    // Hide void transactions
+    var tx = (res.transactions || []).filter(function(t){
+      return String(t.status || '').toLowerCase() !== 'void';
+    });
+
+    var rows = tx.map(function(t){
+      var dt = fmtDate(t.date || t.created_at);
+      var eventName = t.category || '';
+      var ath = t.memo || '';
+      var amt = Number(t.amount || 0).toFixed(2);
+      var cls = String(t.type) === 'credit' ? 'amt-credit' : 'amt-debit';
+      var sign = String(t.type) === 'credit' ? '+' : '-';
+
+      // Plain yellow "Pending" (no pill)
+      var st = String(t.status || '');
+      var stLower = st.toLowerCase();
+      var stHtml = (stLower === 'pending')
+        ? "<span style='color:#f59e0b'>Pending</span>"
+        : st;
+
+      return '<tr><td>'+dt+'</td><td>'+eventName+'<br/>'+ath+'</td><td class="right '+cls+'">'+sign+'$'+amt+'</td><td>'+stHtml+'</td></tr>';
+    }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
+
+    var itsVal   = (state.user && state.user.its ? String(state.user.its).trim() : 'YOUR ITS');
+    var memoText = itsVal + ' - Saifee Sports';
+    var email    = 'toloba@dallasjamaat.org';
+
+    $('#bal_box').innerHTML =
+      '<div class="label">Current Balance</div>'+
+      '<div style="font-size:var(--fs-xl);font-weight:800">'+money(res.balance || 0)+'</div>'+
+      // White download button with dark-blue text
+      '<div><button id="downloadCsvBtn" class="btn" style="margin-top:8px;background:#fff;color:#0f2a6b;border:1px solid var(--border)">Download CSV</button></div>'+
+      '<div class="muted" style="margin-top:10px;line-height:1.6">'+
+        'Add to balance with Zelle to:<br/>'+
+        '<strong id="zelleEmail">'+email+'</strong> '+
+        '<button id="copyEmailBtn" class="btn btn--sm" aria-label="Copy Zelle email" '+
+          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
+        'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
+        '<span id="zelleMemo" style="font-weight:600">'+memoText+'</span> '+
+        '<button id="copyMemoBtn" class="btn btn--sm" aria-label="Copy memo" '+
+          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
+      '</div>'+
+      '<table class="table table--compact" style="margin-top:10px">'+
+        '<thead><tr><th>Date</th><th>Event</th><th class="right">Status</th><th>Amount</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table>';
+
+    var balBox = $('#bal_box');
+    var emailBtn = balBox.querySelector('#copyEmailBtn');
+    var memoBtn  = balBox.querySelector('#copyMemoBtn');
+    if (emailBtn) emailBtn.addEventListener('click', function(){ copyText(email, this); });
+    if (memoBtn)  memoBtn.addEventListener('click',  function(){ copyText(memoText, this); });
+
+    // Download CSV click handler
+    var dlBtn = balBox.querySelector('#downloadCsvBtn');
+    if (dlBtn){
+      dlBtn.addEventListener('click', function(){
+        var self = this;
+        var orig = self.textContent;
+        self.disabled = true; self.textContent = 'Preparing…';
+        google.script.run.withSuccessHandler(function(r){
+          self.disabled = false; self.textContent = orig;
+          if (!r || !r.ok || !r.csv){ alert((r && r.error) || 'No CSV available'); return; }
+          var blob = new Blob([r.csv], { type: 'text/csv;charset=utf-8;' });
+          var url  = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'transactions_'+ (state.user && state.user.its ? state.user.its : 'me') + '.csv';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+        }).api_balanceCsv(state.user.its);
+      });
     }
-    function legacyCopy(txt){
-      const ta = document.createElement('textarea');
-      ta.value = txt;
-      ta.setAttribute('readonly', '');
-      ta.style.position = 'absolute';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-    }
+  }).api_balance(state.user.its);
+}
 
-    function pageBalance(){
-      if(!guard()) return;
-
-      var node = el('<div class="card stack" id="bal_box"><div class="muted">Loading…</div></div>');
-      layout(node);
-
-      google.script.run.withSuccessHandler(function(res){
-        var rows = (res.transactions || []).map(function(t){
-          var dt = fmtDate(t.date || t.created_at);
-          var eventName = t.category || '';
-          var ath = t.memo || '';
-          var amt = Number(t.amount || 0).toFixed(2);
-          var cls = String(t.type) === 'credit' ? 'amt-credit' : 'amt-debit';
-          var sign = String(t.type) === 'credit' ? '+' : '-';
-          return '<tr><td>'+dt+'</td><td>'+eventName+'<br/>'+ath+'</td><td class="right '+cls+'">'+sign+'$'+amt+'</td><td>'+(t.status||'')+'</td></tr>';
-        }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
-
-        var itsVal   = (state.user && state.user.its ? String(state.user.its).trim() : 'YOUR ITS');
-        var memoText = itsVal + ' - Saifee Sports';
-        var email    = 'toloba@dallasjamaat.org';
-
-        $('#bal_box').innerHTML =
-          '<div class="label">Current Balance</div>'+
-          '<div style="font-size:var(--fs-xl);font-weight:800)">'+money(res.balance || 0)+'</div>'+
-          '<div class="muted" style="margin-top:10px;line-height:1.6">'+
-            'Add to balance with Zelle to:<br/>'+
-            '<strong id="zelleEmail">'+email+'</strong> '+
-            '<button id="copyEmailBtn" class="btn btn--sm" aria-label="Copy Zelle email" '+
-              'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
-            'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
-            '<span id="zelleMemo" style="font-weight:600">'+memoText+'</span> '+
-            '<button id="copyMemoBtn" class="btn btn--sm" aria-label="Copy memo" '+
-              'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
-          '</div>'+
-          '<table class="table table--compact" style="margin-top:10px">'+
-            '<thead><tr><th>Date</th><th>Event</th><th class="right">Amount</th><th>Status</th></tr></thead>'+
-            '<tbody>'+rows+'</tbody>'+
-          '</table>';
-
-        var balBox = $('#bal_box');
-        var emailBtn = balBox.querySelector('#copyEmailBtn');
-        var memoBtn  = balBox.querySelector('#copyMemoBtn');
-
-        if (emailBtn) emailBtn.addEventListener('click', function(){ copyText(email, this); });
-        if (memoBtn)  memoBtn.addEventListener('click',  function(){ copyText(memoText, this); });
-      }).api_balance(state.user.its);
-    }
-
-    /* ===================== CALENDAR ===================== */
-    function pageCalendar(){ if(!guard())return;
-      var node=el('<div class="card"><iframe id="cal" src="" class="w-full" style="height:70vh;border:0;border-radius:12px"></iframe></div>');
-      layout(node);
-      google.script.run.withSuccessHandler(function(res){ $('#cal').src=res.url; }).api_calendarEmbedUrl();
-    }
 
     /* ===================== GUESTS ===================== */
     function pageGuests(){ if(!guard())return;
