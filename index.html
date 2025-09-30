@@ -1321,42 +1321,44 @@ function openEvent(id){ if(!guard())return;
       layout(node);
 
       // Live roster — per-row Remove (admins only; "Captain" NOT allowed)
-      (function renderLive(){
-        ensureAdminSports(function(){
-          var listEl = $('#live_list');
-          if (!listEl) return; // safety
+(function renderLive(){
+  ensureAdminSports(function(){
+    var listEl = $('#live_list');
+    if (!listEl) return; // safety
 
-          var admin = isAdminForSport(evt.sport); // strict admin check
+    var admin = isAdminForSport(evt.sport); // strict admin check
 
-          var html = live.map(function(r){
-            var st = String(r.status||'').toLowerCase();
-            var statusBadge  = computeStatusBadge(st);
-            var checkinBadge = computeCheckinPill(r);
-            var canRemove = admin && (st==='active' || st==='waitlist');
-            var removeBtn = canRemove
-              ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
-              : "";
-            return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
-                     r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
-                   "</div>";
-          }).join('');
+    var html = live.map(function(r, i){
+      var num = i + 1; // 1-based numbering
+      var st = String(r.status||'').toLowerCase();
+      var statusBadge  = computeStatusBadge(st);
+      var checkinBadge = computeCheckinPill(r);
+      var canRemove = admin && (st==='active' || st==='waitlist');
+      var removeBtn = canRemove
+        ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
+        : "";
+      return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
+               num+". "+r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
+             "</div>";
+    }).join('');
 
-          listEl.innerHTML = html || "<div class='muted'>No registrations yet</div>";
+    listEl.innerHTML = html || "<div class='muted'>No registrations yet</div>";
 
-          if (admin){
-            listEl.querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
-              b.addEventListener('click', function(){
-                var person = b.getAttribute('data-person');
-                if (!confirm('Remove this registration and promote the next from waitlist?')) return;
-                google.script.run.withSuccessHandler(function(r){
-                  if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
-                  openEvent(id); // refresh
-                }).api_admin_cancelRegistration(state.user.its, id, person);
-              });
-            });
-          }
+    if (admin){
+      listEl.querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var person = b.getAttribute('data-person');
+          if (!confirm('Remove this registration and promote the next from waitlist?')) return;
+          google.script.run.withSuccessHandler(function(r){
+            if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
+            openEvent(id); // refresh
+          }).api_admin_cancelRegistration(state.user.its, id, person);
         });
-      })();
+      });
+    }
+  });
+})();
+
 
       google.script.run.withSuccessHandler(function(g){
         var sel = $('#gx_sel'); var hint= $('#gx_hint');
