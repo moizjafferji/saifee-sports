@@ -87,6 +87,23 @@
       width: 126px;
       height: 126px;
     }
+    #sidebar .nav,
+    #sidebar .nav .group,
+    #sidebar .nav .submenu{
+  align-items: stretch; /* prevents “centering” of children */
+}
+/* Force all sidebar nav items to left-align content */
+#sidebar .nav .nav-item{
+  justify-content: flex-start;   /* left-align in the flex row */
+  text-align: left;              /* left-align text inside the button */
+}
+
+/* Make sure submenu items inherit the same behavior */
+#sidebar .submenu .nav-item.subitem{
+  justify-content: flex-start;
+  text-align: left;
+}
+
 
     @media (max-width: 1433px){
       .sidebar{
@@ -356,6 +373,24 @@
       state.admin = { adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} };
       setPage('landing');
     }
+
+// Promise-style wrapper
+function gs(method, ...args){
+  return new Promise((resolve, reject)=>{
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)[method].apply(google.script.run, args || []);
+  });
+}
+
+// Simple full-width loading view
+function showLoading(text){
+  layout(el(
+    '<div class="card" style="text-align:center;padding:28px">'+
+      '<div class="tiny muted">'+(text || 'Loading…')+'</div>'+
+    '</div>'
+  ));
+}
 
     /* ===================== SERVER CALL WRAPPER ===================== */
     function callServer(primary, args, ok, err, fallback){
@@ -631,292 +666,276 @@
     }
 
     /* ===================== HOME ===================== */
-function pageHome(){ if(!guard())return;
+async function pageHome(){ 
+  if(!guard()) return;
 
-  if (homeTimers.cd){ clearInterval(homeTimers.cd); homeTimers.cd = null; }
-  if (homeTimers.uiRefresh){ clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
+  // 1) One loading state
+  showLoading('Loading your dashboard…');
 
-  var node = el(
-    '<div class="stack">'+
-      '<div class="card stack">'+
-        '<div class="label">Your Next Event</div>'+
-        '<div id="home_cd" class="countdown muted">Looking for your next registration…</div>'+
-        '<div id="home_cd_sub" class="tiny"></div>'+
-        '<div><button class="btn js-checkin-btn" id="home_checkin" style="display:none"></button></div>'+
-      '</div>'+
-      '<div class="card stack">'+
-        '<div class="label">Balance</div>'+
-        '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
-      '</div>'+
-      '<div class="card stack">'+
-        '<div class="label">Your Events</div>'+
-        '<div id="home_self"></div>'+
-      '</div>'+
-      '<div class="card stack">'+
-        '<div class="label">Guest Events</div>'+
-        '<div id="home_guests"><div class="tiny muted">Loading…</div></div>'+
-      '</div>'+
-      '<div class="card stack">'+
-        '<div class="label">Upcoming Events</div>'+
-        '<div id="home_upcoming"></div>'+
-      '</div>'+
-    '</div>'
-  );
-  layout(node);
+  try{
+    // 2) Parallel core calls
+    const [balanceRes, listsRes, upcomingRes] = await Promise.all([
+      gs('api_balance', state.user.its),
+      gs('api_homeListsForUser', state.user.its),
+      gs('api_upcomingEvents', 5)
+    ]);
 
-  google.script.run.withSuccessHandler(function(res){
-    $('#home_balance').textContent = money(res.balance||0);
-  }).api_balance(state.user.its);
+    // Normalize lists
+    const selfList   = (listsRes && listsRes.self)   || [];
+    const guestList  = (listsRes && listsRes.guests) || [];
+    let   nextSelf   = (listsRes && listsRes.nextSelf) || null;
 
-  google.script.run.withSuccessHandler(function(h){
-    var selfList   = (h && h.self)   || [];
-    var guestList  = (h && h.guests) || [];
-    var nextSelf   = (h && h.nextSelf) || null;
+    // Collect all event IDs we’ll need details for (self + guests + upcoming)
+    const ids = new Set();
+    selfList.forEach(e=> ids.add(e.id || e.event_id));
+    guestList.forEach(e=> ids.add(e.id || e.event_id));
+    (upcomingRes && upcomingRes.events || upcomingRes || []).forEach(e=> ids.add(e.id || e.event_id));
 
-    var nowTs = now(); var today=new Date(nowTs);
-    function isSameDay(d){ return d && d.getFullYear()===today.getFullYear() && d.getMonth()===today.getMonth() && d.getDate()===today.getDate(); }
+    // 3) Fetch details (capacity, live roster, etc.) so UI is correct at first paint
+    const detailPairs = await Promise.all(
+      Array.from(ids).filter(Boolean).map(id => 
+        gs('api_eventDetails', id).then(r => [id, r]).catch(()=>[id, null])
+      )
+    );
+    const detailsById = Object.fromEntries(detailPairs);
+
+    // 4) Build the full DOM (exactly your previous UI, but using prepared data)
+    // NOTE: below is condensed for brevity—reuse your existing markup functions,
+    // just read from balanceRes, listsRes, upcomingRes, and detailsById.
+
+    const node = el(
+      '<div class="stack">'+
+        '<div class="card stack">'+
+          '<div class="label">Your Next Event</div>'+
+          '<div id="home_cd" class="countdown muted">—</div>'+
+          '<div id="home_cd_sub" class="tiny"></div>'+
+          '<div><button class="btn js-checkin-btn" id="home_checkin" style="display:none"></button></div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Balance</div>'+
+          '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Your Events</div>'+
+          '<div id="home_self"></div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Guest Events</div>'+
+          '<div id="home_guests"></div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Upcoming Events</div>'+
+          '<div id="home_upcoming"></div>'+
+        '</div>'+
+      '</div>'
+    );
+    layout(node);
+
+    // ----- Balance -----
+    $('#home_balance').textContent = money(balanceRes && balanceRes.balance || 0);
+
+    // Helpers you already have:
     function isFutureOngoingOrToday(e){
-      var end   = parseDT(e && e.end_datetime);
-      var start = parseDT(e && e.start_datetime);
-      if (end) return (end > nowTs) || isSameDay(end) || isSameDay(start);
-      return (start && start > nowTs) || isSameDay(start);
+      const end   = parseDT(e && e.end_datetime);
+      const start = parseDT(e && e.start_datetime);
+      const t = now();
+      const sameDay = d => d && d.toDateString() === t.toDateString();
+      if (end) return (end > t) || sameDay(end) || sameDay(start);
+      return (start && start > t) || sameDay(start);
     }
-    selfList  = selfList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
-    guestList = guestList.filter(isFutureOngoingOrToday).sort(function(a,b){ return parseDT(a.start_datetime)-parseDT(b.start_datetime); });
 
-    (function renderSelfRows(){
-      var box = $('#home_self');
-      if (!selfList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
-      box.innerHTML = selfList.map(function(e){
-        var badge = computeStatusBadge(e.status);
-        var title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
-        var sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') +
-                    (e.address ? ('<br/>' + addrHtml(e.address)) : '');
-        var eid   = (e.id || e.event_id || '');
-        var actId = 'self_actions_'+eid;
+    // ----- Self events -----
+    const selfOk = selfList.filter(isFutureOngoingOrToday)
+                           .sort((a,b)=>parseDT(a.start_datetime)-parseDT(b.start_datetime));
+
+    (function renderSelf(){
+      const box = $('#home_self');
+      if (!selfOk.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+      box.innerHTML = selfOk.map(e=>{
+        const eid = e.id || e.event_id;
+        const d   = detailsById[eid];
+        const live = d && d.live || [];
+        const mine = live.find(r => !r.is_guest && String(r.person)===String(state.user.its));
+        const checked = !!(mine && mine.checked_in_at);
+        const can = (String(e.status||'').toLowerCase()==='active') && withinCheckInWindow(e) && !checked;
+
+        const badge = computeStatusBadge(e.status);
+        const title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
+        const sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') +
+                      (e.address ? ('<br/>' + addrHtml(e.address)) : '');
+
+        let btnHtml = '';
+        if (checked){
+          btnHtml = "<button class='btn js-checkin-btn checked-in' disabled data-start='"+(e.start_datetime||'')+"' data-end='"+(e.end_datetime||"")+"'>Checked In</button>";
+        } else if (can){
+          btnHtml = "<button class='btn js-checkin-btn' data-start='"+(e.start_datetime||'')+"' data-end='"+(e.end_datetime||"")+"' data-eid='"+eid+"' data-self='1'>Check In</button>";
+        }
+
         return ''+
           '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
             '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
-            '<div id="'+actId+'" style="display:flex;gap:8px;align-items:center">'+
+            '<div style="display:flex;gap:8px;align-items:center">'+
               (badge||'')+
-              '<span class="tiny muted" data-role="wait">…</span>'+
+              btnHtml+
               '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
             '</div>'+
           '</div>';
       }).join('');
 
-      box.querySelectorAll('button[data-act="view"]').forEach(function(b){
-        b.addEventListener('click', function(){ var id=b.getAttribute('data-eid'); if(id) openEvent(id); });
+      // Wire buttons
+      box.querySelectorAll('[data-act="view"]').forEach(b=>{
+        b.addEventListener('click', ()=> openEvent(b.getAttribute('data-eid')));
       });
+      box.querySelectorAll('.js-checkin-btn[data-self="1"]').forEach(btn=>{
+        const eid = btn.getAttribute('data-eid');
+        btn.addEventListener('click', ()=> doCheckIn(eid, state.user.its, btn));
+      });
+    })();
+        
+    // ----- Guests -----
+    (function renderGuests(){
+      const box = $('#home_guests');
+      const guestOk = guestList.filter(isFutureOngoingOrToday)
+                               .sort((a,b)=>parseDT(a.start_datetime)-parseDT(b.start_datetime));
+      if (!guestOk.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
 
-      selfList.forEach(function(e){
-        var eid = (e.id || e.event_id || '');
-        var act = document.getElementById('self_actions_'+eid);
-        if (!act) return;
+      box.innerHTML = guestOk.map(ev=>{
+        const eid  = ev.id || ev.event_id;
+        const det  = detailsById[eid] || {};
+        const live = det.live || [];
+        const mine = live.filter(r => r.is_guest && String(r.owner_its)===String(state.user.its));
 
-        google.script.run.withSuccessHandler(function(res){
-          var w = act.querySelector('[data-role="wait"]'); if (w) w.remove();
-          var mine = (res && res.live || []).find(function(r){ return !r.is_guest && String(r.person)===String(state.user.its); });
-          var checked = !!(mine && mine.checked_in_at);
-          var can = (String(e.status||'').toLowerCase()==='active') && withinCheckInWindow(e) && !checked;
+        if (!mine.length) return '';
+        const sub   = (ev.start_datetime ? (fmtDT(ev.start_datetime)) : '') + (ev.address ? ('<br/>' + addrHtml(ev.address)) : '');
+        return mine.map(r=>{
+          const title = (ev.sport ? (ev.sport+' - ') : '') + (ev.name||'Event') + ' — ' + (r.name || 'Guest');
+          const badge = computeStatusBadge(r.status);
+          const checked = !!r.checked_in_at;
+          const can = (String(r.status||'').toLowerCase()==='active') && withinCheckInWindow(ev) && !checked;
+          const btnHtml = checked
+            ? "<button class='btn js-checkin-btn checked-in' disabled data-start='"+(ev.start_datetime||'')+"' data-end='"+(ev.end_datetime||"")+"'>Checked In</button>"
+            : (can ? "<button class='btn js-checkin-btn' data-eid='"+eid+"' data-gi='"+r.person+"' data-start='"+(ev.start_datetime||'')+"' data-end='"+(ev.end_datetime||"")+"'>Check In</button>" : "");
 
-          if (checked){
-            var btn = document.createElement('button');
-            btn.className = 'btn js-checkin-btn checked-in';
-            btn.textContent = 'Checked In';
-            btn.disabled = true;
-            btn.setAttribute('data-start', e.start_datetime||'');
-            btn.setAttribute('data-end',   e.end_datetime||'');
-            act.insertBefore(btn, act.querySelector('[data-act="view"]'));
-          } else if (can){
-            var btn2 = document.createElement('button');
-            btn2.className = 'btn js-checkin-btn';
-            btn2.textContent = 'Check In';
-            btn2.setAttribute('data-start', e.start_datetime||'');
-            btn2.setAttribute('data-end',   e.end_datetime||'');
-            btn2.onclick = function(){ doCheckIn(eid, state.user.its, btn2); };
-            act.insertBefore(btn2, act.querySelector('[data-act="view"]'));
-          }
-          refreshCheckinButtonsVisibility();
-        }).api_eventDetails(eid);
+          return ''+
+            '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+              '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+              '<div style="display:flex;gap:8px;align-items:center">'+
+                (badge||'')+
+                btnHtml+
+                '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
+              '</div>'+
+            '</div>';
+        }).join('');
+      }).join('');
+
+      box.querySelectorAll('[data-act="view"]').forEach(b=>{
+        b.addEventListener('click', ()=> openEvent(b.getAttribute('data-eid')));
+      });
+      box.querySelectorAll('.js-checkin-btn[data-gi]').forEach(btn=>{
+        const eid = btn.getAttribute('data-eid');
+        const gi  = btn.getAttribute('data-gi');
+        btn.addEventListener('click', ()=> doCheckIn(eid, gi, btn));
       });
     })();
 
-  
+    // ----- Upcoming (simple list, all ready) -----
+    (function renderUpcoming(){
+      const list = upcomingRes && (upcomingRes.events || upcomingRes) || [];
+      const box = $('#home_upcoming');
+      if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+      box.innerHTML = list.map(e=>{
+        const title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
+        const sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') + (e.address ? ('<br/>' + addrHtml(e.address)) : '');
+        const eid   = e.id || e.event_id || '';
+        return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+                 '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+                 '<div><button class="btn secondary" data-eid="'+eid+'">View</button></div>'+
+               '</div>';
+      }).join('');
+      box.querySelectorAll('button[data-eid]').forEach(b=> b.onclick = ()=> openEvent(b.getAttribute('data-eid')));
+    })();
 
-        (function renderGuestRows(){
-          var box = $('#home_guests');
-          if (!guestList.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
-          box.innerHTML = '';
+    // ----- Countdown (computed once everything exists) -----
+    (function setupCountdown(){
+      const cd  = $('#home_cd'); 
+      const sub = $('#home_cd_sub');
+      const chk = $('#home_checkin');
 
-          guestList.forEach(function(ev){
-            var eid = (ev.id || ev.event_id || '');
-            google.script.run.withSuccessHandler(function(res){
-              var live = (res && res.live) || [];
-              var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
-              if (!mine.length) return;
-
-              mine.forEach(function(r){
-                var title = (ev.sport ? (ev.sport+' - ') : '') + (ev.name||'Event') + ' — ' + (r.name || 'Guest');
-                var sub   = (ev.start_datetime ? (fmtDT(ev.start_datetime)) : '') + (ev.address ? ('<br/>' + addrHtml(ev.address)) : '');
-                var badge = computeStatusBadge(r.status);
-                var rowId = 'g_row_'+eid+'_'+r.person;
-                var actId = 'g_actions_'+eid+'_'+r.person;
-
-                var rowHtml =
-                  '<div id="'+rowId+'" style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
-                    '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
-                    '<div id="'+actId+'" style="display:flex;gap:8px;align-items:center">'+
-                      (badge||'')+
-                      '<span class="tiny muted" data-role="wait">…</span>'+
-                      '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
-                    '</div>'+
-                  '</div>';
-
-                var t=document.createElement('template'); t.innerHTML=rowHtml.trim();
-                var rowNode = t.content.firstChild;
-                box.appendChild(rowNode);
-
-                var act = document.getElementById(actId);
-                var checked = !!r.checked_in_at;
-                var can = (String(r.status||'').toLowerCase()==='active') && withinCheckInWindow(ev) && !checked;
-
-                var w = act.querySelector('[data-role="wait"]'); if (w) w.remove();
-
-                if (checked){
-                  var btn = document.createElement('button');
-                  btn.className = 'btn js-checkin-btn checked-in';
-                  btn.textContent = 'Checked In';
-                  btn.disabled = true;
-                  btn.setAttribute('data-start', ev.start_datetime||'');
-                  btn.setAttribute('data-end',   ev.end_datetime||'');
-                  act.insertBefore(btn, act.querySelector('[data-act="view"]'));
-                } else if (can){
-                  var btn2 = document.createElement('button');
-                  btn2.className = 'btn js-checkin-btn';
-                  btn2.textContent = 'Check In';
-                  btn2.setAttribute('data-start', ev.start_datetime||'');
-                  btn2.setAttribute('data-end',   ev.end_datetime||'');
-                  btn2.onclick = function(){ doCheckIn(eid, r.person, btn2); };
-                  act.insertBefore(btn2, act.querySelector('[data-act="view"]'));
-                }
-
-                rowNode.querySelector('button[data-act="view"]').addEventListener('click', function(){
-                  openEvent(eid);
-                });
-
-                refreshCheckinButtonsVisibility();
-              });
-            }).api_eventDetails(eid);
-          });
-        })();
-
-        var cd  = $('#home_cd'); var sub = $('#home_cd_sub'); var chk = $('#home_checkin');
-        function pickSelfEventForCountdown(nowVal){
-          var current = selfList.find(function(e){ var s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
-          if (current) return current;
-          return selfList.find(function(e){ var s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
-        }
-var next = pickSelfEventForCountdown(now()) || nextSelf;
-
-        function wireTopCheckinFor(evt){
-  if (!chk || !evt) return;
-
-  // Normalize event id
-  var eid = (evt.id || evt.event_id || '');
-  chk.style.display = 'none';
-  chk.textContent = 'Check In';
-  chk.classList.remove('checked-in');
-
-  // Mirror row-button data attributes
-  chk.setAttribute('data-start', evt.start_datetime || '');
-  chk.setAttribute('data-end',   evt.end_datetime   || '');
-
-  google.script.run.withSuccessHandler(function(res){
-    var mine = (res && res.live || []).find(function(r){
-      return !r.is_guest && String(r.person) === String(state.user.its);
-    });
-    var already = !!(mine && mine.checked_in_at);
-    var can = (String(evt.status || '').toLowerCase() === 'active') && withinCheckInWindow(evt) && !already;
-
-    if (already){
-      chk.style.display = 'inline-flex';
-      chk.disabled = true;
-      chk.classList.add('checked-in');
-      chk.textContent = 'Checked In';
-    } else if (can){
-      chk.style.display = 'inline-flex';
-      chk.disabled = false;
-      chk.textContent = 'Check In';
-      chk.onclick = function(){ if (!chk.disabled) doCheckIn(eid, state.user.its, chk); };
-    } else {
-      chk.style.display = 'none';
-      chk.disabled = true;
-      chk.onclick = null;
-    }
-
-    if (typeof refreshCheckinButtonsVisibility === 'function'){
-      refreshCheckinButtonsVisibility();
-    }
-  }).api_eventDetails(eid);
-}
-
-
-        if (!next){
-  cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
-} else {
-  wireTopCheckinFor(next);
-  function tick(){
-    var nowVal = now();
-    var tgt    = parseDT(next.start_datetime);
-    var diff   = tgt - nowVal;
-
-    if (diff <= 0){
-      var since = nowVal - tgt;
-      if (since <= 30*60*1000){
-        // Show "<sport> event has begun" for 30 minutes after start
-        var sportName = (next && next.sport) ? next.sport : (state && state.sport ? state.sport : '');
-        cd.textContent = ((next.sport ? (next.sport+' - ') : '') + (next.name || '')) + ' has begun';
-        sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
-        refreshCheckinButtonsVisibility();
-        return; // keep showing this message during the 30-min window
-      } else {
-        // After 30 minutes past start, move on to the next future event (if any)
-        next = pickSelfEventForCountdown(nowVal);
-        if (!next){
-          cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
-          clearInterval(homeTimers.cd); homeTimers.cd = null; return;
-        }
-        wireTopCheckinFor(next);
+      function pickSelfEventForCountdown(nowVal){
+        const current = selfList.find(e=>{ const s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
+        if (current) return current;
+        return selfList.find(e=>{ const s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
       }
-    } else {
-      // Still counting down to the upcoming event
-      cd.textContent = humanCountdown(diff) + ' until ' + ((next.sport ? (next.sport+' - ') : '') + (next.name || ''));
-      sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
-      refreshCheckinButtonsVisibility();
-    }
+      let next = pickSelfEventForCountdown(now()) || nextSelf;
+
+      function wireTopCheckinFor(evt){
+        if (!chk || !evt) return;
+        const eid = (evt.id || evt.event_id || '');
+        chk.style.display = 'none';
+        chk.textContent = 'Check In';
+        chk.classList.remove('checked-in');
+
+        const det = detailsById[eid] || {};
+        const mine = (det.live || []).find(r => !r.is_guest && String(r.person)===String(state.user.its));
+        const already = !!(mine && mine.checked_in_at);
+        const can = (String(evt.status || '').toLowerCase() === 'active') && withinCheckInWindow(evt) && !already;
+
+        if (already){
+          chk.style.display = 'inline-flex';
+          chk.disabled = true;
+          chk.classList.add('checked-in');
+          chk.textContent = 'Checked In';
+        } else if (can){
+          chk.style.display = 'inline-flex';
+          chk.disabled = false;
+          chk.textContent = 'Check In';
+          chk.onclick = function(){ if (!chk.disabled) doCheckIn(eid, state.user.its, chk); };
+        } else {
+          chk.style.display = 'none';
+          chk.disabled = true;
+          chk.onclick = null;
+        }
+      }
+
+      if (!next){
+        cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
+        return;
+      }
+      wireTopCheckinFor(next);
+
+      function tick(){
+        const nowVal = now();
+        const tgt = parseDT(next.start_datetime);
+        const diff = tgt - nowVal;
+
+        if (diff <= 0){
+          const since = nowVal - tgt;
+          if (since <= 30*60*1000){
+            cd.textContent = ((next.sport ? (next.sport+' - ') : '') + (next.name || '')) + ' has begun';
+            sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
+            return;
+          } else {
+            next = pickSelfEventForCountdown(nowVal);
+            if (!next){
+              cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
+              clearInterval(homeTimers.cd); homeTimers.cd = null; return;
+            }
+            wireTopCheckinFor(next);
+          }
+        } else {
+          cd.textContent = humanCountdown(diff) + ' until ' + ((next.sport ? (next.sport+' - ') : '') + (next.name || ''));
+          sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
+        }
+      }
+      tick();
+      if (homeTimers.cd) clearInterval(homeTimers.cd);
+      homeTimers.cd = setInterval(tick, 1000);
+    })();
+
+  } catch(e){
+    layout(el('<div class="card" style="color:var(--err)">Failed to load: '+(e && e.message || e)+'</div>'));
   }
-  tick(); homeTimers.cd = setInterval(tick, 1000);
 }
-
-        homeTimers.uiRefresh = setInterval(refreshCheckinButtonsVisibility, 10000);
-      }).api_homeListsForUser(state.user.its);
-
-      google.script.run.withSuccessHandler(function(u){
-        var list = (u && u.events) || []; var box = $('#home_upcoming');
-        if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
-        box.innerHTML = list.map(function(e){
-          var title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
-          var sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') + (e.address ? ('<br/>' + addrHtml(e.address)) : '');
-          var eid   = (e.id || e.event_id || '');
-          return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
-                   '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
-                   '<div><button class="btn secondary" data-eid="'+eid+'">View</button></div>'+
-                 '</div>';
-        }).join('');
-        box.querySelectorAll('button[data-eid]').forEach(function(b){ b.onclick = function(){ openEvent(b.getAttribute('data-eid')); }; });
-      }).api_upcomingEvents(5);
-    }
 
     /* ===================== PROFILE ===================== */
     function pageProfile(){ if(!guard())return;
@@ -1061,6 +1080,12 @@ function pageBalance(){
   }).api_balance(state.user.its);
 }
 
+    /* ===================== CALENDAR ===================== */
+    function pageCalendar(){ if(!guard())return;
+      var node=el('<div class="card"><iframe id="cal" src="" class="w-full" style="height:70vh;border:0;border-radius:12px"></iframe></div>');
+      layout(node);
+      google.script.run.withSuccessHandler(function(res){ $('#cal').src=res.url; }).api_calendarEmbedUrl();
+    }
 
     /* ===================== GUESTS ===================== */
     function pageGuests(){ if(!guard())return;
@@ -1111,73 +1136,97 @@ function pageBalance(){
     }
 
     /* ===================== SPORT PAGE ===================== */
-    function pageSport(){ if(!guard())return;
-      if (sportCountdownTimer) { clearInterval(sportCountdownTimer); sportCountdownTimer = null; }
-      var node=el(
-        '<div class="stack">'+
-          '<div class="card stack">'+
-            '<div class="label">Next '+state.sport+' Event</div>'+
-            '<div id="sp_next" class="countdown muted">Looking for upcoming events…</div>'+
-            '<div id="sp_next_sub" class="tiny"></div>'+
-          '</div>'+
-          '<div class="card stack">'+
-            '<div class="label">Upcoming '+state.sport+' Events</div>'+
-            '<div id="sp_list" class="stack"></div>'+
-          '</div>'+
-        '</div>'
-      );
-      layout(node);
+    async function pageSport(){ 
+  if(!guard()) return;
+  if (sportCountdownTimer) { clearInterval(sportCountdownTimer); sportCountdownTimer = null; }
 
-      google.script.run.withSuccessHandler(function(res){
-        var all = (res.events||[]).slice();
-        var nowTs = now();
+  showLoading('Loading '+state.sport+'…');
 
-        var list = all
-          .filter(function(e){ var de = parseDT(e.end_datetime); return de && de > nowTs; })
-          .sort(function(a,b){ return new Date(a.start_datetime||0) - new Date(b.start_datetime||0); });
+  try{
+    // Load events + my status map in parallel
+    const [listRes, statusRes] = await Promise.all([
+      gs('api_listEvents', state.sport),
+      gs('api_myStatusesForSport', state.user.its, state.sport)
+    ]);
 
-        var nextNode = $('#sp_next'); var nextSub  = $('#sp_next_sub');
-        function pickEvent(nowVal){
-          var current = list.find(function(e){ var s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
-          if (current) return current;
-          return list.find(function(e){ var s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
-        }
-        var upcoming = pickEvent(now());
-        function renderSubline(e){ nextSub.innerHTML = fmtDT(e.start_datetime) + '<br/>' + addrHtml(e.address||''); }
-        function update(){
-          var nowVal = now();
-          if (!upcoming){ upcoming = pickEvent(nowVal); if (!upcoming){ nextNode.textContent = 'No upcoming events'; nextSub.textContent=''; return; } }
-          var start = parseDT(upcoming.start_datetime); var diff  = start - nowVal;
-          if (diff <= 0){
-            var since = nowVal - start;
-            if (since <= 30*60*1000){ nextNode.textContent = state.sport+' event has begun'; renderSubline(upcoming); return; }
-            else { upcoming = pickEvent(nowVal); if (!upcoming){ nextNode.textContent='No upcoming events'; nextSub.textContent=''; return; } }
-          }
-          nextNode.textContent = humanCountdown(diff) + ' until ' + ((upcoming.sport? (upcoming.sport+' - '):'') + (upcoming.name||'')); renderSubline(upcoming);
-        }
-        if (!upcoming){ nextNode.textContent = 'No upcoming events'; nextSub.textContent=''; }
-        else { update(); sportCountdownTimer = setInterval(update, 1000); }
+    let list = (listRes && listRes.events) || (listRes || []);
+    const nowTs = now();
+    list = list
+      .filter(e => parseDT(e.end_datetime) && parseDT(e.end_datetime) > nowTs)
+      .sort((a,b)=> new Date(a.start_datetime||0) - new Date(b.start_datetime||0));
 
-        google.script.run.withSuccessHandler(function(st){
-          var statusMap = (st && (st.self_statuses || st.statuses || st.map)) || {};
-          renderSportEventList(list, statusMap);
-        }).api_myStatusesForSport(state.user.its, state.sport);
-      }).api_listEvents(state.sport);
+    // Preload details for capacity/labels/check-in
+    const ids = list.map(e=> e.id).filter(Boolean);
+    const detailPairs = await Promise.all(ids.map(id => 
+      gs('api_eventDetails', id).then(r=>[id,r]).catch(()=>[id,null])
+    ));
+    const detailsById = Object.fromEntries(detailPairs);
+
+    // Now render once (reuse your existing layout/HTML—just read from detailsById + statusRes)
+    // ...
+    // If you want to keep your current render code, you can set a global (or pass into your function):
+    state.tmp = state.tmp || {};
+    state.tmp._sport_details = detailsById;
+    state.tmp._sport_status  = (statusRes && (statusRes.self_statuses || statusRes.statuses || statusRes.map)) || {};
+    
+    // Reuse your existing render block with minimal edits:
+    const node=el(
+      '<div class="stack">'+
+        '<div class="card stack">'+
+          '<div class="label">Next '+state.sport+' Event</div>'+
+          '<div id="sp_next" class="countdown muted">—</div>'+
+          '<div id="sp_next_sub" class="tiny"></div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Upcoming '+state.sport+' Events</div>'+
+          '<div id="sp_list" class="stack"></div>'+
+        '</div>'+
+      '</div>'
+    );
+    layout(node);
+
+    // Countdown (unchanged logic; compute once)
+    function pickEvent(nowVal){
+      const current = list.find(e=>{ const s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
+      if (current) return current;
+      return list.find(e=>{ const s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
     }
-    function renderSportEventList(list, statusMap){
-      var box = $('#sp_list'); var nowTs=now();
-      list = (list||[]).filter(function(e){ var de=parseDT(e.end_datetime); return de && de > nowTs; });
+    let upcoming = pickEvent(now());
+    const nextNode = $('#sp_next'); const nextSub = $('#sp_next_sub');
+    function renderSubline(e){ nextSub.innerHTML = fmtDT(e.start_datetime) + '<br/>' + addrHtml(e.address||''); }
+    function update(){
+      const nowVal = now();
+      if (!upcoming){ upcoming = pickEvent(nowVal); if (!upcoming){ nextNode.textContent='No upcoming events'; nextSub.textContent=''; return; } }
+      const start = parseDT(upcoming.start_datetime); const diff  = start - nowVal;
+      if (diff <= 0){
+        const since = nowVal - start;
+        if (since <= 30*60*1000){ nextNode.textContent = state.sport+' event has begun'; renderSubline(upcoming); return; }
+        else { upcoming = pickEvent(nowVal); if (!upcoming){ nextNode.textContent='No upcoming events'; nextSub.textContent=''; return; } }
+      }
+      nextNode.textContent = humanCountdown(diff) + ' until ' + ((upcoming.sport? (upcoming.sport+' - '):'') + (upcoming.name||'')); renderSubline(upcoming);
+    }
+    if (!upcoming){ nextNode.textContent = 'No upcoming events'; nextSub.textContent=''; }
+    else { update(); sportCountdownTimer = setInterval(update, 1000); }
+
+    // Render event list in one go using preloaded data
+    const statusMap = state.tmp._sport_status;
+    (function renderSportEventListOnce(){
+      const box = $('#sp_list');
       if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
       box.innerHTML = '';
-      list.forEach(function(e){
-        var st = String(statusMap[e.id]||'none').toLowerCase();
-        var regStart = parseDT(e.reg_start); var regEnd = parseDT(e.reg_end); var afterClose = (regEnd && now() > regEnd);
-        var regOpen = (!regStart || now() >= regStart) && (!regEnd || now() <= regEnd);
+      list.forEach(e=>{
+        const d  = detailsById[e.id] || {};
+        const st = String(statusMap[e.id] || 'none').toLowerCase();
+        const regStart = parseDT(e.reg_start);
+        const regEnd   = parseDT(e.reg_end);
+        const afterClose = (regEnd && now() > regEnd);
+        const regOpen   = (!regStart || now() >= regStart) && (!regEnd || now() <= regEnd);
+        const badgeHtml = computeStatusBadge(st);
+        const cap = Number(e.max_capacity||0);
+        const activeCount = (d.live || []).filter(x=> String(x.status||'').toLowerCase()==='active').length;
+        const reached = (cap>0 && activeCount>=cap);
 
-        var badgeHtml = computeStatusBadge(st);
-        var capText = (e.max_capacity && Number(e.max_capacity)>0) ? String(e.max_capacity) : '—';
-
-        var card = el(
+        const card = el(
           '<div class="event-card stack">'+
             '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
               '<div style="font-size:var(--fs-md);font-weight:800">'+(e.sport ? (e.sport+' - ') : '')+(e.name||'Untitled')+'</div>'+
@@ -1186,39 +1235,32 @@ function pageBalance(){
             '<div class="tiny">'+(e.address?addrHtml(e.address):'')+'</div>'+
             '<div class="tiny">Event: '+fmtDT(e.start_datetime)+' – '+fmtDT(e.end_datetime)+'</div>'+
             '<div class="tiny">Registration: '+(e.reg_start?fmtDT(e.reg_start):'—')+' → '+(e.reg_end?fmtDT(e.reg_end):'—')+'</div>'+
-            '<div class="tiny">Approx Fee: '+money(e.approx_fee||0)+' | Capacity: '+capText+'</div>'+
+            '<div class="tiny">Approx Fee: '+money(e.approx_fee||0)+' | Capacity: '+(cap?cap:'—')+'</div>'+
             '<div class="event-actions">'+
-              '<button class="btn" data-act="register" '+((!regOpen || st==='active' || st==='waitlist')?'disabled':'')+'>Register Me</button>'+
+              '<button class="btn" data-act="register" '+((!regOpen || st==='active' || st==='waitlist')?'disabled':'')+'>'+
+                (reached ? 'Register Me on Waitlist' : 'Register Me')+
+              '</button>'+
               '<button class="btn secondary" data-act="deregister" '+(((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'))?'':'disabled')+'>Deregister</button>'+
               '<button class="btn secondary" data-act="dropout" '+((afterClose && st==='active')?'':'disabled')+'>Dropout</button>'+
               '<button class="btn secondary" data-act="view">View</button>'+
             '</div>'+
-            '<div class="tiny" data-role="hint"></div>'+
-            '</div>'
+            '<div class="tiny" data-role="hint">'+(reached ? 'Capacity is full. You will be added to the waitlist.' : '')+'</div>'+
+          '</div>'
         );
         box.appendChild(card);
 
         function q(act){ return card.querySelector('[data-act="'+act+'"]'); }
-        function setHint(msg){ var n=card.querySelector('[data-role="hint"]'); n.textContent=msg||''; }
-
-        function updateCapacityLabels(){
-          google.script.run.withSuccessHandler(function(res){
-            var live = (res && res.live) || [];
-            var activeCount = live.filter(function(r){ return String(r.status||'').toLowerCase()==='active'; }).length;
-            var cap = Number(e.max_capacity||0);
-            var reached = (cap>0 && activeCount>=cap);
-            q('register').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
-            setHint(reached ? 'Capacity is full. You will be added to the waitlist.' : '');
-          }).api_eventDetails(e.id);
-        }
-        updateCapacityLabels();
-
-        q('register').onclick  = function(){ actRegister(e.id,false); };
-        q('deregister').onclick= function(){ actDeregister(e.id); };
-        q('dropout').onclick   = function(){ actDropout(e.id); };
-        q('view').onclick      = function(){ openEvent(e.id); };
+        q('register').onclick  = ()=> actRegister(e.id,false);
+        q('deregister').onclick= ()=> actDeregister(e.id);
+        q('dropout').onclick   = ()=> actDropout(e.id);
+        q('view').onclick      = ()=> openEvent(e.id);
       });
-    }
+    })();
+
+  }catch(e){
+    layout(el('<div class="card" style="color:var(--err)">Failed to load: '+(e && e.message || e)+'</div>'));
+  }
+}
 
     <!-- ===================== EVENT DETAIL ===================== -->
 
@@ -1248,203 +1290,230 @@ function ensureAdminSports(cb){
 
   
 <script>
-function openEvent(id){ if(!guard())return;
-  google.script.run.withSuccessHandler(function(res){
-    var evt=res.event; var live=res.live||[];
+async function openEvent(id){
+  if(!guard()) return;
 
-    google.script.run.withSuccessHandler(function(st){
-      var map = (st && (st.map || st.statuses || st.billing_statuses)) || {};
-      var myStatus = String(map[evt.id] || 'none').toLowerCase();
+  // One clean loading view (uses showLoading from my previous message)
+  if (typeof showLoading === 'function') showLoading('Loading event…');
 
-      var nowTs = now();
-      var regStart = parseDT(evt.reg_start);
-      var regEnd   = parseDT(evt.reg_end);
-      var regOpen    = (!regStart || nowTs >= regStart) && (!regEnd || nowTs <= regEnd);
-      var afterClose = (regEnd && nowTs > regEnd);
+  try{
+    // 1) Load everything we need up front (in parallel)
+    const [details, statuses, guestsRes, adminBoot] = await Promise.all([
+      gs('api_eventDetails', id),
+      gs('api_myStatusesForEvents', state.user.its, [id]),
+      gs('api_listGuests', state.user.its),
+      gs('api_admin_bootstrap', state.user.its)
+    ]);
 
-      var myBadge = computeStatusBadge(myStatus);
-      var capText = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
+    // 2) Normalize data
+    const evt   = details && details.event || {};
+    const live  = details && details.live  || [];
+    const map   = (statuses && (statuses.map || statuses.statuses || statuses.billing_statuses)) || {};
+    const myStatus = String(map[evt.id] || 'none').toLowerCase();
 
-      function computeCheckinPill(r){
-        try{
-          var start = parseDT(evt.start_datetime);
-          if(!start) return '';
-          var windowClose = new Date(start.getTime() + 30*60*1000);
-          var ci = r && r.checked_in_at ? parseDT(r.checked_in_at) : null;
-          if (ci){ return (ci <= start) ? "<span class='badge ok'>On Time</span>" : "<span class='badge warn'>Late</span>"; }
-          else if (now() > windowClose){ return "<span class='badge' style='background:rgba(239,68,68,.15);color:#fecaca;border:1px solid rgba(239,68,68,.35)'>No Show</span>"; }
-          return '';
-        }catch(e){ return ''; }
-      }
-
-      var addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
-
-      var node=el(
-        "<div class='stack'>"+
-          "<div class='card stack'>"+
-            "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
-              "<div style='font-size:var(--fs-lg);font-weight:800'>"+(evt.sport? (evt.sport+' - '):'')+evt.name+"</div>"+
-              "<div>"+myBadge+"</div>"+
-            "</div>"+
-            "<div class='tiny'>"+addrSafe+"</div>"+
-            "<div class='tiny'>"+fmtDT(evt.start_datetime)+" – "+fmtDT(evt.end_datetime)+"</div>"+
-            "<div class='tiny'>Registration: "+(evt.reg_start?fmtDT(evt.reg_start):'—')+" → "+(evt.reg_end?fmtDT(evt.reg_end):'—')+"</div>"+
-            "<div class='tiny'>Approx Fee: "+money(evt.approx_fee||0)+" | Capacity: "+capText+"</div>"+
-          "</div>"+
-
-          "<div class='card stack'>"+
-            "<div class='label'>Your Registration</div>"+
-            "<div class='event-actions'>"+
-              "<button class='btn' id='reg_me'>Register Me</button>"+
-              "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
-              "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
-            "</div>"+
-          "</div>"+
-
-          "<div class='card stack'>"+
-            "<div class='label'>Manage your guests for this event</div>"+
-            "<select id='gx_sel' class='input'><option value=''>Select a guest…</option></select>"+
-            "<div style='display:flex;gap:8px;flex-wrap:wrap'>"+
-              "<button class='btn' id='reg_guest'>Register Guest</button>"+
-            "</div>"+
-            "<div class='tiny' id='gx_hint'></div>"+
-            "<div id='my_guest_list' class='stack' style='margin-top:6px'></div>"+
-          "</div>"+
-
-          "<div class='card stack'>"+
-            "<div class='label'>Live Roster List</div>"+
-            "<div id='live_list'></div>"+
-            "<div class='tiny' id='cap_hint'></div>"+
-          "</div>"+
-        "</div>"
-      );
-      layout(node);
-
-      // Live roster — per-row Remove (admins only; "Captain" NOT allowed)
-(function renderLive(){
-  ensureAdminSports(function(){
-    var listEl = $('#live_list');
-    if (!listEl) return; // safety
-
-    var admin = isAdminForSport(evt.sport); // strict admin check
-
-    var html = live.map(function(r, i){
-      var num = i + 1; // 1-based numbering
-      var st = String(r.status||'').toLowerCase();
-      var statusBadge  = computeStatusBadge(st);
-      var checkinBadge = computeCheckinPill(r);
-      var canRemove = admin && (st==='active' || st==='waitlist');
-      var removeBtn = canRemove
-        ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
-        : "";
-      return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
-               num+". "+r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
-             "</div>";
-    }).join('');
-
-    listEl.innerHTML = html || "<div class='muted'>No registrations yet</div>";
-
-    if (admin){
-      listEl.querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
-        b.addEventListener('click', function(){
-          var person = b.getAttribute('data-person');
-          if (!confirm('Remove this registration and promote the next from waitlist?')) return;
-          google.script.run.withSuccessHandler(function(r){
-            if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
-            openEvent(id); // refresh
-          }).api_admin_cancelRegistration(state.user.its, id, person);
-        });
-      });
+    // Ensure adminSports is available for isAdminForSport()
+    if (adminBoot && Array.isArray(adminBoot.adminSports)) {
+      state.adminSports = adminBoot.adminSports;
+      state.admin = Object.assign({}, state.admin || {}, { adminSports: adminBoot.adminSports });
     }
-  });
-})();
 
+    const nowTs    = now();
+    const regStart = parseDT(evt.reg_start);
+    const regEnd   = parseDT(evt.reg_end);
+    const regOpen    = (!regStart || nowTs >= regStart) && (!regEnd || nowTs <= regEnd);
+    const afterClose = (regEnd && nowTs > regEnd);
+    const capText  = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
+    const addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
 
-      google.script.run.withSuccessHandler(function(g){
-        var sel = $('#gx_sel'); var hint= $('#gx_hint');
-        var guests = (g && g.guests) || [];
-        guests.forEach(function(gu){
-          var opt = document.createElement('option');
-          opt.value = gu.guest_its;
-          opt.textContent = gu.first_name+' '+gu.last_name+' — ITS '+gu.guest_its;
-          sel.appendChild(opt);
-        });
-        if(!guests.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
-        if(!regOpen || !guests.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
+    // Helper (same logic you had before, but using preloaded evt)
+    function computeCheckinPill(r){
+      try{
+        const start = parseDT(evt.start_datetime);
+        if(!start) return '';
+        const windowClose = new Date(start.getTime() + 30*60*1000);
+        const ci = r && r.checked_in_at ? parseDT(r.checked_in_at) : null;
+        if (ci){ return (ci <= start) ? "<span class='badge ok'>On Time</span>" : "<span class='badge warn'>Late</span>"; }
+        else if (now() > windowClose){ return "<span class='badge' style='background:rgba(239,68,68,.15);color:#fecaca;border:1px solid rgba(239,68,68,.35)'>No Show</span>"; }
+        return '';
+      }catch(e){ return ''; }
+    }
 
-        var mine = live.filter(function(r){ return r.is_guest && String(r.owner_its)===String(state.user.its); });
-        var gl = $('#my_guest_list');
-        if (!mine.length){ gl.innerHTML = "<div class='muted tiny'>No guests of yours are on this event yet.</div>"; }
-        else {
-          gl.innerHTML = mine.map(function(r){
-            var st = String(r.status||'').toLowerCase();
-            var statusBadge = (st==='active') ? " <span class='badge ok'>Active</span>" :
+    // 3) Render the full page once (same structure you had)
+    const myBadge = computeStatusBadge(myStatus);
+    const node = el(
+      "<div class='stack'>"+
+        "<div class='card stack'>"+
+          "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
+            "<div style='font-size:var(--fs-lg);font-weight:800'>"+(evt.sport? (evt.sport+' - '):'')+evt.name+"</div>"+
+            "<div>"+myBadge+"</div>"+
+          "</div>"+
+          "<div class='tiny'>"+addrSafe+"</div>"+
+          "<div class='tiny'>"+fmtDT(evt.start_datetime)+" – "+fmtDT(evt.end_datetime)+"</div>"+
+          "<div class='tiny'>Registration: "+(evt.reg_start?fmtDT(evt.reg_start):'—')+" → "+(evt.reg_end?fmtDT(evt.reg_end):'—')+"</div>"+
+          "<div class='tiny'>Approx Fee: "+money(evt.approx_fee||0)+" | Capacity: "+capText+"</div>"+
+        "</div>"+
+
+        "<div class='card stack'>"+
+          "<div class='label'>Your Registration</div>"+
+          "<div class='event-actions'>"+
+            "<button class='btn' id='reg_me'>Register Me</button>"+
+            "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
+            "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
+          "</div>"+
+        "</div>"+
+
+        "<div class='card stack'>"+
+          "<div class='label'>Manage your guests for this event</div>"+
+          "<select id='gx_sel' class='input'><option value=''>Select a guest…</option></select>"+
+          "<div style='display:flex;gap:8px;flex-wrap:wrap'>"+
+            "<button class='btn' id='reg_guest'>Register Guest</button>"+
+          "</div>"+
+          "<div class='tiny' id='gx_hint'></div>"+
+          "<div id='my_guest_list' class='stack' style='margin-top:6px'></div>"+
+        "</div>"+
+
+        "<div class='card stack'>"+
+          "<div class='label'>Live Roster List</div>"+
+          "<div id='live_list'></div>"+
+          "<div class='tiny' id='cap_hint'></div>"+
+        "</div>"+
+      "</div>"
+    );
+    layout(node);
+
+    // 4) Wire "Your Registration" buttons based on current status (no extra fetch)
+    (function applySelfButtons(){
+      const canRegister   = regOpen && (myStatus==='none' || myStatus==='dropout');
+      const canDeregister = ((regOpen && (myStatus==='active' || myStatus==='waitlist')) || (!regOpen && myStatus==='waitlist'));
+      const canDropout    = afterClose && myStatus==='active';
+      $('#reg_me').disabled     = !canRegister;
+      $('#dereg_me').disabled   = !canDeregister;
+      $('#dropout_me').disabled = !canDropout;
+
+      $('#reg_me').onclick     = ()=> actRegister(evt.id,false);
+      $('#dereg_me').onclick   = ()=> actDeregister(evt.id);
+      $('#dropout_me').onclick = ()=> actDropout(evt.id);
+    })();
+
+    // 5) Guests (use preloaded list; no fetch on render)
+    (function renderGuests(){
+      const guests = (guestsRes && guestsRes.guests) || [];
+      const sel  = $('#gx_sel'); 
+      const hint = $('#gx_hint');
+      guests.forEach(gu=>{
+        const opt = document.createElement('option');
+        opt.value = gu.guest_its;
+        opt.textContent = gu.first_name+' '+gu.last_name+' — ITS '+gu.guest_its;
+        sel.appendChild(opt);
+      });
+      if(!guests.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
+      if(!regOpen || !guests.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
+
+      // Show my guests for this event
+      const mine = live.filter(r => r.is_guest && String(r.owner_its)===String(state.user.its));
+      const gl = $('#my_guest_list');
+      if (!mine.length){
+        gl.innerHTML = "<div class='muted tiny'>No guests of yours are on this event yet.</div>";
+      } else {
+        gl.innerHTML = mine.map(r=>{
+          const st = String(r.status||'').toLowerCase();
+          const statusBadge = (st==='active') ? " <span class='badge ok'>Active</span>" :
                               (st==='waitlist') ? " <span class='badge warn'>Waitlist</span>" :
                               (st==='dropout') ? " <span class='badge warn'>Dropped Out</span>" : "";
-            var checkinBadge = computeCheckinPill(r);
-            var canDereg = ((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'));
-            var canDrop  = (afterClose && st==='active');
-            return ""+
-            "<div class='event-card' style='padding:8px;margin-top:6px'>"+
-              "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
-                "<div><b>"+r.name+"</b> "+statusBadge+" "+checkinBadge+"</div>"+
-                "<div class='event-actions'>"+
-                  "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-dereg' "+(canDereg?'':'disabled')+">Deregister</button>"+
-                  "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-drop' "+(canDrop?'':'disabled')+">Dropout</button>"+
-                "</div>"+
+          const checkinBadge = computeCheckinPill(r);
+          const canDereg = ((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'));
+          const canDrop  = (afterClose && st==='active');
+          return ""+
+          "<div class='event-card' style='padding:8px;margin-top:6px'>"+
+            "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
+              "<div><b>"+r.name+"</b> "+statusBadge+" "+checkinBadge+"</div>"+
+              "<div class='event-actions'>"+
+                "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-dereg' "+(canDereg?'':'disabled')+">Deregister</button>"+
+                "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-drop' "+(canDrop?'':'disabled')+">Dropout</button>"+
               "</div>"+
-            "</div>";
-          }).join('');
-          gl.querySelectorAll('[data-act="g-dereg"]').forEach(function(b){
-            b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
-              google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to deregister guest'); openEvent(evt.id); })
-                .api_deregister(state.user.its, evt.id, guestIts);
-          });});
-          gl.querySelectorAll('[data-act="g-drop"]').forEach(function(b){
-            b.addEventListener('click', function(){ var guestIts=b.getAttribute('data-gi');
-              google.script.run.withSuccessHandler(function(r){ if(!r || !r.ok) alert((r && r.error) || 'Failed to drop out guest'); openEvent(evt.id); })
-                .api_dropout(state.user.its, evt.id, guestIts);
-          });});
-        }
-      }).api_listGuests(state.user.its);
+            "</div>"+
+          "</div>";
+        }).join('');
 
-      (function applySelfButtons(){
-        var canRegister = regOpen && (myStatus==='none' || myStatus==='dropout');
-        var canDeregister = ((regOpen && (myStatus==='active' || myStatus==='waitlist')) || (!regOpen && myStatus==='waitlist'));
-        var canDropout = afterClose && myStatus==='active';
-        $('#reg_me').disabled = !canRegister;
-        $('#dereg_me').disabled = !canDeregister;
-        $('#dropout_me').disabled = !canDropout;
-      })();
+        gl.querySelectorAll('[data-act="g-dereg"]').forEach(b=>{
+          b.addEventListener('click', function(){ 
+            const guestIts=b.getAttribute('data-gi');
+            google.script.run.withSuccessHandler(function(r){ 
+              if(!r || !r.ok) alert((r && r.error) || 'Failed to deregister guest'); 
+              openEvent(evt.id); 
+            }).api_deregister(state.user.its, evt.id, guestIts);
+          });
+        });
+        gl.querySelectorAll('[data-act="g-drop"]').forEach(b=>{
+          b.addEventListener('click', function(){ 
+            const guestIts=b.getAttribute('data-gi');
+            google.script.run.withSuccessHandler(function(r){ 
+              if(!r || !r.ok) alert((r && r.error) || 'Failed to drop out guest'); 
+              openEvent(evt.id); 
+            }).api_dropout(state.user.its, evt.id, guestIts);
+          });
+        });
+      }
 
-      (function updateCapacityLabelsDetail(){
-        var cap = Number(evt.max_capacity||0);
-        google.script.run.withSuccessHandler(function(r){
-          var live2 = (r && r.live) || [];
-          var activeCount = live2.filter(function(x){ return String(x.status||'').toLowerCase()==='active'; }).length;
-          var reached = (cap>0 && activeCount>=cap);
-          $('#reg_me').textContent = reached ? 'Register Me on Waitlist' : 'Register Me';
-          var rg = $('#reg_guest'); if (rg) rg.textContent = reached ? 'Register Guest on Waitlist' : 'Register Guest';
-          $('#cap_hint').textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
-        }).api_eventDetails(id);
-      })();
-
-      $('#reg_me').onclick     = function(){ actRegister(evt.id,false); };
-      $('#dereg_me').onclick   = function(){ actDeregister(evt.id); };
-      $('#dropout_me').onclick = function(){ actDropout(evt.id); };
-
+      // Register guest button
       $('#reg_guest').onclick  = function(){
-        var v=($('#gx_sel').value||'').trim();
+        const v = (sel && sel.value || '').trim();
         if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
         google.script.run.withSuccessHandler(function(resp){
           if(!resp||!resp.ok){ alert((resp&&resp.error)||'Failed'); return; }
+          // Create a pending hold on the OWNER (me) for THIS guest registration
+          google.script.run.api_billing_createPendingHold(state.user.its, id, v);
           openEvent(id);
         }).api_register(state.user.its, id, v, true);
       };
-    }).api_myStatusesForEvents(state.user.its, [id]);
-  }).api_eventDetails(id);
-}
+    })();
 
+    // 6) Live roster — per-row Remove (admins only; "Captain" NOT allowed)
+    (function renderLive(){
+      const listEl = $('#live_list');
+      const admin  = isAdminForSport(evt.sport); // strict admin check
+
+      const html = live.map(function(r, i){
+        const num = i + 1;
+        const st = String(r.status||'').toLowerCase();
+        const statusBadge  = computeStatusBadge(st);
+        const checkinBadge = computeCheckinPill(r);
+        const canRemove = admin && (st==='active' || st==='waitlist');
+        const removeBtn = canRemove
+          ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
+          : "";
+        return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
+                 num+". "+r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
+               "</div>";
+      }).join('');
+
+      listEl.innerHTML = html || "<div class='muted'>No registrations yet</div>";
+
+      if (admin){
+        listEl.querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
+          b.addEventListener('click', function(){
+            const person = b.getAttribute('data-person');
+            if (!confirm('Remove this registration and promote the next from waitlist?')) return;
+            google.script.run.withSuccessHandler(function(r){
+              if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
+              openEvent(id); // refresh
+            }).api_admin_cancelRegistration(state.user.its, id, person);
+          });
+        });
+      }
+
+      // Capacity hint (computed locally from preloaded live)
+      const cap = Number(evt.max_capacity||0);
+      const activeCount = live.filter(x=> String(x.status||'').toLowerCase()==='active').length;
+      const reached = (cap>0 && activeCount>=cap);
+      const capHint = $('#cap_hint');
+      if (capHint) capHint.textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
+    })();
+
+  } catch(e){
+    layout(el('<div class="card" style="color:var(--err)">Failed to load event: '+(e && e.message || e)+'</div>'));
+  }
+}
     /* ===================== CREATE / EDIT PROFILE ===================== */
     function pageCreateOrEdit(edit){
       var u=edit?(state.user||{}):{};
