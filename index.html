@@ -199,6 +199,7 @@
     .event-card{ padding:12px; border:1px solid var(--border); border-radius:12px; background:#0e1626 }
     .event-actions{ display:flex; gap:8px; flex-wrap:wrap }
     .countdown{ font-size:var(--fs-lg); font-weight:800 }
+    .countdown { font-variant-numeric: tabular-nums; }
     .amt-credit{ color:#16a34a; font-weight:700 }
     .amt-debit{ color:#ef4444; font-weight:700 }
 
@@ -217,6 +218,73 @@
     #btnNavCollapse{
       display: none !important;
     }
+
+    /* ===== Mobile sizing & spacing (phones / small tablets) ===== */
+@media (max-width: 600px){
+  :root{
+    /* Tighter spacing + corners */
+    --pad: 10px;
+    --gap: 10px;
+    --radius: 12px;
+    --topbar-h: 64px;
+
+    /* Smaller, sane fluid type scale for small screens */
+    --fs-xxxs: clamp(16px, 3.8vw, 18px);
+    --fs-xxs:  clamp(16px, 4.1vw, 19px);
+    --fs-xs:   clamp(17px, 4.4vw, 20px);
+    --fs-sm:   clamp(18px, 4.8vw, 21px);
+    --fs-md:   clamp(18px, 5.2vw, 22px);
+    --fs-lg:   clamp(19px, 5.8vw, 24px);
+    --fs-xl:   clamp(20px, 6.4vw, 26px);
+  }
+
+  /* Layout + cards */
+  .content{ padding: var(--pad); }
+  .container{ padding: var(--pad); }
+  .card{ padding: calc(var(--pad) + 2px); }
+
+  /* Brand / logos shrink a bit */
+  .brand{ font-size: var(--fs-sm); }
+  .brand .logo{ width:24px; height:24px; }
+  #sidebar .logo{ width:96px; height:96px; }
+
+  /* Buttons + inputs remain finger-friendly but not bulky */
+  .btn{ padding:10px 12px; border-radius:10px; font-size: var(--fs-xxs); }
+  .btn.sm{ padding:6px 10px; }
+  .input, select,
+  input[type="date"], input[type="datetime-local"], input[type="number"], input[type="file"]{
+    padding:10px 12px; font-size: var(--fs-xxs);
+  }
+
+  /* Countdown stays bold but not gigantic */
+  .countdown{ font-size: clamp(18px, 6vw, 22px); }
+
+  /* Labels/text helpers */
+  .label{ font-size: var(--fs-xxs); }
+  .tiny{ font-size: var(--fs-xxxs); }
+
+  /* Action clusters and grid spacing */
+  .event-actions{ gap:6px; }
+  .row{ gap:8px; }
+  .col{ min-width:240px; }
+
+  /* Tables: make them usable on narrow screens without markup changes */
+  .table{
+    display:block;               /* allow horizontal scrolling */
+    overflow-x:auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;         /* prevent ugly wraps on numbers */
+    font-size: var(--fs-xxxs);
+  }
+  .table th, .table td{ padding:8px; }
+}
+
+/* Extra-small phones (optional fine-tune) */
+@media (max-width: 360px){
+  .btn{ padding:9px 10px; }
+  .countdown{ font-size: clamp(17px, 6.6vw, 21px); }
+}
+
   </style>
 
 <script>
@@ -338,13 +406,16 @@
     function guard(){ if(!state.user){ setPage('landing'); return false; } return true; }
     function showErr(sel, err){ var node=$(sel); if (node) node.textContent = (err && (err.message || err)) || 'Unexpected error'; }
     function humanCountdown(ms){
-      var s = Math.max(0, Math.floor(ms/1000));
-      var d = Math.floor(s/86400);
-      var h = Math.floor((s%86400)/3600);
-      var m = Math.floor((s%3600)/60);
-      var ss = s%60;
-      var parts=[]; if (d) parts.push(d+'d'); if (h || d) parts.push(h+'h'); if (m || d || h) parts.push(m+'m'); parts.push(ss+'s');
-      return parts.join(' ');
+    var total = Math.max(0, Math.floor(ms / 1000));
+    var d = Math.floor(total / 86400);
+    var h = Math.floor((total % 86400) / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+
+    function pad2(n){ return String(n).padStart(2, '0'); }
+
+    // If there are days, show "Xd HH:MM:SS"; otherwise "HH:MM:SS"
+    return (d > 0 ? (d + 'd ') : '') + pad2(h) + ':' + pad2(m) + ':' + pad2(s);
     }
     function addrHtml(addr){
       return addr
