@@ -37,7 +37,18 @@
       background:var(--bg); color:var(--text);
       font-size:var(--fs-md); line-height:1.35;
     }
-
+    /* Loading illustration (Home only) */
+    .loading-illustration{
+      display:block;
+      width:100%;
+      max-width:520px;
+      margin:12px auto 0;
+      border-radius:12px;
+      border:1px solid var(--border);
+      box-shadow: var(--elev);
+      height:auto;
+      object-fit:cover;
+    }
     /* ===== App layout ===== */
     .app{ display:flex; min-height:100dvh; width:100%; position:relative; }
     .sidebar{
@@ -285,6 +296,13 @@
   .countdown{ font-size: clamp(17px, 6.6vw, 21px); }
 }
 
+/* Block clicks while an action is in progress */
+.btn[aria-busy="true"]{
+  opacity:.6;
+  pointer-events:none;
+  cursor:not-allowed;
+}
+
   </style>
 
 <script>
@@ -339,6 +357,8 @@
   google.script.run = runner('/gas');
 })();
 </script>
+
+<link rel="preload" as="image" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEipkSiLA8T6LZrbDw590cJw_ooRuoCnb0pPKdeD_3yJVc3EsrgAmCQnxnmv2A76dWQGyhvQiZsWi7jmXTcFnqRptoZwlfcrmn9QUqDFHh23nkmkL7haUiweej-qetfQeliR3x_kqY29GkeKGOlsF8ZIK_vmY44-JEheGeM-9YP1JjDWOxSu89nu1M15gyHp/s2380/AQMS%20Bayan.jpg">
   
 </head>
 <body>
@@ -463,6 +483,61 @@ function showLoading(text){
   ));
 }
 
+// Global in-memory action locks
+state._locks = state._locks || {};
+
+// Mark a button busy (and remember its original label)
+function markBusy(btn, text){
+  if (!btn) return;
+  btn.dataset.origLabel = btn.textContent;
+  btn.textContent = text || 'Working…';
+  btn.setAttribute('aria-busy','true');
+  btn.disabled = true;
+}
+
+// Clear "busy" state
+function clearBusy(btn){
+  if (!btn) return;
+  btn.textContent = btn.dataset.origLabel || btn.textContent;
+  btn.removeAttribute('aria-busy');
+  btn.disabled = false;
+  delete btn.dataset.origLabel;
+}
+
+// Simple per-action lock guard
+function withActionLock(key, btn, workingText, fn){
+  if (state._locks[key]) return;            // already running
+  state._locks[key] = true;
+  markBusy(btn, workingText);
+  Promise.resolve()
+    .then(fn)
+    .catch(e => alert(e && e.message ? e.message : 'Action failed'))
+    .finally(() => { clearBusy(btn); delete state._locks[key]; });
+}
+
+// Optional: generate a client request id for backend idempotency
+function makeReqId(){
+  // high-quality if available
+  if (window.crypto && crypto.getRandomValues){
+    const a = new Uint32Array(4); crypto.getRandomValues(a);
+    return Date.now() + '-' + Array.from(a).map(x=>x.toString(16)).join('');
+  }
+  return Date.now() + '-' + Math.random().toString(36).slice(2);
+}
+
+// Home-only loading view with image
+    function showHomeLoading(){
+      layout(el(
+        '<div class="card stack" style="align-items:center; text-align:center">' +
+          '<div class="tiny muted" style="font-size:var(--fs-sm)">Loading your dashboard…</div>' +
+          '<img class="loading-illustration" ' +
+              'src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEipkSiLA8T6LZrbDw590cJw_ooRuoCnb0pPKdeD_3yJVc3EsrgAmCQnxnmv2A76dWQGyhvQiZsWi7jmXTcFnqRptoZwlfcrmn9QUqDFHh23nkmkL7haUiweej-qetfQeliR3x_kqY29GkeKGOlsF8ZIK_vmY44-JEheGeM-9YP1JjDWOxSu89nu1M15gyHp/s2380/AQMS%20Bayan.jpg" ' +
+              'alt="Loading illustration" decoding="async" fetchpriority="high" ' +
+              'onerror="this.style.display=\'none\'" />' +
+        '</div>'
+      ));
+    }
+
     /* ===================== SERVER CALL WRAPPER ===================== */
     function callServer(primary, args, ok, err, fallback){
       try{
@@ -558,7 +633,7 @@ function showLoading(text){
         if (capSports.length){
           nav.appendChild(el('<div class="nav-sep"></div>'));
           capSports.forEach(function(sp){
-            navItem(sp+' Captain', 'captain_'+sp);
+            navItem(sp+' Autodraft', 'captain_'+sp);
           });
         }
       }
@@ -741,7 +816,7 @@ async function pageHome(){
   if(!guard()) return;
 
   // 1) One loading state
-  showLoading('Loading your dashboard…');
+showHomeLoading();
 
   try{
     // 2) Parallel core calls
@@ -1526,17 +1601,20 @@ async function openEvent(id){
         });
       }
 
-      // Register guest button
-      $('#reg_guest').onclick  = function(){
-        const v = (sel && sel.value || '').trim();
-        if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
-        google.script.run.withSuccessHandler(function(resp){
-          if(!resp||!resp.ok){ alert((resp&&resp.error)||'Failed'); return; }
-          // Create a pending hold on the OWNER (me) for THIS guest registration
-          google.script.run.api_billing_createPendingHold(state.user.its, id, v);
-          openEvent(id);
-        }).api_register(state.user.its, id, v, true);
-      };
+      $('#reg_guest').onclick = function(){
+  const sel = document.querySelector('#gx_sel');
+  const v = (sel && sel.value || '').trim();
+  if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
+
+  const key = 'reg-guest:'+id+':'+v;
+  withActionLock(key, this, 'Registering guest…', async ()=>{
+    const resp = await gs('api_register', state.user.its, id, v, true);
+    if(!resp || !resp.ok) throw new Error((resp && resp.error) || 'Failed');
+    await gs('api_billing_createPendingHold', state.user.its, id, v);
+    openEvent(id);
+  });
+};
+
     })();
 
     // 6) Live roster — per-row Remove (admins only; "Captain" NOT allowed)
@@ -1702,30 +1780,58 @@ async function openEvent(id){
       } else finish(null);
     }
 
-    /* ===================== REGISTRATION ACTIONS ===================== */
-    function actRegister(eventId,isGuest){
-  if (isGuest){
-    const sel = document.querySelector('#gx_sel');
-    const target = sel ? (sel.value||'').trim() : '';
-    if(!/^\d{8}$/.test(target)) { alert('Please select a guest.'); return; }
+   /* ===================== REGISTRATION ACTIONS ===================== */
+function actRegister(eventId, isGuest){
+  // If this was triggered by a button click, grab it so we can show "Working…"
+  const btn = document.activeElement && document.activeElement.classList.contains('btn')
+    ? document.activeElement : null;
 
-    google.script.run.withSuccessHandler(function(res){
-      if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
-      // Create a pending hold on the OWNER (me) for THIS guest registration
-      google.script.run.api_billing_createPendingHold(state.user.its, eventId, target);
-      if (state.page==='sport') pageSport(); else openEvent(eventId);
-    }).api_register(state.user.its, eventId, target, true);
-    return;
-  }
+  // Determine who we're registering (self vs selected guest)
+  const target = isGuest
+    ? (document.querySelector('#gx_sel')?.value || '').trim()
+    : state.user.its;
 
-  // Self registration
-  google.script.run.withSuccessHandler(function(res){
-    if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
-    // Pending hold for me
-    google.script.run.api_billing_createPendingHold(state.user.its, eventId, state.user.its);
+  if (isGuest && !/^\d{8}$/.test(target)) { alert('Please select a guest.'); return; }
+
+  const key = (isGuest ? 'reg-guest:' : 'reg-self:') + eventId + ':' + target;
+
+  withActionLock(key, btn, isGuest ? 'Registering guest…' : 'Registering…', async ()=>{
+    const res = await gs('api_register', state.user.its, eventId, target, !!isGuest);
+    if (!res || !res.ok) throw new Error((res && res.error) || 'Register failed');
+
+    // Best kept server-side atomically, but if it's here, do it right after success:
+    await gs('api_billing_createPendingHold', state.user.its, eventId, target);
+
+    // Refresh UI
     if (state.page==='sport') pageSport(); else openEvent(eventId);
-  }).api_register(state.user.its, eventId, state.user.its, false);
+  });
 }
+
+// Add or overwrite these if they exist:
+function actDeregister(eventId){
+  const btn = document.activeElement && document.activeElement.classList.contains('btn')
+    ? document.activeElement : null;
+  const key = 'deregister:'+eventId+':'+state.user.its;
+
+  withActionLock(key, btn, 'Deregistering…', async ()=>{
+    const res = await gs('api_deregister', state.user.its, eventId, state.user.its);
+    if (!res || !res.ok) throw new Error((res && res.error) || 'Deregister failed');
+    if (state.page==='sport') pageSport(); else openEvent(eventId);
+  });
+}
+
+function actDropout(eventId){
+  const btn = document.activeElement && document.activeElement.classList.contains('btn')
+    ? document.activeElement : null;
+  const key = 'dropout:'+eventId+':'+state.user.its;
+
+  withActionLock(key, btn, 'Dropping out…', async ()=>{
+    const res = await gs('api_dropout', state.user.its, eventId, state.user.its);
+    if (!res || !res.ok) throw new Error((res && res.error) || 'Dropout failed');
+    if (state.page==='sport') pageSport(); else openEvent(eventId);
+  });
+}
+
 
     /* ===================== ADMIN: EVENTS ===================== */
     function pageAdminEvents(){ if(!guard())return;
