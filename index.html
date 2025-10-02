@@ -116,7 +116,7 @@
 }
 
 
-    @media (max-width: 1433px){
+    @media (max-width: 1200px){
       .sidebar{
         position: fixed;
         left: 0;
@@ -229,6 +229,10 @@
     #btnNavCollapse{
       display: none !important;
     }
+    /* Hide the topbar hamburger when we're above the mobile breakpoint */
+    @media (min-width: 1201px){
+      .topbar .hamburger { display: none !important; }
+    }
 
     /* ===== Mobile sizing & spacing (phones / small tablets) ===== */
 @media (max-width: 600px){
@@ -294,13 +298,6 @@
 @media (max-width: 360px){
   .btn{ padding:9px 10px; }
   .countdown{ font-size: clamp(17px, 6.6vw, 21px); }
-}
-
-/* Block clicks while an action is in progress */
-.btn[aria-busy="true"]{
-  opacity:.6;
-  pointer-events:none;
-  cursor:not-allowed;
 }
 
   </style>
@@ -391,6 +388,99 @@
   </div>
 
   <script>
+
+// ===== Simple deep-link router (hash-based) =====
+var router = {
+  normalize(page, opts){
+    switch(page){
+      case 'home':            return '#/home';
+      case 'profile':         return '#/profile';
+      case 'balance':         return '#/balance';
+      case 'calendar':        return '#/calendar';
+      case 'guests':          return '#/guests';
+      case 'sport':           return '#/sport/' + encodeURIComponent((opts && opts.sport) || state.sport || 'Soccer');
+      case 'admin_events':    return '#/admin/events';
+      case 'admin_receipts':  return '#/admin/receipts';
+      case 'captain':         return '#/captain/' + encodeURIComponent((opts && opts.sport) || '');
+      case 'event':           return '#/event/' + encodeURIComponent((opts && opts.id) || '');
+      case 'create':          return '#/create';
+      case 'edit':            return '#/edit';
+      case 'landing':
+      default:                return '#/landing';
+    }
+  },
+  parse(){
+    const raw = (location.hash || '').replace(/^#\/?/,'');
+    if (!raw) return { page: '' };
+    const parts = raw.split('/');
+    const seg = (parts[0]||'').toLowerCase();
+
+    if (['home','profile','balance','calendar','guests','landing','create','edit'].includes(seg))
+      return { page: seg };
+
+    if (seg === 'sport')   return { page:'sport',   sport: decodeURIComponent(parts[1]||'Soccer') };
+    if (seg === 'captain') return { page:'captain', sport: decodeURIComponent(parts[1]||'') };
+    if (seg === 'admin' && parts[1]==='events')    return { page:'admin_events' };
+    if (seg === 'admin' && parts[1]==='receipts')  return { page:'admin_receipts' };
+    if (seg === 'event')   return { page:'event',   id: decodeURIComponent(parts[1]||'') };
+
+    return { page:'landing' };
+  },
+  navigate(page, opts){
+    const target = router.normalize(page, opts);
+    if (location.hash !== target) {
+      location.hash = target;     // triggers hashchange -> router.sync()
+    } else {
+      router.sync();              // allow "navigate to same route" to re-render
+    }
+  },
+  syncing: false,
+  sync(){
+    if (router.syncing) return;
+    router.syncing = true;
+    try {
+      // Default route when no hash yet
+      if (!location.hash || location.hash === '#') {
+        router.navigate(state.user ? 'home' : 'landing');
+        return;
+      }
+
+      const route = router.parse();
+
+      // Gate protected pages if signed out
+      const publicPages = new Set(['landing','create','edit','']);
+      if (!state.user && !publicPages.has(route.page)) {
+        state.tmp = state.tmp || {};
+        state.tmp.returnTo = location.hash; // remember where they wanted to go
+        setPage('landing', {updateHash:false});
+        return;
+      }
+
+      // Route → page
+      if (route.page === 'sport'){
+        state.sport = route.sport || state.sport || 'Soccer';
+        setPage('sport', {updateHash:false});
+        return;
+      }
+      if (route.page === 'captain'){
+        setPage('captain_' + (route.sport||''), {updateHash:false});
+        return;
+      }
+      if (route.page === 'event'){
+        openEvent(route.id); // render event detail directly
+        return;
+      }
+
+      // Simple pages
+      setPage(route.page || 'landing', {updateHash:false});
+    } finally {
+      router.syncing = false;
+    }
+  }
+};
+
+window.addEventListener('hashchange', router.sync);
+
     /* ===================== GLOBAL STATE ===================== */
     var state = {
       boot:null, user:null, page:'landing', sport:'Soccer', error:'', tmp:{},
@@ -402,21 +492,45 @@
 
     /* ===================== BOOT ===================== */
     google.script.run.withSuccessHandler(function(res){
-      state.boot = res || {};
-      if (state.boot && state.boot.logoUrl) {
-        document.getElementById('logo').src = state.boot.logoUrl;
-        document.getElementById('logoTop').src = state.boot.logoUrl;
-      }
-      restoreSession();
-      render();
-    }).api_bootstrap();
+  state.boot = res || {};
+  if (state.boot && state.boot.logoUrl) {
+    document.getElementById('logo').src = state.boot.logoUrl;
+    document.getElementById('logoTop').src = state.boot.logoUrl;
+  }
+  restoreSession();
+  router.sync();   // <— let the URL pick the page
+}).api_bootstrap();
+
 
     /* ===================== UTILS ===================== */
     function $(sel, root){ return (root||document).querySelector(sel); }
     function el(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
     function layout(n){ var root=document.getElementById('root'); root.innerHTML=''; root.appendChild(n); }
-    function setPage(p){ state.page=p; state.error=''; closeMenu(); render(); }
-    function setSport(sp){ state.sport=sp; setPage('sport'); }
+    function setPage(p, opts){
+  state.page = p; state.error=''; closeMenu();
+
+  // When called by router.sync(), skip updating the hash
+  if (opts && opts.updateHash === false){
+    render();
+    return;
+  }
+
+  // Normal app navigation → update hash (which calls router.sync → render)
+  if (p === 'sport') {
+    router.navigate('sport', { sport: state.sport });
+  } else if (p && p.startsWith('captain_')) {
+    router.navigate('captain', { sport: p.replace('captain_','') });
+  } else {
+    router.navigate(p);
+  }
+}
+
+function setSport(sp){
+  state.sport = sp;
+  // This will update the hash to #/sport/<sp> and re-render
+  setPage('sport');
+}
+
     function money(n){ return '$'+(Number(n||0)).toFixed(2); }
     function ftIn(inches){ var v=Number(inches||0); var ft=Math.floor(v/12); var i=v%12; return v? (ft+'ft '+i+'in') : ''; }
     function fmtDate(s){ if(!s) return ''; var d=new Date(s); if(isNaN(d)) return ''; var mm=('0'+(d.getMonth()+1)).slice(-2); var dd=('0'+d.getDate()).slice(-2); var yy=d.getFullYear(); return mm+'/'+dd+'/'+yy; }
@@ -482,49 +596,6 @@ function showLoading(text){
     '</div>'
   ));
 }
-
-// Global in-memory action locks
-state._locks = state._locks || {};
-
-// Mark a button busy (and remember its original label)
-function markBusy(btn, text){
-  if (!btn) return;
-  btn.dataset.origLabel = btn.textContent;
-  btn.textContent = text || 'Working…';
-  btn.setAttribute('aria-busy','true');
-  btn.disabled = true;
-}
-
-// Clear "busy" state
-function clearBusy(btn){
-  if (!btn) return;
-  btn.textContent = btn.dataset.origLabel || btn.textContent;
-  btn.removeAttribute('aria-busy');
-  btn.disabled = false;
-  delete btn.dataset.origLabel;
-}
-
-// Simple per-action lock guard
-function withActionLock(key, btn, workingText, fn){
-  if (state._locks[key]) return;            // already running
-  state._locks[key] = true;
-  markBusy(btn, workingText);
-  Promise.resolve()
-    .then(fn)
-    .catch(e => alert(e && e.message ? e.message : 'Action failed'))
-    .finally(() => { clearBusy(btn); delete state._locks[key]; });
-}
-
-// Optional: generate a client request id for backend idempotency
-function makeReqId(){
-  // high-quality if available
-  if (window.crypto && crypto.getRandomValues){
-    const a = new Uint32Array(4); crypto.getRandomValues(a);
-    return Date.now() + '-' + Array.from(a).map(x=>x.toString(16)).join('');
-  }
-  return Date.now() + '-' + Math.random().toString(36).slice(2);
-}
-
 // Home-only loading view with image
     function showHomeLoading(){
       layout(el(
@@ -573,13 +644,19 @@ function makeReqId(){
       nav.innerHTML = '';
 
       function navItem(label, page, opts){
-        var btn = el('<button class="nav-item">'+label+'</button>');
-        if (state.page===page) btn.classList.add('active');
-        btn.onclick = function(){ setPage(page); };
-        if (opts && opts.test && !opts.test()) return null;
-        nav.appendChild(btn);
-        return btn;
-      }
+  var btn = el('<button class="nav-item">'+label+'</button>');
+  if (state.page===page) btn.classList.add('active');
+  if (opts && opts.test && !opts.test()) return null;
+
+  btn.onclick = function(){
+    if (page === 'sport') router.navigate('sport', { sport: state.sport });
+    else if (page && page.startsWith('captain_')) router.navigate('captain', { sport: page.replace('captain_','') });
+    else router.navigate(page);
+  };
+  nav.appendChild(btn);
+  return btn;
+}
+
       function navLink(label, onClick, isActive){
         var btn = el('<button class="nav-item">'+label+'</button>');
         if (isActive) btn.classList.add('active');
@@ -648,7 +725,7 @@ function makeReqId(){
     }
 
     /* ===================== MENU TOGGLING ===================== */
-    const MOBILE_MAX = 2000;
+    const MOBILE_MAX = 1200;
 
     function isMobileBP(){ return window.matchMedia(`(max-width: ${MOBILE_MAX}px)`).matches; }
 
@@ -663,6 +740,14 @@ function makeReqId(){
         sb.classList.toggle('collapsed');
       }
     }
+    
+    function updateMenuButtonVisibility(){
+    const btn = document.getElementById('btnMenu');
+    if (!btn) return;
+    // Show the button only when we're in the mobile breakpoint (drawer mode)
+    btn.style.display = isMobileBP() ? '' : 'none';
+  }
+
 
     function closeMenu(){
       const sb = document.getElementById('sidebar');
@@ -680,17 +765,20 @@ function makeReqId(){
     }
 
     window.addEventListener('resize', ()=>{
-      const sb = document.getElementById('sidebar');
-      const bd = document.getElementById('backdrop');
-      if (isMobileBP()){
-        sb.classList.remove('collapsed');
-      } else {
-        sb.classList.remove('open');
-        if (bd) bd.classList.remove('show');
-      }
-    });
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('backdrop');
+  if (isMobileBP()){
+    sb.classList.remove('collapsed');
+  } else {
+    sb.classList.remove('open');
+    if (bd) bd.classList.remove('show');
+  }
+  updateMenuButtonVisibility(); // keep the hamburger in sync with layout
+});
+
 
     wireMenuButtons();
+    updateMenuButtonVisibility();
 
     /* ===================== AUTH VIEWS ===================== */
     function pageLanding(){
@@ -727,28 +815,47 @@ function makeReqId(){
       $('#si_form').addEventListener('submit', function(e){ e.preventDefault(); actSignIn(); });
     }
     function actSignIn(){
-      var its=$('#si_its').value.trim(); var whatsapp=$('#si_whatsapp').value.trim(); var err=$('#si_err'); err.textContent='';
-      if(!/^\d{8}$/.test(its)) { err.textContent='Enter an 8-digit ITS'; return; }
-      if(!/^\d{10}$/.test(whatsapp)) { err.textContent='Enter a 10-digit Whatsapp Number'; return; }
-      google.script.run.withSuccessHandler(function(res){
-        if(!res||!res.ok){ err.textContent=(res&&res.error)||'Invalid credentials'; return; }
-        state.user=res.user; saveSession();
+  const its = ($('#si_its').value || '').trim();
+  const whatsapp = ($('#si_whatsapp').value || '').trim();
+  const err = $('#si_err');
+  err.textContent = '';
 
-        AdminAPI.bootstrap(state.user.its, function(b){
-          state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b||{});
-        }, console.warn);
+  if (!/^\d{8}$/.test(its)) { err.textContent = 'ITS must be 8 digits'; return; }
+  if (!/^\d{10}$/.test(whatsapp)) { err.textContent = 'Whatsapp Number must be 10 digits'; return; }
 
-        var hasLogo = (state.boot && state.boot.logoUrl);
-        var anim = el('<div class="card stack" style="align-items:center;text-align:center">'
-          +(hasLogo?('<img class="logo" src="'+state.boot.logoUrl+'"/>'):'')
-          +'<div>Welcome, '+(state.user.first_name||'Athlete')+'!</div></div>');
-        layout(anim);
+  const btn = $('#btnSignIn');
+  const orig = btn ? btn.textContent : '';
+  if (btn){ btn.disabled = true; btn.textContent = 'Signing in…'; }
 
-        setTimeout(function(){
-          setPage(res.requireValidation ? 'edit' : 'home');
-        }, 900);
-      }).api_signIn({its:its, whatsapp:whatsapp});
-    }
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (btn){ btn.disabled = false; btn.textContent = orig; }
+      if (!res || !res.ok){ err.textContent = (res && res.error) || 'Invalid credentials'; return; }
+
+      state.user = res.user; 
+      saveSession();
+
+      AdminAPI.bootstrap(state.user.its, function(b){
+        state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b || {});
+      }, console.warn);
+
+      // Small welcome
+      layout(el('<div class="card stack" style="align-items:center;text-align:center">Welcome, ' + (state.user.first_name || 'Athlete') + '!</div>'));
+
+      setTimeout(function(){
+        var target = state.tmp && state.tmp.returnTo;
+        if (target){ delete state.tmp.returnTo; location.hash = target; }
+        else location.hash = res.requireValidation ? '#/edit' : '#/home';
+      }, 900);
+    })
+    .withFailureHandler(function(e){
+      if (btn){ btn.disabled = false; btn.textContent = orig; }
+      err.textContent = (e && e.message) || 'Sign-in failed';
+    })
+    .api_signIn({ its, whatsapp });
+}
+
+
 
     /* ===================== SHARED HELPERS ===================== */
     function withinCheckInWindow(evt){
@@ -811,15 +918,19 @@ function makeReqId(){
       return '';
     }
 
-    /* ===================== HOME ===================== */
+/* ===================== HOME ===================== */
 async function pageHome(){ 
-  if(!guard()) return;
+  if (!guard()) return;
 
-  // 1) One loading state
-showHomeLoading();
+  // Clear any prior timers to avoid duplicates if user re-enters Home
+  if (homeTimers.cd) { clearInterval(homeTimers.cd); homeTimers.cd = null; }
+  if (homeTimers.uiRefresh) { clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
+
+  // One loading state with the image (Home-only)
+  showHomeLoading();
 
   try{
-    // 2) Parallel core calls
+    // Parallel core calls
     const [balanceRes, listsRes, upcomingRes] = await Promise.all([
       gs('api_balance', state.user.its),
       gs('api_homeListsForUser', state.user.its),
@@ -837,7 +948,7 @@ showHomeLoading();
     guestList.forEach(e=> ids.add(e.id || e.event_id));
     (upcomingRes && upcomingRes.events || upcomingRes || []).forEach(e=> ids.add(e.id || e.event_id));
 
-    // 3) Fetch details (capacity, live roster, etc.) so UI is correct at first paint
+    // Fetch details (capacity, live roster, etc.) so UI is correct at first paint
     const detailPairs = await Promise.all(
       Array.from(ids).filter(Boolean).map(id => 
         gs('api_eventDetails', id).then(r => [id, r]).catch(()=>[id, null])
@@ -845,10 +956,7 @@ showHomeLoading();
     );
     const detailsById = Object.fromEntries(detailPairs);
 
-    // 4) Build the full DOM (exactly your previous UI, but using prepared data)
-    // NOTE: below is condensed for brevity—reuse your existing markup functions,
-    // just read from balanceRes, listsRes, upcomingRes, and detailsById.
-
+    // Build DOM once
     const node = el(
       '<div class="stack">'+
         '<div class="card stack">'+
@@ -880,7 +988,7 @@ showHomeLoading();
     // ----- Balance -----
     $('#home_balance').textContent = money(balanceRes && balanceRes.balance || 0);
 
-    // Helpers you already have:
+    // Helpers
     function isFutureOngoingOrToday(e){
       const end   = parseDT(e && e.end_datetime);
       const start = parseDT(e && e.start_datetime);
@@ -928,9 +1036,12 @@ showHomeLoading();
           '</div>';
       }).join('');
 
-      // Wire buttons
+      // Wire buttons (deep link)
       box.querySelectorAll('[data-act="view"]').forEach(b=>{
-        b.addEventListener('click', ()=> openEvent(b.getAttribute('data-eid')));
+        b.addEventListener('click', ()=>{
+          const id = b.getAttribute('data-eid');
+          if (id) router.navigate('event', { id });
+        });
       });
       box.querySelectorAll('.js-checkin-btn[data-self="1"]').forEach(btn=>{
         const eid = btn.getAttribute('data-eid');
@@ -974,8 +1085,12 @@ showHomeLoading();
         }).join('');
       }).join('');
 
+      // Wire buttons (deep link)
       box.querySelectorAll('[data-act="view"]').forEach(b=>{
-        b.addEventListener('click', ()=> openEvent(b.getAttribute('data-eid')));
+        b.addEventListener('click', ()=>{
+          const id = b.getAttribute('data-eid');
+          if (id) router.navigate('event', { id });
+        });
       });
       box.querySelectorAll('.js-checkin-btn[data-gi]').forEach(btn=>{
         const eid = btn.getAttribute('data-eid');
@@ -998,7 +1113,12 @@ showHomeLoading();
                  '<div><button class="btn secondary" data-eid="'+eid+'">View</button></div>'+
                '</div>';
       }).join('');
-      box.querySelectorAll('button[data-eid]').forEach(b=> b.onclick = ()=> openEvent(b.getAttribute('data-eid')));
+      box.querySelectorAll('button[data-eid]').forEach(b=>{
+        b.onclick = ()=>{
+          const id = b.getAttribute('data-eid');
+          if (id) router.navigate('event', { id });
+        };
+      });
     })();
 
     // ----- Countdown (computed once everything exists) -----
@@ -1082,6 +1202,7 @@ showHomeLoading();
     layout(el('<div class="card" style="color:var(--err)">Failed to load: '+(e && e.message || e)+'</div>'));
   }
 }
+
 
     /* ===================== PROFILE ===================== */
     function pageProfile(){ if(!guard())return;
@@ -1399,7 +1520,7 @@ function pageBalance(){
         q('register').onclick  = ()=> actRegister(e.id,false);
         q('deregister').onclick= ()=> actDeregister(e.id);
         q('dropout').onclick   = ()=> actDropout(e.id);
-        q('view').onclick      = ()=> openEvent(e.id);
+        q('view').onclick      = function(){ router.navigate('event', { id: e.id }); };
       });
     })();
 
@@ -1601,20 +1722,17 @@ async function openEvent(id){
         });
       }
 
-      $('#reg_guest').onclick = function(){
-  const sel = document.querySelector('#gx_sel');
-  const v = (sel && sel.value || '').trim();
-  if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
-
-  const key = 'reg-guest:'+id+':'+v;
-  withActionLock(key, this, 'Registering guest…', async ()=>{
-    const resp = await gs('api_register', state.user.its, id, v, true);
-    if(!resp || !resp.ok) throw new Error((resp && resp.error) || 'Failed');
-    await gs('api_billing_createPendingHold', state.user.its, id, v);
-    openEvent(id);
-  });
-};
-
+      // Register guest button
+      $('#reg_guest').onclick  = function(){
+        const v = (sel && sel.value || '').trim();
+        if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
+        google.script.run.withSuccessHandler(function(resp){
+          if(!resp||!resp.ok){ alert((resp&&resp.error)||'Failed'); return; }
+          // Create a pending hold on the OWNER (me) for THIS guest registration
+          google.script.run.api_billing_createPendingHold(state.user.its, id, v);
+          openEvent(id);
+        }).api_register(state.user.its, id, v, true);
+      };
     })();
 
     // 6) Live roster — per-row Remove (admins only; "Captain" NOT allowed)
@@ -1780,58 +1898,46 @@ async function openEvent(id){
       } else finish(null);
     }
 
-   /* ===================== REGISTRATION ACTIONS ===================== */
-function actRegister(eventId, isGuest){
-  // If this was triggered by a button click, grab it so we can show "Working…"
-  const btn = document.activeElement && document.activeElement.classList.contains('btn')
-    ? document.activeElement : null;
+    /* ===================== REGISTRATION ACTIONS ===================== */
+    function actRegister(eventId,isGuest){
+  if (isGuest){
+    const sel = document.querySelector('#gx_sel');
+    const target = sel ? (sel.value||'').trim() : '';
+    if(!/^\d{8}$/.test(target)) { alert('Please select a guest.'); return; }
 
-  // Determine who we're registering (self vs selected guest)
-  const target = isGuest
-    ? (document.querySelector('#gx_sel')?.value || '').trim()
-    : state.user.its;
-
-  if (isGuest && !/^\d{8}$/.test(target)) { alert('Please select a guest.'); return; }
-
-  const key = (isGuest ? 'reg-guest:' : 'reg-self:') + eventId + ':' + target;
-
-  withActionLock(key, btn, isGuest ? 'Registering guest…' : 'Registering…', async ()=>{
-    const res = await gs('api_register', state.user.its, eventId, target, !!isGuest);
-    if (!res || !res.ok) throw new Error((res && res.error) || 'Register failed');
-
-    // Best kept server-side atomically, but if it's here, do it right after success:
-    await gs('api_billing_createPendingHold', state.user.its, eventId, target);
-
-    // Refresh UI
-    if (state.page==='sport') pageSport(); else openEvent(eventId);
-  });
+    google.script.run.withSuccessHandler(function(res){
+      if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+      // Create a pending hold on the OWNER (me) for THIS guest registration
+      google.script.run.api_billing_createPendingHold(state.user.its, eventId, target);
+      if (state.page==='sport') pageSport(); else openEvent(eventId);
+    }).api_register(state.user.its, eventId, target, true);
+    return;
+  }
+  function actDeregister(eventId, its){
+  const who = its || state.user.its;
+  google.script.run.withSuccessHandler(function(res){
+    if (!res || !res.ok){ alert((res && res.error) || 'Failed to deregister'); return; }
+    if (state.page === 'sport') pageSport(); else openEvent(eventId);
+  }).api_deregister(state.user.its, eventId, who);
 }
 
-// Add or overwrite these if they exist:
-function actDeregister(eventId){
-  const btn = document.activeElement && document.activeElement.classList.contains('btn')
-    ? document.activeElement : null;
-  const key = 'deregister:'+eventId+':'+state.user.its;
-
-  withActionLock(key, btn, 'Deregistering…', async ()=>{
-    const res = await gs('api_deregister', state.user.its, eventId, state.user.its);
-    if (!res || !res.ok) throw new Error((res && res.error) || 'Deregister failed');
-    if (state.page==='sport') pageSport(); else openEvent(eventId);
-  });
+function actDropout(eventId, its){
+  const who = its || state.user.its;
+  google.script.run.withSuccessHandler(function(res){
+    if (!res || !res.ok){ alert((res && res.error) || 'Failed to drop out'); return; }
+    if (state.page === 'sport') pageSport(); else openEvent(eventId);
+  }).api_dropout(state.user.its, eventId, who);
 }
 
-function actDropout(eventId){
-  const btn = document.activeElement && document.activeElement.classList.contains('btn')
-    ? document.activeElement : null;
-  const key = 'dropout:'+eventId+':'+state.user.its;
 
-  withActionLock(key, btn, 'Dropping out…', async ()=>{
-    const res = await gs('api_dropout', state.user.its, eventId, state.user.its);
-    if (!res || !res.ok) throw new Error((res && res.error) || 'Dropout failed');
+  // Self registration
+  google.script.run.withSuccessHandler(function(res){
+    if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+    // Pending hold for me
+    google.script.run.api_billing_createPendingHold(state.user.its, eventId, state.user.its);
     if (state.page==='sport') pageSport(); else openEvent(eventId);
-  });
+  }).api_register(state.user.its, eventId, state.user.its, false);
 }
-
 
     /* ===================== ADMIN: EVENTS ===================== */
     function pageAdminEvents(){ if(!guard())return;
