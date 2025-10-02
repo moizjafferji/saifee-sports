@@ -1523,9 +1523,10 @@ function pageBalance(){
         box.appendChild(card);
 
         function q(act){ return card.querySelector('[data-act="'+act+'"]'); }
-        q('register').onclick  = ()=> actRegister(e.id,false);
-        q('deregister').onclick= ()=> actDeregister(e.id);
-        q('dropout').onclick   = ()=> actDropout(e.id);
+        q('register').addEventListener('click', (ev)=> actRegister(e.id, false, ev.currentTarget));
+        q('deregister').addEventListener('click', (ev)=> actDeregister(e.id, undefined, ev.currentTarget));
+        q('dropout').addEventListener('click', (ev)=> actDropout(e.id, undefined, ev.currentTarget));
+
         q('view').onclick      = function(){ router.navigate('event', { id: e.id }); };
       });
     })();
@@ -1559,14 +1560,11 @@ function ensureAdminSports(cb){
     cb && cb();
   }).api_admin_bootstrap(state.user.its);
 }
-</script>
 
-  
-<script>
 async function openEvent(id){
   if(!guard()) return;
 
-  // One clean loading view (uses showLoading from my previous message)
+  // One clean loading view
   if (typeof showLoading === 'function') showLoading('Loading event…');
 
   try{
@@ -1598,10 +1596,10 @@ async function openEvent(id){
     const capText  = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
     const addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
 
-    // Nice Header for links
+    // Nice header for link previews
     setDocTitle(`${evt.sport ? (evt.sport + ' — ') : ''}${evt.name || 'Event'}`);
 
-    // Helper (same logic you had before, but using preloaded evt)
+    // Helper (uses preloaded evt)
     function computeCheckinPill(r){
       try{
         const start = parseDT(evt.start_datetime);
@@ -1614,7 +1612,7 @@ async function openEvent(id){
       }catch(e){ return ''; }
     }
 
-    // 3) Render the full page once (same structure you had)
+    // 3) Render the full page once
     const myBadge = computeStatusBadge(myStatus);
     const node = el(
       "<div class='stack'>"+
@@ -1630,15 +1628,14 @@ async function openEvent(id){
         "</div>"+
 
         "<div class='card stack'>"+
-  "<div class='label'>Your Registration</div>"+
-  "<div class='event-actions'>"+
-    "<button class='btn' id='reg_me'>Register Me</button>"+
-    "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
-    "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
-    "<button class='btn secondary' id='share_evt'>Share</button>"+
-  "</div>"+
-"</div>"+
-
+          "<div class='label'>Your Registration</div>"+
+          "<div class='event-actions'>"+
+            "<button class='btn' id='reg_me'>Register Me</button>"+
+            "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
+            "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
+            "<button class='btn secondary' id='share_evt'>Share</button>"+
+          "</div>"+
+        "</div>"+
 
         "<div class='card stack'>"+
           "<div class='label'>Manage your guests for this event</div>"+
@@ -1660,32 +1657,29 @@ async function openEvent(id){
     layout(node);
 
     // Share button
-
     (function wireShare(){
-  const shareBtn = document.getElementById('share_evt');
-  if (!shareBtn) return;
+      const shareBtn = document.getElementById('share_evt');
+      if (!shareBtn) return;
 
-  // Use your current hash URL so it works TODAY (no server changes needed).
-  // If you later add /event/:id path routes with OG tags, switch to that.
-  const url = location.origin + '/#/event/' + encodeURIComponent(evt.id);
-  const text = `${evt.sport ? evt.sport+' — ' : ''}${evt.name}
+      // Use current hash URL (works without server changes)
+      const url = location.origin + '/#/event/' + encodeURIComponent(evt.id);
+      const text = `${evt.sport ? evt.sport+' — ' : ''}${evt.name}
 ${fmtDT(evt.start_datetime)}
 ${evt.address || ''}`;
 
-  shareBtn.onclick = async () => {
-    try{
-      if (navigator.share) {
-        await navigator.share({ title: evt.name, text, url });
-      } else {
-        await navigator.clipboard.writeText(`${text}\n${url}`);
-        alert('Copied share text + link!');
-      }
-    } catch(_) { /* user cancelled or share not supported */ }
-  };
-})();
+      shareBtn.onclick = async () => {
+        try{
+          if (navigator.share) {
+            await navigator.share({ title: evt.name, text, url });
+          } else {
+            await navigator.clipboard.writeText(`${text}\n${url}`);
+            alert('Copied share text + link!');
+          }
+        } catch(_) { /* ignore cancel */ }
+      };
+    })();
 
-
-    // 4) Wire "Your Registration" buttons based on current status (no extra fetch)
+    // 4) Wire "Your Registration" buttons based on current status (pass clicked button)
     (function applySelfButtons(){
       const canRegister   = regOpen && (myStatus==='none' || myStatus==='dropout');
       const canDeregister = ((regOpen && (myStatus==='active' || myStatus==='waitlist')) || (!regOpen && myStatus==='waitlist'));
@@ -1694,9 +1688,9 @@ ${evt.address || ''}`;
       $('#dereg_me').disabled   = !canDeregister;
       $('#dropout_me').disabled = !canDropout;
 
-      $('#reg_me').onclick     = ()=> actRegister(evt.id,false);
-      $('#dereg_me').onclick   = ()=> actDeregister(evt.id);
-      $('#dropout_me').onclick = ()=> actDropout(evt.id);
+      $('#reg_me').onclick     = (ev)=> actRegister(evt.id, false, ev.currentTarget);
+      $('#dereg_me').onclick   = (ev)=> actDeregister(evt.id, undefined, ev.currentTarget);
+      $('#dropout_me').onclick = (ev)=> actDropout(evt.id, undefined, ev.currentTarget);
     })();
 
     // 5) Guests (use preloaded list; no fetch on render)
@@ -1739,36 +1733,26 @@ ${evt.address || ''}`;
           "</div>";
         }).join('');
 
+        // Use click-lock aware wrappers (pass the button)
         gl.querySelectorAll('[data-act="g-dereg"]').forEach(b=>{
-          b.addEventListener('click', function(){ 
-            const guestIts=b.getAttribute('data-gi');
-            google.script.run.withSuccessHandler(function(r){ 
-              if(!r || !r.ok) alert((r && r.error) || 'Failed to deregister guest'); 
-              openEvent(evt.id); 
-            }).api_deregister(state.user.its, evt.id, guestIts);
+          b.addEventListener('click', (ev)=> {
+            const guestIts = b.getAttribute('data-gi');
+            actDeregister(evt.id, guestIts, ev.currentTarget);
           });
         });
         gl.querySelectorAll('[data-act="g-drop"]').forEach(b=>{
-          b.addEventListener('click', function(){ 
-            const guestIts=b.getAttribute('data-gi');
-            google.script.run.withSuccessHandler(function(r){ 
-              if(!r || !r.ok) alert((r && r.error) || 'Failed to drop out guest'); 
-              openEvent(evt.id); 
-            }).api_dropout(state.user.its, evt.id, guestIts);
+          b.addEventListener('click', (ev)=> {
+            const guestIts = b.getAttribute('data-gi');
+            actDropout(evt.id, guestIts, ev.currentTarget);
           });
         });
       }
 
-      // Register guest button
-      $('#reg_guest').onclick  = function(){
+      // Register guest button (pass the button)
+      $('#reg_guest').onclick  = function(ev){
         const v = (sel && sel.value || '').trim();
         if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
-        google.script.run.withSuccessHandler(function(resp){
-          if(!resp||!resp.ok){ alert((resp&&resp.error)||'Failed'); return; }
-          // Create a pending hold on the OWNER (me) for THIS guest registration
-          google.script.run.api_billing_createPendingHold(state.user.its, id, v);
-          openEvent(id);
-        }).api_register(state.user.its, id, v, true);
+        actRegister(id, true, ev.currentTarget);
       };
     })();
 
@@ -1936,55 +1920,97 @@ ${evt.address || ''}`;
     }
 
 /* ===================== REGISTRATION ACTIONS ===================== */
+/* ---- global click-lock helper ---- */
+const _actionLocks = new Set();
 
+function withClickLock(key, btn, workingLabel, run){
+  if (_actionLocks.has(key)) return;        // already running
+  _actionLocks.add(key);
+
+  // optimistically disable the button
+  const restore = (() => {
+    if (!btn) return () => {};
+    const orig = { text: btn.textContent, dis: btn.disabled };
+    btn.disabled = true;
+    btn.setAttribute('aria-busy','true');
+    if (workingLabel) btn.textContent = workingLabel;
+    return () => {
+      btn.disabled = orig.dis;
+      btn.removeAttribute('aria-busy');
+      btn.textContent = orig.text;
+    };
+  })();
+
+  const done = () => { _actionLocks.delete(key); restore(); };
+  try { run(done); } catch(e){ done(); throw e; }
+}
 // 1) Self or Guest register
-function actRegister(eventId, isGuest){
+function actRegister(eventId, isGuest, btn){
   if (isGuest){
     const sel = document.querySelector('#gx_sel');
     const guestIts = sel ? (sel.value || '').trim() : '';
     if (!/^\d{8}$/.test(guestIts)) { alert('Please select a guest.'); return; }
 
-    google.script.run
-      .withSuccessHandler(function(res){
-        if (!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
-        // Hold on the OWNER (me) for THIS guest registration
-        google.script.run.api_billing_createPendingHold(state.user.its, eventId, guestIts);
-        if (state.page==='sport') pageSport(); else openEvent(eventId);
-      })
-      .api_register(state.user.its, eventId, guestIts, true);
-    return;
+    const key = `reg:${eventId}:${guestIts}`;
+    return withClickLock(key, btn, 'Registering…', (done)=>{
+      google.script.run
+        .withSuccessHandler(function(res){
+          done();
+          if (!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+          // Hold on the OWNER (me) for THIS guest registration
+          google.script.run.api_billing_createPendingHold(state.user.its, eventId, guestIts);
+          if (state.page==='sport') pageSport(); else openEvent(eventId);
+        })
+        .withFailureHandler(function(e){ done(); alert((e && e.message) || 'Failed'); })
+        .api_register(state.user.its, eventId, guestIts, true);
+    });
   }
 
   // Self register
-  google.script.run
-    .withSuccessHandler(function(res){
-      if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
-      google.script.run.api_billing_createPendingHold(state.user.its, eventId, state.user.its);
-      if (state.page==='sport') pageSport(); else openEvent(eventId);
-    })
-    .api_register(state.user.its, eventId, state.user.its, false);
+  const key = `reg:${eventId}:${state.user.its}`;
+  return withClickLock(key, btn, 'Registering…', (done)=>{
+    google.script.run
+      .withSuccessHandler(function(res){
+        done();
+        if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+        google.script.run.api_billing_createPendingHold(state.user.its, eventId, state.user.its);
+        if (state.page==='sport') pageSport(); else openEvent(eventId);
+      })
+      .withFailureHandler(function(e){ done(); alert((e && e.message) || 'Failed'); })
+      .api_register(state.user.its, eventId, state.user.its, false);
+  });
 }
 
 // 2) Deregister (self or specific ITS)
-function actDeregister(eventId, its){
+function actDeregister(eventId, its, btn){
   const who = its || state.user.its;
-  google.script.run
-    .withSuccessHandler(function(res){
-      if (!res || !res.ok){ alert((res && res.error) || 'Failed to deregister'); return; }
-      if (state.page === 'sport') pageSport(); else openEvent(eventId);
-    })
-    .api_deregister(state.user.its, eventId, who);
+  const key = `dereg:${eventId}:${who}`;
+  return withClickLock(key, btn, 'Removing…', (done)=>{
+    google.script.run
+      .withSuccessHandler(function(res){
+        done();
+        if (!res || !res.ok){ alert((res && res.error) || 'Failed to deregister'); return; }
+        if (state.page === 'sport') pageSport(); else openEvent(eventId);
+      })
+      .withFailureHandler(function(e){ done(); alert((e && e.message) || 'Failed to deregister'); })
+      .api_deregister(state.user.its, eventId, who);
+  });
 }
 
 // 3) Dropout (after close)
-function actDropout(eventId, its){
+function actDropout(eventId, its, btn){
   const who = its || state.user.its;
-  google.script.run
-    .withSuccessHandler(function(res){
-      if (!res || !res.ok){ alert((res && res.error) || 'Failed to drop out'); return; }
-      if (state.page === 'sport') pageSport(); else openEvent(eventId);
-    })
-    .api_dropout(state.user.its, eventId, who);
+  const key = `drop:${eventId}:${who}`;
+  return withClickLock(key, btn, 'Dropping…', (done)=>{
+    google.script.run
+      .withSuccessHandler(function(res){
+        done();
+        if (!res || !res.ok){ alert((res && res.error) || 'Failed to drop out'); return; }
+        if (state.page === 'sport') pageSport(); else openEvent(eventId);
+      })
+      .withFailureHandler(function(e){ done(); alert((e && e.message) || 'Failed to drop out'); })
+      .api_dropout(state.user.its, eventId, who);
+  });
 }
 
     /* ===================== ADMIN: EVENTS ===================== */
