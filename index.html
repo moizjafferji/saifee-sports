@@ -1935,45 +1935,56 @@ ${evt.address || ''}`;
       } else finish(null);
     }
 
-    /* ===================== REGISTRATION ACTIONS ===================== */
-    function actRegister(eventId,isGuest){
+/* ===================== REGISTRATION ACTIONS ===================== */
+
+// 1) Self or Guest register
+function actRegister(eventId, isGuest){
   if (isGuest){
     const sel = document.querySelector('#gx_sel');
-    const target = sel ? (sel.value||'').trim() : '';
-    if(!/^\d{8}$/.test(target)) { alert('Please select a guest.'); return; }
+    const guestIts = sel ? (sel.value || '').trim() : '';
+    if (!/^\d{8}$/.test(guestIts)) { alert('Please select a guest.'); return; }
 
-    google.script.run.withSuccessHandler(function(res){
-      if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
-      // Create a pending hold on the OWNER (me) for THIS guest registration
-      google.script.run.api_billing_createPendingHold(state.user.its, eventId, target);
-      if (state.page==='sport') pageSport(); else openEvent(eventId);
-    }).api_register(state.user.its, eventId, target, true);
+    google.script.run
+      .withSuccessHandler(function(res){
+        if (!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+        // Hold on the OWNER (me) for THIS guest registration
+        google.script.run.api_billing_createPendingHold(state.user.its, eventId, guestIts);
+        if (state.page==='sport') pageSport(); else openEvent(eventId);
+      })
+      .api_register(state.user.its, eventId, guestIts, true);
     return;
   }
-  function actDeregister(eventId, its){
-  const who = its || state.user.its;
-  google.script.run.withSuccessHandler(function(res){
-    if (!res || !res.ok){ alert((res && res.error) || 'Failed to deregister'); return; }
-    if (state.page === 'sport') pageSport(); else openEvent(eventId);
-  }).api_deregister(state.user.its, eventId, who);
+
+  // Self register
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+      google.script.run.api_billing_createPendingHold(state.user.its, eventId, state.user.its);
+      if (state.page==='sport') pageSport(); else openEvent(eventId);
+    })
+    .api_register(state.user.its, eventId, state.user.its, false);
 }
 
+// 2) Deregister (self or specific ITS)
+function actDeregister(eventId, its){
+  const who = its || state.user.its;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.ok){ alert((res && res.error) || 'Failed to deregister'); return; }
+      if (state.page === 'sport') pageSport(); else openEvent(eventId);
+    })
+    .api_deregister(state.user.its, eventId, who);
+}
+
+// 3) Dropout (after close)
 function actDropout(eventId, its){
   const who = its || state.user.its;
-  google.script.run.withSuccessHandler(function(res){
-    if (!res || !res.ok){ alert((res && res.error) || 'Failed to drop out'); return; }
-    if (state.page === 'sport') pageSport(); else openEvent(eventId);
-  }).api_dropout(state.user.its, eventId, who);
-}
-
-
-  // Self registration
-  google.script.run.withSuccessHandler(function(res){
-    if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
-    // Pending hold for me
-    google.script.run.api_billing_createPendingHold(state.user.its, eventId, state.user.its);
-    if (state.page==='sport') pageSport(); else openEvent(eventId);
-  }).api_register(state.user.its, eventId, state.user.its, false);
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (!res || !res.ok){ alert((res && res.error) || 'Failed to drop out'); return; }
+      if (state.page === 'sport') pageSport(); else openEvent(eventId);
+    })
+    .api_dropout(state.user.its, eventId, who);
 }
 
     /* ===================== ADMIN: EVENTS ===================== */
