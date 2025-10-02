@@ -557,6 +557,10 @@ function setSport(sp){
         : '';
     }
 
+    function setDocTitle(suffix){
+    document.title = suffix ? `Saifee Sports — ${suffix}` : 'Saifee Sports';
+}
+
     // Session keep-alive
     function saveSession(){ try { localStorage.setItem('saifee_user', JSON.stringify(state.user||null)); } catch(e){} }
     function restoreSession(){
@@ -921,6 +925,7 @@ function showLoading(text){
 /* ===================== HOME ===================== */
 async function pageHome(){ 
   if (!guard()) return;
+  setDocTitle('Home');
 
   // Clear any prior timers to avoid duplicates if user re-enters Home
   if (homeTimers.cd) { clearInterval(homeTimers.cd); homeTimers.cd = null; }
@@ -1405,6 +1410,7 @@ function pageBalance(){
     /* ===================== SPORT PAGE ===================== */
     async function pageSport(){ 
   if(!guard()) return;
+  setDocTitle(state.sport);
   if (sportCountdownTimer) { clearInterval(sportCountdownTimer); sportCountdownTimer = null; }
 
   showLoading('Loading '+state.sport+'…');
@@ -1592,6 +1598,9 @@ async function openEvent(id){
     const capText  = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
     const addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
 
+    // Nice Header for links
+    setDocTitle(`${evt.sport ? (evt.sport + ' — ') : ''}${evt.name || 'Event'}`);
+
     // Helper (same logic you had before, but using preloaded evt)
     function computeCheckinPill(r){
       try{
@@ -1621,13 +1630,15 @@ async function openEvent(id){
         "</div>"+
 
         "<div class='card stack'>"+
-          "<div class='label'>Your Registration</div>"+
-          "<div class='event-actions'>"+
-            "<button class='btn' id='reg_me'>Register Me</button>"+
-            "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
-            "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
-          "</div>"+
-        "</div>"+
+  "<div class='label'>Your Registration</div>"+
+  "<div class='event-actions'>"+
+    "<button class='btn' id='reg_me'>Register Me</button>"+
+    "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
+    "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
+    "<button class='btn secondary' id='share_evt'>Share</button>"+
+  "</div>"+
+"</div>"+
+
 
         "<div class='card stack'>"+
           "<div class='label'>Manage your guests for this event</div>"+
@@ -1647,6 +1658,32 @@ async function openEvent(id){
       "</div>"
     );
     layout(node);
+
+    // Share button
+
+    (function wireShare(){
+  const shareBtn = document.getElementById('share_evt');
+  if (!shareBtn) return;
+
+  // Use your current hash URL so it works TODAY (no server changes needed).
+  // If you later add /event/:id path routes with OG tags, switch to that.
+  const url = location.origin + '/#/event/' + encodeURIComponent(evt.id);
+  const text = `${evt.sport ? evt.sport+' — ' : ''}${evt.name}
+${fmtDT(evt.start_datetime)}
+${evt.address || ''}`;
+
+  shareBtn.onclick = async () => {
+    try{
+      if (navigator.share) {
+        await navigator.share({ title: evt.name, text, url });
+      } else {
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+        alert('Copied share text + link!');
+      }
+    } catch(_) { /* user cancelled or share not supported */ }
+  };
+})();
+
 
     // 4) Wire "Your Registration" buttons based on current status (no extra fetch)
     (function applySelfButtons(){
