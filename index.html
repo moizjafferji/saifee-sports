@@ -1804,121 +1804,192 @@ ${evt.address || ''}`;
 }
     /* ===================== CREATE / EDIT PROFILE ===================== */
     function pageCreateOrEdit(edit){
-      var u=edit?(state.user||{}):{};
-      var node=el(
-        "<div class='card stack'>"+
-          "<div style='display:flex;gap:10px;align-items:center;justify-content:space-between'>"+
-            "<div style='font-size:var(--fs-md);font-weight:800'>"+(edit?"Edit Profile":"Create Profile")+"</div>"+
-            "<button class='btn secondary' id='btnBack'>Back</button>"+
-          "</div>"+
-          "<div class='form-grid'>"+
-            "<div class='stack'>"+
-              "<label class='label'>Whatsapp Number</label>"+
-              "<input id='f_whatsapp' class='input' placeholder='7861102153' value='"+(u.whatsapp||"") +"'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>ITS</label>"+
-              "<input id='f_its' class='input' placeholder='30442153' value='"+(u.its||"") +"' "+(edit?'disabled':'')+">"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Email</label>"+
-              "<input id='f_email' class='input' placeholder='name@example.com' value='"+(u.email||"") +"'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>First Name</label>"+
-              "<input id='f_first' class='input' placeholder='Burhanuddin' value='"+(u.first_name||"") +"'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Last Name</label>"+
-              "<input id='f_last' class='input' placeholder='Saifee' value='"+(u.last_name||"") +"'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Profile Picture</label>"+
-              "<input id='f_pic' type='file' accept='image/*' class='input'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Height</label>"+
-              "<select id='f_height' class='input'></select>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Weight (lb)</label>"+
-              "<input id='f_weight' class='input' placeholder='180' value='"+(u.weight_lb||"") +"'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Date of Birth</label>"+
-              "<input id='f_dob' type='date' class='input' value='"+(u.dob||"") +"'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Emergency Contact Name</label>"+
-              "<input id='f_emer_name' class='input' placeholder='Saifuddin Saifee' value='"+(u.emer_name||"") +"'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Emergency Phone Number</label>"+
-              "<input id='f_emer_phone' class='input' placeholder='7861102153' value='"+(u.emer_phone||"") +"'>"+
-            "</div>"+
-            "<div class='stack'>"+
-              "<label class='label'>Jamaat</label>"+
-              "<select id='f_jamaat' class='input'></select>"+
-            "</div>"+
-            (edit? '' :
-              "<div class='card' style='background:#0e1626'>"+
-                "<div class='label'>Waiver</div>"+
-                "<div style='max-height:180px;overflow:auto;font-size:var(--fs-xs);white-space:pre-line'>"+waiverText()+"</div>"+
-                "<label style='display:flex;gap:8px;align-items:flex-start;margin-top:8px'>"+
-                  "<input id='f_waiver' type='checkbox'>"+
-                  "<span class='tiny'>I have read and agree to the waiver terms.</span>"+
-                "</label>"+
-              "</div>"
-            )+
-          "</div>"+
-          "<div style='display:flex;gap:10px;justify-content:flex-end'>"+
-            "<button class='btn' id='f_save'>"+(edit?'Save Changes':'Create Profile')+"</button>"+
-          "</div>"+
-          "<div class='tiny' id='f_err' style='color:var(--err)'></div>"+
-        "</div>"
-      );
-      layout(node);
-      $('#btnBack').onclick=function(){ setPage('landing'); };
-      var h=$('#f_height');
-      for(var ft=4;ft<=7;ft++){ for(var i=0;i<12;i++){ var v=ft*12+i; var o=document.createElement('option'); o.value=v; o.textContent=ft+'ft '+i+'in'; h.appendChild(o); } }
-      if(u.height_in) h.value=u.height_in;
-      var jamaats=["Dallas","Plano","Atlanta","Austin","Bakersfield","Boston","Calgary","Charlotte","Chicago","Chicago North","Columbia","Columbus","Connecticut","Detroit","Edmonton","Houston","Los Angeles","Miami","Minneapolis","Mississauga","Montreal","New Jersey","New York","Orange County","Ottawa","Philadelphia","Poconos","Portland","Raleigh","San Antonio","San Diego","San Francisco","San Jose","Seattle","South Jersey","Spartanburg","Tampa","Toronto","Vancouver","Virginia","Washington, DC","Woodlands"];
-      var jSel=$('#f_jamaat'); jamaats.forEach(function(j){ var o=document.createElement('option'); o.value=j; o.text=j; jSel.appendChild(o); }); if(u.jamaat) jSel.value=u.jamaat;
-      $('#f_save').onclick=function(){ saveProfile(!!edit); };
-    }
-    function waiverText(){ return "I HEREBY ASSUME ALL OF THE RISKS OF PARTICIPATING IN ANY/ALL ACTIVITIES ASSOCIATED WITH EVENTS BY SAIFEE SPORTS ... (same text as before)"; }
-    function validateProfile(d, requireWaiver){
-      var phone=/^\d{10}$/; var its=/^\d{8}$/; var email=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-      if(!its.test(d.its)) return 'ITS must be 8 digits';
-      if(!phone.test(d.whatsapp)) return 'Whatsapp Number must be 10 digits';
-      if(!email.test(d.email)) return 'Provide a valid email';
-      var w=Number(d.weight_lb); if(d.weight_lb && !(w>=50&&w<=350)) return 'Weight must be between 50 and 350';
-      var dob=new Date(d.dob); var age=(Date.now()-dob.getTime())/(365.25*24*3600*1000);
-      if(!(age>4&&age<90)) return 'Age must be between 4 and 90';
-      if(requireWaiver){ if(!$('#f_waiver').checked) return 'You must accept the waiver'; if(!$('#f_pic').files[0]) return 'Profile picture is required'; }
-      return '';
-    }
-    function saveProfile(edit){
-      function setErr(m){ $('#f_err').textContent=m; }
-      var data={ whatsapp:$('#f_whatsapp').value.trim(), its:$('#f_its').value.trim(), email:$('#f_email').value.trim(), first_name:$('#f_first').value.trim(), last_name:$('#f_last').value.trim(),
-        height_in:$('#f_height').value, weight_lb:$('#f_weight').value.trim(), dob:$('#f_dob').value,
-        emer_name:$('#f_emer_name').value.trim(), emer_phone:$('#f_emer_phone').value.trim(), jamaat:$('#f_jamaat').value };
-      var err=validateProfile(data,!edit); if(err){setErr(err);return;}
-      var file=$('#f_pic').files[0];
-      function finish(pic){
-        if(!edit){
-          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Create failed'); state.user=Object.assign({},data,{profile_pic_url:pic}); setPage('home'); }).api_createProfile(Object.assign({},data,{profile_pic_url:pic}));
-        } else {
-          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Save failed'); if(pic) state.user.profile_pic_url=pic; state.user=Object.assign({},state.user,data); setPage('home'); }).api_updateProfile(state.user.its, pic?Object.assign({},data,{profile_pic_url:pic}):data);
-        }
-      }
-      if(file){
-        var fr=new FileReader();
-        fr.onload=function(){ google.script.run.withSuccessHandler(function(u){ finish(u.url); }).api_uploadProfilePic(fr.result,file.name,edit?state.user.its:data.its); };
-        fr.readAsDataURL(file);
-      } else finish(null);
-    }
+  var u = edit ? (state.user || {}) : {};
+  var node = el(
+    "<div class='card stack'>"+
+      "<div style='display:flex;gap:10px;align-items:center;justify-content:space-between'>"+
+        "<div style='font-size:var(--fs-md);font-weight:800'>"+(edit?"Edit Profile":"Create Profile")+"</div>"+
+        "<button class='btn secondary' id='btnBack'>Back</button>"+
+      "</div>"+
+      "<div class='form-grid'>"+
+        "<div class='stack'>"+
+          "<label class='label'>Whatsapp Number</label>"+
+          "<input id='f_whatsapp' class='input' placeholder='7861102153' value='"+(u.whatsapp||"")+"'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>ITS</label>"+
+          "<input id='f_its' class='input' placeholder='30442153' value='"+(u.its||"")+"' "+(edit?'disabled':'')+">"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Email</label>"+
+          "<input id='f_email' class='input' placeholder='name@example.com' value='"+(u.email||"")+"'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>First Name</label>"+
+          "<input id='f_first' class='input' placeholder='Burhanuddin' value='"+(u.first_name||"")+"'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Last Name</label>"+
+          "<input id='f_last' class='input' placeholder='Saifee' value='"+(u.last_name||"")+"'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Profile Picture</label>"+
+          "<input id='f_pic' type='file' accept='image/*' class='input'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Height</label>"+
+          "<select id='f_height' class='input'></select>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Weight (lb)</label>"+
+          "<input id='f_weight' class='input' placeholder='180' value='"+(u.weight_lb||"")+"'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Date of Birth</label>"+
+          "<input id='f_dob' type='date' class='input' value='"+(u.dob||"")+"'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Emergency Contact Name</label>"+
+          "<input id='f_emer_name' class='input' placeholder='Saifuddin Saifee' value='"+(u.emer_name||"")+"'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Emergency Phone Number</label>"+
+          "<input id='f_emer_phone' class='input' placeholder='7861102153' value='"+(u.emer_phone||"")+"'>"+
+        "</div>"+
+        "<div class='stack'>"+
+          "<label class='label'>Jamaat</label>"+
+          "<select id='f_jamaat' class='input'></select>"+
+        "</div>"+
+        (edit? '' :
+          "<div class='card' style='background:#0e1626'>"+
+            "<div class='label'>Waiver</div>"+
+            "<div style='max-height:180px;overflow:auto;font-size:var(--fs-xs);white-space:pre-line'>"+waiverText()+"</div>"+
+            "<label style='display:flex;gap:8px;align-items:flex-start;margin-top:8px'>"+
+              "<input id='f_waiver' type='checkbox'>"+
+              "<span class='tiny'>I have read and agree to the waiver terms.</span>"+
+            "</label>"+
+          "</div>"
+        )+
+      "</div>"+
+      "<div style='display:flex;gap:10px;justify-content:flex-end'>"+
+        "<button class='btn' id='f_save'>"+(edit?'Save Changes':'Create Profile')+"</button>"+
+      "</div>"+
+      "<div class='tiny' id='f_err' style='color:var(--err)'></div>"+
+    "</div>"
+  );
+  layout(node);
 
+  $('#btnBack').onclick = function(){ setPage('landing'); };
+
+  // Height options
+  var h = $('#f_height');
+  for (var ft=4; ft<=7; ft++){
+    for (var i=0; i<12; i++){
+      var v = ft*12 + i;
+      var o = document.createElement('option');
+      o.value = v; o.textContent = ft+'ft '+i+'in';
+      h.appendChild(o);
+    }
+  }
+  if (u.height_in) h.value = u.height_in;
+
+  // Jamaats
+  var jamaats = ["Dallas","Plano","Atlanta","Austin","Bakersfield","Boston","Calgary","Charlotte","Chicago","Chicago North","Columbia","Columbus","Connecticut","Detroit","Edmonton","Houston","Los Angeles","Miami","Minneapolis","Mississauga","Montreal","New Jersey","New York","Orange County","Ottawa","Philadelphia","Poconos","Portland","Raleigh","San Antonio","San Diego","San Francisco","San Jose","Seattle","South Jersey","Spartanburg","Tampa","Toronto","Vancouver","Virginia","Washington, DC","Woodlands"];
+  var jSel = $('#f_jamaat');
+  jamaats.forEach(function(j){ var o=document.createElement('option'); o.value=j; o.text=j; jSel.appendChild(o); });
+  if (u.jamaat) jSel.value = u.jamaat;
+
+  // Click-locked save (uses your withClickLock)
+  $('#f_save').onclick = function(ev){
+    withClickLock('profile:save:'+ (edit?'edit':'create'), ev.currentTarget, (edit?'Saving…':'Creating…'), function(done){
+      saveProfile(!!edit, done);
+    });
+  };
+}
+
+function waiverText(){
+  return "I HEREBY ASSUME ALL OF THE RISKS OF PARTICIPATING IN ANY/ALL ACTIVITIES ASSOCIATED WITH EVENTS BY SAIFEE SPORTS, including by way of example and not limitation, any risks that may arise from negligence or carelessness on the part of the persons or entities being released, from dangerous or defective equipment or property owned, maintained, or controlled by them, or because of their possible liability without fault.\n\nI certify that I am physically fit, have sufficiently prepared or trained for participation in this activity, and have not been advised to not participate by a qualified medical professional. I certify that there are no health-related reasons or problems which preclude my participation in this activity.\n\nI acknowledge that this Accident Waiver and Release of Liability Form will be used by the event holders, sponsors, and organizers of the activity in which I may participate, and that it will govern my actions and responsibilities at said activity.\n\nIn consideration of my application and permitting me to participate in this activity, I hereby take action for myself, my executors, administrators, heirs, next of kin, successors, and assigns as follows:\n\n(A) I WAIVE, RELEASE, AND DISCHARGE from any and all liability, including but not limited to, liability arising from the negligence or fault of the entities or persons released, for my death, disability, personal injury, property damage, property theft, or actions of any kind which may hereafter occur to me including my traveling to and from this activity, THE FOLLOWING ENTITIES OR PERSONS: Saifee Sports and/or their directors, officers, employees, volunteers, representatives, and agents, and the activity holders, sponsors, and volunteers;\n\n(B) INDEMNIFY, HOLD HARMLESS, AND PROMISE NOT TO SUE the entities or persons mentioned in this paragraph from any and all liabilities or claims made as a result of participation in this activity, whether caused by the negligence of release or otherwise.\n\nI acknowledge that Saifee Sports and their directors, officers, volunteers, representatives, and agents are NOT responsible for the errors, omissions, acts, or failures to act of any party or entity conducting a specific activity on their behalf.\n\nI acknowledge that this activity may involve a test of a person's physical and mental limits and carries with it the potential for death, serious injury, and property loss. The risks include, but are not limited to, those caused by terrain, facilities, temperature, weather, condition of participants, equipment, vehicular traffic, lack of hydration, and actions of other people including, but not limited to, participants, volunteers, monitors, and/or producers of the activity. These risks are not only inherent to participants, but are also present for volunteers.\n\nI hereby consent to receive medical treatment which may be deemed advisable in the event of injury, accident, and/or illness during this activity.\n\nI understand while participating in this activity, I may be photographed. I agree to allow my photo, video, or film likeness to be used for any legitimate purpose by the activity holders, producers, sponsors, organizers, and assigns.\n\nThe Accident Waiver and Release of Liability Form shall be construed broadly to provide a release and waiver to the maximum extent permissible under applicable law.";
+}
+
+function validateProfile(d, requireWaiver){
+  var phone=/^\d{10}$/; var its=/^\d{8}$/; var email=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  if(!its.test(d.its)) return 'ITS must be 8 digits';
+  if(!phone.test(d.whatsapp)) return 'Whatsapp Number must be 10 digits';
+  if(!email.test(d.email)) return 'Provide a valid email';
+  var w=Number(d.weight_lb); if(d.weight_lb && !(w>=50&&w<=350)) return 'Weight must be between 50 and 350';
+  var dob=new Date(d.dob); var age=(Date.now()-dob.getTime())/(365.25*24*3600*1000);
+  if(!(age>4&&age<90)) return 'Age must be between 4 and 90';
+  if(requireWaiver){ if(!$('#f_waiver').checked) return 'You must accept the waiver'; if(!$('#f_pic').files[0]) return 'Profile picture is required'; }
+  return '';
+}
+
+// Calls done() on every path so the lock always releases.
+function saveProfile(edit, done){
+  function setErr(m){ $('#f_err').textContent = m || ''; }
+
+  const data = {
+    whatsapp:   $('#f_whatsapp').value.trim(),
+    its:        $('#f_its').value.trim(),
+    email:      $('#f_email').value.trim(),
+    first_name: $('#f_first').value.trim(),
+    last_name:  $('#f_last').value.trim(),
+    height_in:  $('#f_height').value,
+    weight_lb:  $('#f_weight').value.trim(),
+    dob:        $('#f_dob').value,
+    emer_name:  $('#f_emer_name').value.trim(),
+    emer_phone: $('#f_emer_phone').value.trim(),
+    jamaat:     $('#f_jamaat').value
+  };
+
+  const v = validateProfile(data, !edit);
+  if (v){ setErr(v); done(); return; }
+
+  const file = $('#f_pic').files[0];
+  function finish(picUrl){
+    if (!edit){
+      google.script.run
+        .withSuccessHandler(function(r){
+          done();
+          if(!r || !r.ok){ setErr((r && r.error) || 'Create failed'); return; }
+          state.user = Object.assign({}, data, { profile_pic_url: picUrl });
+          setPage('home');
+        })
+        .withFailureHandler(function(e){
+          done();
+          setErr((e && e.message) || 'Create failed');
+        })
+        .api_createProfile(Object.assign({}, data, { profile_pic_url: picUrl }));
+    } else {
+      google.script.run
+        .withSuccessHandler(function(r){
+          done();
+          if(!r || !r.ok){ setErr((r && r.error) || 'Save failed'); return; }
+          if (picUrl) state.user.profile_pic_url = picUrl;
+          state.user = Object.assign({}, state.user, data);
+          setPage('home');
+        })
+        .withFailureHandler(function(e){
+          done();
+          setErr((e && e.message) || 'Save failed');
+        })
+        .api_updateProfile(state.user.its, picUrl ? Object.assign({}, data, { profile_pic_url: picUrl }) : data);
+    }
+  }
+
+  if (file){
+    var fr = new FileReader();
+    fr.onload = function(){
+      google.script.run
+        .withSuccessHandler(function(u){ finish((u && u.url) || null); })
+        .withFailureHandler(function(e){ done(); setErr((e && e.message) || 'Image upload failed'); })
+        .api_uploadProfilePic(fr.result, file.name, edit ? state.user.its : data.its);
+    };
+    fr.onerror = function(){ done(); setErr('Could not read the selected image'); };
+    fr.readAsDataURL(file);
+  } else {
+    finish(null);
+  }
+}
 /* ===================== REGISTRATION ACTIONS ===================== */
 /* ---- global click-lock helper ---- */
 const _actionLocks = new Set();
