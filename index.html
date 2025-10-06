@@ -1630,7 +1630,7 @@ function pageBalance(){
   }
 }
 
-    <!-- ===================== EVENT DETAIL ===================== -->
+/* ===================== EVENT DETAIL ===================== */
 
 // --- Admin helpers (client-side) ---
 // Return true only if the user is an ADMIN for this sport (not Captain)
@@ -2469,6 +2469,8 @@ function actDropout(eventId, its, btn){
       if(state.page==='sport') return pageSport();
       if(state.page==='admin_events') return pageAdminEvents();
       if(state.page==='admin_receipts') return pageAdminReceipts();
+      if(state.page==='stat') return pageStat();
+      if(state.page==='qrcheck') return pageQrCheckin();
 
       if (state.page && state.page.startsWith('captain_')) {
         return pageCaptain(state.page.replace('captain_',''));
@@ -2488,17 +2490,20 @@ function actDropout(eventId, its, btn){
   function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
   function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
   async function flushQueue(show){
-    if (!navigator.onLine) return;
-    let q = loadQ(); if (!q.length) return;
-    const keep = [];
-    for (const it of q){
-      try{
-        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw);
-        if (show && it.eventId === state.tmp?.stat_event_id) _statkit_renderRowLocal({its: it.its, stat: it.stat, local:true});
-      }catch(_){ keep.push(it); }
-    }
-    saveQ(keep);
+  if (!navigator.onLine) return;
+  let q = loadQ(); if (!q.length) return;
+  const keep = [];
+  for (const it of q){
+    try{
+      await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw);
+      if (show && window._statkit_renderRowLocal && it.eventId === (state.tmp && state.tmp.stat_event_id)) {
+        window._statkit_renderRowLocal({its: it.its, stat: it.stat, local:true});
+      }
+    }catch(_){ keep.push(it); }
   }
+  saveQ(keep);
+}
+
   window.addEventListener('online', ()=>flushQueue(true));
 
   // ---- Page ----
@@ -2648,7 +2653,8 @@ function actDropout(eventId, its, btn){
                         '<div class="col" style="min-width:160px"></div>';
         if (!box.firstChild) box.appendChild(div); else box.insertBefore(div, box.firstChild);
       }
-
+      window._statkit_renderRowLocal = _statkit_renderRowLocal;
+      
       // Event change
       sel.addEventListener('change', ()=>{
         state.tmp.stat_event_id = sel.value || '';
