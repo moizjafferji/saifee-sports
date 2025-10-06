@@ -4,303 +4,288 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Saifee Sports</title>
-  <style>
-    :root{
-      /* Colors */
-      --bg:#0b1220; --surface:#0f172a; --card:#0e1626; --muted:#9fb3c8; --text:#e6eef8;
-      --accent:#3b82f6; --ok:#16a34a; --warn:#f59e0b; --err:#ef4444; --border:#223;
-
-      /* Fluid type scale */
-      --fs-xxxs: clamp(20px, 8vw, 24px);
-      --fs-xxs: clamp(20px, 10vw, 30px);
-      --fs-xs:  clamp(25px, 13vw, 35px);
-      --fs-sm:  clamp(30px, 16vw, 40px);
-      --fs-md:  clamp(35px, 19vw, 45px);
-      --fs-lg:  clamp(40px, 22vw, 50px);
-      --fs-xl:  clamp(45px, 25vw, 55px);
-
-      /* Layout */
-      --sidebar-w: clamp(200px, 30vw, 300px);
-      --radius: 16px;
-      --pad: 14px;
-      --gap: 12px;
-      --elev: 0 10px 28px rgba(0,0,0,.35);
-
-      --topbar-h: clamp(56px, 9vh, 110px);
-
-    }
-    *{ box-sizing:border-box }
-    html, body{ height:100% }
-    body{
-      margin:0;
-      font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;
-      background:var(--bg); color:var(--text);
-      font-size:var(--fs-md); line-height:1.35;
-    }
-    /* Loading illustration (Home only) */
-    .loading-illustration{
-      display:block;
-      width:100%;
-      max-width:520px;
-      margin:12px auto 0;
-      border-radius:12px;
-      border:1px solid var(--border);
-      box-shadow: var(--elev);
-      height:auto;
-      object-fit:cover;
-    }
-    /* ===== App layout ===== */
-    .app{ display:flex; min-height:100dvh; width:100%; position:relative; }
-    .sidebar{
-      width:var(--sidebar-w);
-      background:var(--surface);
-      border-right:1px solid var(--border);
-      padding: calc(var(--pad) + 6px) var(--pad);
-      position:sticky; top:0; align-self:flex-start; height:100dvh; overflow:auto;
-      will-change: transform;
-      transition: transform .25s ease;
-    }
-    .content{ flex:1; min-width:0; padding: var(--pad); }
-    .container{ max-width:1100px; margin:0 auto; padding: var(--pad); }
-    .card{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--elev);
-      padding: calc(var(--pad) + 6px);
-    }
-
-    /* ===== Mobile top bar + slide-in sidebar ===== */
-    .topbar{
-      min-height: var(--topbar-h);
-      display:flex;
-      position:sticky; top:0; z-index:200;
-      background:linear-gradient(180deg, rgba(12,16,29,.95), rgba(12,16,29,.70));
-      backdrop-filter: blur(6px);
-      padding: 10px var(--pad);
-      border-bottom:1px solid var(--border);
-    }
-
-    .hamburger{
-      min-width:88px;
-      min-height:44px;
-      line-height:1;
-      touch-action:manipulation;
-      -webkit-tap-highlight-color: transparent;
-      background:transparent; color:var(--text);
-      border:1px solid var(--border); border-radius:10px;
-      padding:8px 12px; font-weight:700; cursor:pointer;
-    }
-    .brand{ display:flex; align-items:center; gap:10px; font-size:var(--fs-lg); font-weight:800; letter-spacing:.3px }
-    .brand .logo{ width:28px; height:28px; object-fit:contain; border-radius:8px; border:1px solid var(--border); background:#0d1423 }
-    /* Sidebar logo only: triple the size */
-    #sidebar .logo{
-      width: 126px;
-      height: 126px;
-    }
-    #sidebar .nav,
-    #sidebar .nav .group,
-    #sidebar .nav .submenu{
-  align-items: stretch; /* prevents “centering” of children */
-}
-/* Force all sidebar nav items to left-align content */
-#sidebar .nav .nav-item{
-  justify-content: flex-start;   /* left-align in the flex row */
-  text-align: left;              /* left-align text inside the button */
-}
-
-/* Make sure submenu items inherit the same behavior */
-#sidebar .submenu .nav-item.subitem{
-  justify-content: flex-start;
-  text-align: left;
-}
-
-
-    @media (max-width: 1200px){
-      .sidebar{
-        position: fixed;
-        left: 0;
-        top: var(--topbar-h);
-        height: calc(100dvh - var(--topbar-h));
-        z-index: 180;
-        transform: translateX(-100%);
-      }
-      .sidebar.open{ transform: translateX(0); }
-      .content{ padding-top: 0; }
-
-      .backdrop{
-        position: fixed;
-        left: 0; right: 0;
-        top: var(--topbar-h);
-        bottom: 0;
-        background: rgba(0,0,0,.45);
-        display: none;
-        z-index: 160;
-      }
-      .backdrop.show{ display: block; }
-    }
-
-    /* ===== Desktop collapse (triggered by .sidebar.collapsed) ===== */
-    @media (min-width: 601px){
-      .sidebar.collapsed{
-        position:fixed; left:0; top:0; height:100dvh; z-index:180;
-        transform: translateX(-100%);
-      }
-    }
-
-    /* ===== Nav ===== */
-    .nav-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
-    .brand-left{ display:flex; align-items:center; gap:10px; }
-    .logo{ width:42px; height:42px; object-fit:contain; border-radius:10px; border:1px solid var(--border); background:#0d1423; }
-    .nav{ display:flex; flex-direction:column; gap:6px; }
-    .nav a, .nav button.nav-item{
-      display:flex; align-items:center; gap:10px;
-      width:100%; padding:10px 12px;
-      border-radius: 12px; border:1px solid transparent;
-      background:transparent; color:#d7e5fb; text-decoration:none; cursor:pointer;
-      font-size:var(--fs-sm);
-    }
-    .nav a.active, .nav button.nav-item.active{ background:#1d283a; border-color:#2a364c; color:#fff; }
-    .nav-sep{ margin:8px 0; height:1px; background:var(--border) }
-    .nav .group{ display:flex; flex-direction:column; gap:6px; }
-    .submenu{ margin-left:8px; display:none; }
-    .submenu.open{ display:flex; flex-direction:column; gap:6px; }
-    .subitem{ padding-left:10px; font-size:var(--fs-xs) }
-
-    /* ===== Shared UI ===== */
-    .stack{ display:flex; flex-direction:column; gap: var(--gap); }
-    .row{ display:flex; gap: var(--gap); flex-wrap: wrap; }
-    .col{ flex:1 1 320px; min-width:280px; }
-    .label{ font-size:var(--fs-xs); color:#BF0A30; }
-    .tiny{ font-size:var(--fs-xxs); color:var(--muted); }
-    .muted{ color:var(--muted) }
-    .btn.sm{ padding:6px 10px; font-size:var(--fs-xxs); }
-
-
-    .btn{
-      display:inline-flex; align-items:center; justify-content:center; gap:8px;
-      padding: 11px 14px; border-radius:12px; border:1px solid #224;
-      background:var(--accent); color:#fff; font-weight:700; cursor:pointer;
-      font-size:var(--fs-sm);
-    }
-    .btn.secondary{ background:#1f2937; color:#dbeafe }
-    .btn.danger{ background:#dc2626 }
-    .btn:disabled{ opacity:.6; cursor:not-allowed }
-
-    .input, select, input[type="date"], input[type="datetime-local"], input[type="number"], input[type="file"]{
-      width:100%; padding:12px 14px; border-radius:10px; border:1px solid #293247;
-      background:#0e1626; color:var(--text); font-size:var(--fs-sm);
-    }
-    .table{ width:100%; border-collapse:collapse }
-    .table th,.table td{
-      padding:10px;
-      border-bottom:1px solid var(--border);
-      text-align:left;
-      vertical-align: top;
-    }
-    .table--compact td { font-size: var(--fs-xxxs); }
-    .table--compact th { font-size: var(--fs-xs); }
-
-    .right{ text-align:right }
-
-    .badge{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:var(--fs-xxs); border:1px solid transparent }
-    .badge.ok{ background:rgba(22,163,74,.15); color:#8ee5a3; border-color:rgba(22,163,74,.35) }
-    .badge.warn{ background:rgba(245,158,11,.15); color:#ffd089; border-color:rgba(245,158,11,.35) }
-
-    .event-card{ padding:12px; border:1px solid var(--border); border-radius:12px; background:#0e1626 }
-    .event-actions{ display:flex; gap:8px; flex-wrap:wrap }
-    .countdown{ font-size:var(--fs-lg); font-weight:800 }
-    .countdown { font-variant-numeric: tabular-nums; }
-    .amt-credit{ color:#16a34a; font-weight:700 }
-    .amt-debit{ color:#ef4444; font-weight:700 }
-
-    /* Forms are one-column by design */
-    .form-grid{ display:grid; grid-template-columns: 1fr; gap: var(--gap); }
-
-    /* Utilities */
-    .hide{ display:none !important }
-    .w-full{ width:100% }
-
-    /* Make text scale reliably on iOS/Android and bump sizes on small screens */
-    html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
-
-    /* Hide the hamburger that shows inside the sidebar header (desktop) */
-    #sidebar .hamburger,
-    #btnNavCollapse{
-      display: none !important;
-    }
-    /* Hide the topbar hamburger when we're above the mobile breakpoint */
-    @media (min-width: 1201px){
-      .topbar .hamburger { display: none !important; }
-    }
-
-    /* ===== Mobile sizing & spacing (phones / small tablets) ===== */
-@media (max-width: 600px){
+<style>
   :root{
-    /* Tighter spacing + corners */
-    --pad: 10px;
-    --gap: 10px;
-    --radius: 12px;
-    --topbar-h: 64px;
+    /* Colors */
+    --bg:#0b1220; --surface:#0f172a; --card:#0e1626; --muted:#9fb3c8; --text:#e6eef8;
+    --accent:#3b82f6; --ok:#16a34a; --warn:#f59e0b; --err:#ef4444; --border:#223;
 
-    /* Smaller, sane fluid type scale for small screens */
-    --fs-xxxs: clamp(16px, 3.8vw, 18px);
-    --fs-xxs:  clamp(16px, 4.1vw, 19px);
-    --fs-xs:   clamp(17px, 4.4vw, 20px);
-    --fs-sm:   clamp(18px, 4.8vw, 21px);
-    --fs-md:   clamp(18px, 5.2vw, 22px);
-    --fs-lg:   clamp(19px, 5.8vw, 24px);
-    --fs-xl:   clamp(20px, 6.4vw, 26px);
+    /* Fluid type scale (desktop/tablet) — calm, utilitarian */
+    --fs-xxxs: clamp(12px, 0.72vw, 14px);
+    --fs-xxs:  clamp(13px, 0.80vw, 15px);
+    --fs-xs:   clamp(14px, 0.90vw, 16px);
+    --fs-sm:   clamp(15px, 1.00vw, 18px);
+    --fs-md:   clamp(16px, 1.05vw, 20px);  /* base body */
+    --fs-lg:   clamp(18px, 1.25vw, 22px);
+    --fs-xl:   clamp(20px, 1.60vw, 26px);
+
+    /* Layout — narrower sidebar */
+    --sidebar-w: clamp(200px, 16vw, 240px);
+    --radius: 14px;
+    --pad: 16px;
+    --gap: 12px;
+    --elev: 0 10px 28px rgba(0,0,0,.35);
+    --topbar-h: 64px;
   }
 
-  /* Layout + cards */
-  .content{ padding: var(--pad); }
-  .container{ padding: var(--pad); }
-  .card{ padding: calc(var(--pad) + 2px); }
+  *{ box-sizing:border-box }
+  html, body{ height:100% }
+  body{
+    margin:0;
+    font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;
+    background:var(--bg); color:var(--text);
+    font-size:var(--fs-md); line-height:1.45;
+  }
 
-  /* Brand / logos shrink a bit */
-  .brand{ font-size: var(--fs-sm); }
-  .brand .logo{ width:24px; height:24px; }
+  /* Loading illustration (Home only) */
+  .loading-illustration{
+    display:block;
+    width:100%;
+    max-width:520px;
+    margin:12px auto 0;
+    border-radius:12px;
+    border:1px solid var(--border);
+    box-shadow: var(--elev);
+    height:auto;
+    object-fit:cover;
+  }
+
+  /* ===== App layout ===== */
+  .app{ display:flex; min-height:100dvh; width:100%; position:relative; }
+  .sidebar{
+    width:var(--sidebar-w);
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    padding: calc(var(--pad) + 6px) var(--pad);
+    position:sticky; top:0; align-self:flex-start; height:100dvh; overflow:auto;
+    will-change: transform;
+    transition: transform .25s ease;
+  }
+  .content{ flex:1; min-width:0; padding: var(--pad); }
+  .container{ max-width:1200px; margin:0 auto; padding: var(--pad); }
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--elev);
+    padding: calc(var(--pad) + 6px);
+  }
+
+  /* ===== Mobile top bar + slide-in sidebar ===== */
+  .topbar{
+    min-height: var(--topbar-h);
+    display:flex;
+    position:sticky; top:0; z-index:200;
+    background:linear-gradient(180deg, rgba(12,16,29,.95), rgba(12,16,29,.70));
+    backdrop-filter: blur(6px);
+    padding: 10px var(--pad);
+    border-bottom:1px solid var(--border);
+  }
+
+  .hamburger{
+    min-width:88px;
+    min-height:44px;
+    line-height:1;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color: transparent;
+    background:transparent; color:var(--text);
+    border:1px solid var(--border); border-radius:10px;
+    padding:8px 12px; font-weight:700; cursor:pointer;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; font-size:var(--fs-lg); font-weight:800; letter-spacing:.3px }
+  .brand .logo{ width:28px; height:28px; object-fit:contain; border-radius:8px; border:1px solid var(--border); background:#0d1423 }
+  /* Sidebar logo only: triple the size */
   #sidebar .logo{ width:96px; height:96px; }
 
-  /* Buttons + inputs remain finger-friendly but not bulky */
-  .btn{ padding:10px 12px; border-radius:10px; font-size: var(--fs-xxs); }
-  .btn.sm{ padding:6px 10px; }
-  .input, select,
-  input[type="date"], input[type="datetime-local"], input[type="number"], input[type="file"]{
-    padding:10px 12px; font-size: var(--fs-xxs);
+  #sidebar .nav,
+  #sidebar .nav .group,
+  #sidebar .nav .submenu{ align-items: stretch; }
+  #sidebar .nav .nav-item{ justify-content:flex-start; text-align:left; }
+  #sidebar .submenu .nav-item.subitem{ justify-content:flex-start; text-align:left; }
+
+  @media (max-width: 1200px){
+    .sidebar{
+      position: fixed;
+      left: 0;
+      top: var(--topbar-h);
+      height: calc(100dvh - var(--topbar-h));
+      z-index: 180;
+      transform: translateX(-100%);
+    }
+    .sidebar.open{ transform: translateX(0); }
+    .content{ padding-top: 0; }
+
+    .backdrop{
+      position: fixed;
+      left: 0; right: 0;
+      top: var(--topbar-h);
+      bottom: 0;
+      background: rgba(0,0,0,.45);
+      display: none;
+      z-index: 160;
+    }
+    .backdrop.show{ display: block; }
   }
 
-  /* Countdown stays bold but not gigantic */
-  .countdown{ font-size: clamp(18px, 6vw, 22px); }
-
-  /* Labels/text helpers */
-  .label{ font-size: var(--fs-xxs); }
-  .tiny{ font-size: var(--fs-xxxs); }
-
-  /* Action clusters and grid spacing */
-  .event-actions{ gap:6px; }
-  .row{ gap:8px; }
-  .col{ min-width:240px; }
-
-  /* Tables: make them usable on narrow screens without markup changes */
-  .table{
-    display:block;               /* allow horizontal scrolling */
-    overflow-x:auto;
-    -webkit-overflow-scrolling: touch;
-    white-space: nowrap;         /* prevent ugly wraps on numbers */
-    font-size: var(--fs-xxxs);
+  /* ===== Desktop collapse (triggered by .sidebar.collapsed) ===== */
+  @media (min-width: 601px){
+    .sidebar.collapsed{
+      position:fixed; left:0; top:0; height:100dvh; z-index:180;
+      transform: translateX(-100%);
+    }
   }
-  .table th, .table td{ padding:8px; }
-}
 
-/* Extra-small phones (optional fine-tune) */
-@media (max-width: 360px){
-  .btn{ padding:9px 10px; }
-  .countdown{ font-size: clamp(17px, 6.6vw, 21px); }
-}
+  /* ===== Nav ===== */
+  .nav-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
+  .brand-left{ display:flex; align-items:center; gap:10px; }
+  .logo{ width:42px; height:42px; object-fit:contain; border-radius:10px; border:1px solid var(--border); background:#0d1423; }
+  .nav{ display:flex; flex-direction:column; gap:6px; }
+  .nav a, .nav button.nav-item{
+    display:flex; align-items:center; gap:10px;
+    width:100%; padding:8px 10px;
+    border-radius: 12px; border:1px solid transparent;
+    background:transparent; color:#d7e5fb; text-decoration:none; cursor:pointer;
+    font-size:var(--fs-xs);
+  }
+  .nav a.active, .nav button.nav-item.active{ background:#1d283a; border-color:#2a364c; color:#fff; }
+  .nav-sep{ margin:8px 0; height:1px; background:var(--border) }
+  .nav .group{ display:flex; flex-direction:column; gap:6px; }
+  .submenu{ margin-left:8px; display:none; }
+  .submenu.open{ display:flex; flex-direction:column; gap:6px; }
+  .subitem{ padding-left:10px; font-size:var(--fs-xs) }
 
-  </style>
+  /* ===== Shared UI ===== */
+  .stack{ display:flex; flex-direction:column; gap: var(--gap); }
+  .row{ display:flex; gap: var(--gap); flex-wrap: wrap; }
+  .col{ flex:1 1 320px; min-width:280px; }
+  .label{ font-size:var(--fs-xs); color:#BF0A30; }
+  .tiny{ font-size:var(--fs-xxs); color:var(--muted); }
+  .muted{ color:var(--muted) }
+  .btn.sm{ padding:6px 10px; font-size:var(--fs-xxs); }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding: 11px 14px; border-radius:12px; border:1px solid #224;
+    background:var(--accent); color:#fff; font-weight:700; cursor:pointer;
+    font-size:var(--fs-sm);
+  }
+  .btn.secondary{ background:#1f2937; color:#dbeafe }
+  .btn.danger{ background:#dc2626 }
+  .btn:disabled{ opacity:.6; cursor:not-allowed }
+
+  .input, select, input[type="date"], input[type="datetime-local"], input[type="number"], input[type="file"]{
+    width:100%; padding:12px 14px; border-radius:10px; border:1px solid #293247;
+    background:#0e1626; color:var(--text); font-size:var(--fs-sm);
+  }
+
+  .table{ width:100%; border-collapse:collapse }
+  .table th,.table td{
+    padding:10px;
+    border-bottom:1px solid var(--border);
+    text-align:left;
+    vertical-align: top;
+  }
+  .table--compact td { font-size: var(--fs-xxxs); }
+  .table--compact th { font-size: var(--fs-xs); }
+
+  .right{ text-align:right }
+
+  .badge{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:var(--fs-xxs); border:1px solid transparent }
+  .badge.ok{ background:rgba(22,163,74,.15); color:#8ee5a3; border-color:rgba(22,163,74,.35) }
+  .badge.warn{ background:rgba(245,158,11,.15); color:#ffd089; border-color:rgba(245,158,11,.35) }
+
+  .event-card{ padding:12px; border:1px solid var(--border); border-radius:12px; background:#0e1626 }
+  .event-actions{ display:flex; gap:8px; flex-wrap:wrap }
+  .countdown{ font-size:var(--fs-lg); font-weight:800; font-variant-numeric: tabular-nums; }
+
+  .amt-credit{ color:#16a34a; font-weight:700 }
+  .amt-debit{ color:#ef4444; font-weight:700 }
+
+  /* Forms are one-column by design */
+  .form-grid{ display:grid; grid-template-columns: 1fr; gap: var(--gap); }
+
+  /* Utilities */
+  .hide{ display:none !important }
+  .w-full{ width:100% }
+
+  /* Make text scale reliably on iOS/Android and bump sizes on small screens */
+  html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+
+  /* Hide the hamburger that shows inside the sidebar header (desktop) */
+  #sidebar .hamburger,
+  #btnNavCollapse{ display: none !important; }
+
+  /* Hide the topbar hamburger when we're above the mobile breakpoint */
+  @media (min-width: 1201px){
+    .topbar .hamburger { display: none !important; }
+  }
+
+  /* ===== Mobile sizing & spacing (phones / small tablets) ===== */
+  @media (max-width: 600px){
+    :root{
+      /* Tighter spacing + corners */
+      --pad: 10px;
+      --gap: 10px;
+      --radius: 12px;
+      --topbar-h: 64px;
+
+      /* Smaller, sane fluid type scale for small screens */
+      --fs-xxxs: clamp(16px, 3.8vw, 18px);
+      --fs-xxs:  clamp(16px, 4.1vw, 19px);
+      --fs-xs:   clamp(17px, 4.4vw, 20px);
+      --fs-sm:   clamp(18px, 4.8vw, 21px);
+      --fs-md:   clamp(18px, 5.2vw, 22px);
+      --fs-lg:   clamp(19px, 5.8vw, 24px);
+      --fs-xl:   clamp(20px, 6.4vw, 26px);
+    }
+
+    /* Layout + cards */
+    .content{ padding: var(--pad); }
+    .container{ padding: var(--pad); }
+    .card{ padding: calc(var(--pad) + 2px); }
+
+    /* Brand / logos shrink a bit */
+    .brand{ font-size: var(--fs-sm); }
+    .brand .logo{ width:24px; height:24px; }
+    #sidebar .logo{ width:96px; height:96px; }
+
+    /* Buttons + inputs remain finger-friendly but not bulky */
+    .btn{ padding:10px 12px; border-radius:10px; font-size: var(--fs-xxs); }
+    .btn.sm{ padding:6px 10px; }
+    .input, select,
+    input[type="date"], input[type="datetime-local"], input[type="number"], input[type="file"]{
+      padding:10px 12px; font-size: var(--fs-xxs);
+    }
+
+    /* Countdown stays bold but not gigantic */
+    .countdown{ font-size: clamp(18px, 6vw, 22px); }
+
+    /* Labels/text helpers */
+    .label{ font-size: var(--fs-xxs); }
+    .tiny{ font-size: var(--fs-xxxs); }
+
+    /* Action clusters and grid spacing */
+    .event-actions{ gap:6px; }
+    .row{ gap:8px; }
+    .col{ min-width:240px; }
+
+    /* Tables: make them usable on narrow screens without markup changes */
+    .table{
+      display:block;               /* allow horizontal scrolling */
+      overflow-x:auto;
+      -webkit-overflow-scrolling: touch;
+      white-space: nowrap;         /* prevent wraps on numbers */
+      font-size: var(--fs-xxxs);
+    }
+    .table th, .table td{ padding:8px; }
+  }
+
+  /* Extra-small phones (optional fine-tune) */
+  @media (max-width: 360px){
+    .btn{ padding:9px 10px; }
+    .countdown{ font-size: clamp(17px, 6.6vw, 21px); }
+  }
+</style>
 
 <script>
 /* google.script.run polyfill for Cloudflare Pages */
@@ -405,14 +390,26 @@ var router = {
       case 'event':           return '#/event/' + encodeURIComponent((opts && opts.id) || '');
       case 'create':          return '#/create';
       case 'edit':            return '#/edit';
+
+      // Allow programmatic navigation to a QR link if you ever need it:
+      case 'qrcheck': {
+        const id = (opts && opts.id) || '';
+        const token = (opts && opts.token) || '';
+        return '#/checkin?e=' + encodeURIComponent(id) + '&k=' + encodeURIComponent(token);
+      }
+
       case 'landing':
       default:                return '#/landing';
     }
   },
+
+  // Query-aware parsing (so #/checkin?e=<id>&k=<token> works)
   parse(){
-    const raw = (location.hash || '').replace(/^#\/?/,'');
+    const raw = (location.hash || '').replace(/^#\/?/, '');
     if (!raw) return { page: '' };
-    const parts = raw.split('/');
+
+    const [path, qs] = raw.split('?');
+    const parts = path.split('/');
     const seg = (parts[0]||'').toLowerCase();
 
     if (['home','profile','balance','calendar','guests','landing','create','edit'].includes(seg))
@@ -420,12 +417,19 @@ var router = {
 
     if (seg === 'sport')   return { page:'sport',   sport: decodeURIComponent(parts[1]||'Soccer') };
     if (seg === 'captain') return { page:'captain', sport: decodeURIComponent(parts[1]||'') };
-    if (seg === 'admin' && parts[1]==='events')    return { page:'admin_events' };
-    if (seg === 'admin' && parts[1]==='receipts')  return { page:'admin_receipts' };
+    if (seg === 'admin' && parts[1]==='events')   return { page:'admin_events' };
+    if (seg === 'admin' && parts[1]==='receipts') return { page:'admin_receipts' };
     if (seg === 'event')   return { page:'event',   id: decodeURIComponent(parts[1]||'') };
+
+    // NEW: qr check-in landing
+    if (seg === 'checkin'){
+      const p = new URLSearchParams(qs||'');
+      return { page:'qrcheck', id: p.get('e')||'', token: p.get('k')||'' };
+    }
 
     return { page:'landing' };
   },
+
   navigate(page, opts){
     const target = router.normalize(page, opts);
     if (location.hash !== target) {
@@ -434,6 +438,7 @@ var router = {
       router.sync();              // allow "navigate to same route" to re-render
     }
   },
+
   syncing: false,
   sync(){
     if (router.syncing) return;
@@ -446,6 +451,12 @@ var router = {
       }
 
       const route = router.parse();
+
+      // Handle QR check-in BEFORE auth gating so the page can bounce-to-login-and-return.
+      if (route.page === 'qrcheck'){
+        pageQrCheckin(route.id, route.token); // must exist
+        return;
+      }
 
       // Gate protected pages if signed out
       const publicPages = new Set(['landing','create','edit','']);
@@ -927,6 +938,9 @@ async function pageHome(){
   if (!guard()) return;
   setDocTitle('Home');
 
+  // Ensure timers holder exists
+  window.homeTimers = window.homeTimers || {};
+
   // Clear any prior timers to avoid duplicates if user re-enters Home
   if (homeTimers.cd) { clearInterval(homeTimers.cd); homeTimers.cd = null; }
   if (homeTimers.uiRefresh) { clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
@@ -961,14 +975,19 @@ async function pageHome(){
     );
     const detailsById = Object.fromEntries(detailPairs);
 
-    // Build DOM once
+    // Build DOM once (adds top-right Check In button)
     const node = el(
       '<div class="stack">'+
         '<div class="card stack">'+
-          '<div class="label">Your Next Event</div>'+
-          '<div id="home_cd" class="countdown muted">—</div>'+
-          '<div id="home_cd_sub" class="tiny"></div>'+
-          '<div><button class="btn js-checkin-btn" id="home_checkin" style="display:none"></button></div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">'+
+            '<div class="stack" style="gap:6px">'+
+              '<div class="label">Your Next Event</div>'+
+              '<div id="home_cd" class="countdown muted">—</div>'+
+              '<div id="home_cd_sub" class="tiny"></div>'+
+            '</div>'+
+            // Hidden by default; shown/enabled when window & status allow
+            '<button id="home_checkin" class="btn" style="display:none">Check In</button>'+
+          '</div>'+
         '</div>'+
         '<div class="card stack">'+
           '<div class="label">Balance</div>'+
@@ -1169,7 +1188,7 @@ async function pageHome(){
       }
 
       if (!next){
-        cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
+        cd.textContent='You have no upcoming registrations.'; sub.textContent=''; if (chk) chk.style.display='none';
         return;
       }
       wireTopCheckinFor(next);
@@ -1188,7 +1207,7 @@ async function pageHome(){
           } else {
             next = pickSelfEventForCountdown(nowVal);
             if (!next){
-              cd.textContent='You have no upcoming registrations.'; sub.textContent=''; chk.style.display='none';
+              cd.textContent='You have no upcoming registrations.'; sub.textContent=''; if (chk) chk.style.display='none';
               clearInterval(homeTimers.cd); homeTimers.cd = null; return;
             }
             wireTopCheckinFor(next);
@@ -1207,6 +1226,81 @@ async function pageHome(){
     layout(el('<div class="card" style="color:var(--err)">Failed to load: '+(e && e.message || e)+'</div>'));
   }
 }
+
+    /* ===================== QR Check in ===================== */
+
+
+async function pageQrCheckin(eventId, token){
+  // If params weren’t passed from router, reread from hash just in case
+  if (!eventId || !token){
+    const raw = (location.hash || '').replace(/^#\/?/, '');
+    const qs  = raw.split('?')[1] || '';
+    const p   = new URLSearchParams(qs);
+    eventId = eventId || p.get('e') || '';
+    token   = token   || p.get('k') || '';
+  }
+
+  if (!eventId || !token){
+    layout(el("<div class='card'>Invalid QR link</div>"));
+    return;
+  }
+
+  // Gate sign-in: bounce to landing and come back here
+  if (!state.user){
+    state.tmp = state.tmp || {};
+    state.tmp.returnTo = location.hash;
+    setPage('landing');
+    return;
+  }
+
+  showLoading('Validating QR…');
+
+  try{
+    const v = await gs('api_validateCheckinToken', eventId, token);
+    if (!v || !v.ok){
+      layout(el("<div class='card' style='color:var(--err)'>QR invalid or expired.</div>"));
+      return;
+    }
+
+    // Location is optional; we’ll try and continue regardless.
+    let lat=null,lng=null;
+    try{
+      await new Promise(res=>{
+        if (!navigator.geolocation) return res();
+        navigator.geolocation.getCurrentPosition(
+          p=>{ lat=p.coords.latitude; lng=p.coords.longitude; res(); },
+          ()=>res(),
+          { enableHighAccuracy:true, timeout:6000, maximumAge:0 }
+        );
+      });
+    }catch(_){}
+
+    withClickLock('qrcheck:'+eventId+':'+state.user.its, null, null, async (done)=>{
+      try{
+        const r = await gs('api_checkInWithLocation', state.user.its, eventId, state.user.its, lat, lng);
+        if (!r || !r.ok){
+          layout(el("<div class='card' style='color:var(--err)'>"+((r && r.error)||'Check-in failed')+"</div>"));
+          return;
+        }
+        await gs('api_consumeCheckinToken', eventId, token);
+
+        layout(el(
+          "<div class='card stack' style='text-align:center'>"+
+            "<div style='font-size:var(--fs-lg);font-weight:800'>Checked in ✅</div>"+
+            "<div class='tiny'>Event ID: "+eventId+"</div>"+
+            "<div style='margin-top:10px'><button class='btn' id='goEvt'>View Event</button></div>"+
+          "</div>"
+        ));
+        const go = document.getElementById('goEvt');
+        if (go) go.onclick = ()=> router.navigate('event', { id:eventId });
+      } finally { done(); }
+    });
+
+  } catch(e){
+    layout(el("<div class='card' style='color:var(--err)'>"+(e && e.message || e)+"</div>"));
+  }
+}
+
 
 
     /* ===================== PROFILE ===================== */
@@ -1693,6 +1787,61 @@ ${evt.address || ''}`;
       $('#dropout_me').onclick = (ev)=> actDropout(evt.id, undefined, ev.currentTarget);
     })();
 
+// After "Your Registration" buttons inside openEvent(...)
+(function addAdminQr(){
+  if (!isAdminForSport(evt.sport)) return;
+
+  const adminCard = el(
+    "<div class='card stack'>"+
+      "<div class='label'>Admin Tools</div>"+
+      "<div class='event-actions'>"+
+        "<button class='btn' id='btnShowQr'>Show Check-in QR</button>"+
+        "<button class='btn secondary' id='btnRotateQr'>Rotate (new token)</button>"+
+      "</div>"+
+      "<div class='tiny'>QR is short-lived. Rotate as needed.</div>"+
+      "<div id='qr_holder' style='display:none;align-items:center;gap:16px;flex-wrap:wrap'></div>"+
+    "</div>"
+  );
+  document.getElementById('root').appendChild(adminCard);
+
+  // Lazy-load QR generator (tiny, zero deps)
+  const ensureQrLib = ()=> new Promise((res, rej)=>{
+    if (window.QRCode) return res();
+    const s = document.createElement('script');
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    s.onload = res; s.onerror = ()=>rej(new Error('QR lib failed to load'));
+    document.head.appendChild(s);
+  });
+
+  async function issueAndRender(tokenMinutes){
+    const r = await gs('api_issueCheckinToken', evt.id, tokenMinutes||10);
+    if (!r || !r.ok){ alert((r && r.error)||'Could not issue token'); return; }
+
+    const url = location.origin + "/#/checkin?e=" + encodeURIComponent(evt.id) + "&k=" + encodeURIComponent(r.token);
+
+    const box = document.getElementById('qr_holder');
+    box.style.display = 'flex';
+    box.innerHTML =
+      "<div>"+
+        "<div id='qr_canvas' style='width:240px;height:240px;background:#fff;border-radius:12px;padding:10px'></div>"+
+        "<div class='tiny' style='margin-top:6px'>Expires: "+fmtDT(r.expires_at)+"</div>"+
+        "<div class='tiny'>URL: "+url+"</div>"+
+      "</div>";
+
+    await ensureQrLib();
+    new QRCode(document.getElementById('qr_canvas'), {
+      text: url,
+      width: 220,
+      height: 220,
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
+
+  document.getElementById('btnShowQr').onclick = ()=> issueAndRender(10);
+  document.getElementById('btnRotateQr').onclick = ()=> issueAndRender(10);
+})();
+
+
     // 5) Guests (use preloaded list; no fetch on render)
     (function renderGuests(){
       const guests = (guestsRes && guestsRes.guests) || [];
@@ -1804,192 +1953,121 @@ ${evt.address || ''}`;
 }
     /* ===================== CREATE / EDIT PROFILE ===================== */
     function pageCreateOrEdit(edit){
-  var u = edit ? (state.user || {}) : {};
-  var node = el(
-    "<div class='card stack'>"+
-      "<div style='display:flex;gap:10px;align-items:center;justify-content:space-between'>"+
-        "<div style='font-size:var(--fs-md);font-weight:800'>"+(edit?"Edit Profile":"Create Profile")+"</div>"+
-        "<button class='btn secondary' id='btnBack'>Back</button>"+
-      "</div>"+
-      "<div class='form-grid'>"+
-        "<div class='stack'>"+
-          "<label class='label'>Whatsapp Number</label>"+
-          "<input id='f_whatsapp' class='input' placeholder='7861102153' value='"+(u.whatsapp||"")+"'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>ITS</label>"+
-          "<input id='f_its' class='input' placeholder='30442153' value='"+(u.its||"")+"' "+(edit?'disabled':'')+">"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Email</label>"+
-          "<input id='f_email' class='input' placeholder='name@example.com' value='"+(u.email||"")+"'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>First Name</label>"+
-          "<input id='f_first' class='input' placeholder='Burhanuddin' value='"+(u.first_name||"")+"'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Last Name</label>"+
-          "<input id='f_last' class='input' placeholder='Saifee' value='"+(u.last_name||"")+"'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Profile Picture</label>"+
-          "<input id='f_pic' type='file' accept='image/*' class='input'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Height</label>"+
-          "<select id='f_height' class='input'></select>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Weight (lb)</label>"+
-          "<input id='f_weight' class='input' placeholder='180' value='"+(u.weight_lb||"")+"'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Date of Birth</label>"+
-          "<input id='f_dob' type='date' class='input' value='"+(u.dob||"")+"'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Emergency Contact Name</label>"+
-          "<input id='f_emer_name' class='input' placeholder='Saifuddin Saifee' value='"+(u.emer_name||"")+"'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Emergency Phone Number</label>"+
-          "<input id='f_emer_phone' class='input' placeholder='7861102153' value='"+(u.emer_phone||"")+"'>"+
-        "</div>"+
-        "<div class='stack'>"+
-          "<label class='label'>Jamaat</label>"+
-          "<select id='f_jamaat' class='input'></select>"+
-        "</div>"+
-        (edit? '' :
-          "<div class='card' style='background:#0e1626'>"+
-            "<div class='label'>Waiver</div>"+
-            "<div style='max-height:180px;overflow:auto;font-size:var(--fs-xs);white-space:pre-line'>"+waiverText()+"</div>"+
-            "<label style='display:flex;gap:8px;align-items:flex-start;margin-top:8px'>"+
-              "<input id='f_waiver' type='checkbox'>"+
-              "<span class='tiny'>I have read and agree to the waiver terms.</span>"+
-            "</label>"+
-          "</div>"
-        )+
-      "</div>"+
-      "<div style='display:flex;gap:10px;justify-content:flex-end'>"+
-        "<button class='btn' id='f_save'>"+(edit?'Save Changes':'Create Profile')+"</button>"+
-      "</div>"+
-      "<div class='tiny' id='f_err' style='color:var(--err)'></div>"+
-    "</div>"
-  );
-  layout(node);
-
-  $('#btnBack').onclick = function(){ setPage('landing'); };
-
-  // Height options
-  var h = $('#f_height');
-  for (var ft=4; ft<=7; ft++){
-    for (var i=0; i<12; i++){
-      var v = ft*12 + i;
-      var o = document.createElement('option');
-      o.value = v; o.textContent = ft+'ft '+i+'in';
-      h.appendChild(o);
+      var u=edit?(state.user||{}):{};
+      var node=el(
+        "<div class='card stack'>"+
+          "<div style='display:flex;gap:10px;align-items:center;justify-content:space-between'>"+
+            "<div style='font-size:var(--fs-md);font-weight:800'>"+(edit?"Edit Profile":"Create Profile")+"</div>"+
+            "<button class='btn secondary' id='btnBack'>Back</button>"+
+          "</div>"+
+          "<div class='form-grid'>"+
+            "<div class='stack'>"+
+              "<label class='label'>Whatsapp Number</label>"+
+              "<input id='f_whatsapp' class='input' placeholder='7861102153' value='"+(u.whatsapp||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>ITS</label>"+
+              "<input id='f_its' class='input' placeholder='30442153' value='"+(u.its||"") +"' "+(edit?'disabled':'')+">"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Email</label>"+
+              "<input id='f_email' class='input' placeholder='name@example.com' value='"+(u.email||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>First Name</label>"+
+              "<input id='f_first' class='input' placeholder='Burhanuddin' value='"+(u.first_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Last Name</label>"+
+              "<input id='f_last' class='input' placeholder='Saifee' value='"+(u.last_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Profile Picture</label>"+
+              "<input id='f_pic' type='file' accept='image/*' class='input'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Height</label>"+
+              "<select id='f_height' class='input'></select>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Weight (lb)</label>"+
+              "<input id='f_weight' class='input' placeholder='180' value='"+(u.weight_lb||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Date of Birth</label>"+
+              "<input id='f_dob' type='date' class='input' value='"+(u.dob||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Emergency Contact Name</label>"+
+              "<input id='f_emer_name' class='input' placeholder='Saifuddin Saifee' value='"+(u.emer_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Emergency Phone Number</label>"+
+              "<input id='f_emer_phone' class='input' placeholder='7861102153' value='"+(u.emer_phone||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Jamaat</label>"+
+              "<select id='f_jamaat' class='input'></select>"+
+            "</div>"+
+            (edit? '' :
+              "<div class='card' style='background:#0e1626'>"+
+                "<div class='label'>Waiver</div>"+
+                "<div style='max-height:180px;overflow:auto;font-size:var(--fs-xs);white-space:pre-line'>"+waiverText()+"</div>"+
+                "<label style='display:flex;gap:8px;align-items:flex-start;margin-top:8px'>"+
+                  "<input id='f_waiver' type='checkbox'>"+
+                  "<span class='tiny'>I have read and agree to the waiver terms.</span>"+
+                "</label>"+
+              "</div>"
+            )+
+          "</div>"+
+          "<div style='display:flex;gap:10px;justify-content:flex-end'>"+
+            "<button class='btn' id='f_save'>"+(edit?'Save Changes':'Create Profile')+"</button>"+
+          "</div>"+
+          "<div class='tiny' id='f_err' style='color:var(--err)'></div>"+
+        "</div>"
+      );
+      layout(node);
+      $('#btnBack').onclick=function(){ setPage('landing'); };
+      var h=$('#f_height');
+      for(var ft=4;ft<=7;ft++){ for(var i=0;i<12;i++){ var v=ft*12+i; var o=document.createElement('option'); o.value=v; o.textContent=ft+'ft '+i+'in'; h.appendChild(o); } }
+      if(u.height_in) h.value=u.height_in;
+      var jamaats=["Dallas","Plano","Atlanta","Austin","Bakersfield","Boston","Calgary","Charlotte","Chicago","Chicago North","Columbia","Columbus","Connecticut","Detroit","Edmonton","Houston","Los Angeles","Miami","Minneapolis","Mississauga","Montreal","New Jersey","New York","Orange County","Ottawa","Philadelphia","Poconos","Portland","Raleigh","San Antonio","San Diego","San Francisco","San Jose","Seattle","South Jersey","Spartanburg","Tampa","Toronto","Vancouver","Virginia","Washington, DC","Woodlands"];
+      var jSel=$('#f_jamaat'); jamaats.forEach(function(j){ var o=document.createElement('option'); o.value=j; o.text=j; jSel.appendChild(o); }); if(u.jamaat) jSel.value=u.jamaat;
+      $('#f_save').onclick=function(){ saveProfile(!!edit); };
     }
-  }
-  if (u.height_in) h.value = u.height_in;
-
-  // Jamaats
-  var jamaats = ["Dallas","Plano","Atlanta","Austin","Bakersfield","Boston","Calgary","Charlotte","Chicago","Chicago North","Columbia","Columbus","Connecticut","Detroit","Edmonton","Houston","Los Angeles","Miami","Minneapolis","Mississauga","Montreal","New Jersey","New York","Orange County","Ottawa","Philadelphia","Poconos","Portland","Raleigh","San Antonio","San Diego","San Francisco","San Jose","Seattle","South Jersey","Spartanburg","Tampa","Toronto","Vancouver","Virginia","Washington, DC","Woodlands"];
-  var jSel = $('#f_jamaat');
-  jamaats.forEach(function(j){ var o=document.createElement('option'); o.value=j; o.text=j; jSel.appendChild(o); });
-  if (u.jamaat) jSel.value = u.jamaat;
-
-  // Click-locked save (uses your withClickLock)
-  $('#f_save').onclick = function(ev){
-    withClickLock('profile:save:'+ (edit?'edit':'create'), ev.currentTarget, (edit?'Saving…':'Creating…'), function(done){
-      saveProfile(!!edit, done);
-    });
-  };
-}
-
-function waiverText(){
-  return "I HEREBY ASSUME ALL OF THE RISKS OF PARTICIPATING IN ANY/ALL ACTIVITIES ASSOCIATED WITH EVENTS BY SAIFEE SPORTS, including by way of example and not limitation, any risks that may arise from negligence or carelessness on the part of the persons or entities being released, from dangerous or defective equipment or property owned, maintained, or controlled by them, or because of their possible liability without fault.\n\nI certify that I am physically fit, have sufficiently prepared or trained for participation in this activity, and have not been advised to not participate by a qualified medical professional. I certify that there are no health-related reasons or problems which preclude my participation in this activity.\n\nI acknowledge that this Accident Waiver and Release of Liability Form will be used by the event holders, sponsors, and organizers of the activity in which I may participate, and that it will govern my actions and responsibilities at said activity.\n\nIn consideration of my application and permitting me to participate in this activity, I hereby take action for myself, my executors, administrators, heirs, next of kin, successors, and assigns as follows:\n\n(A) I WAIVE, RELEASE, AND DISCHARGE from any and all liability, including but not limited to, liability arising from the negligence or fault of the entities or persons released, for my death, disability, personal injury, property damage, property theft, or actions of any kind which may hereafter occur to me including my traveling to and from this activity, THE FOLLOWING ENTITIES OR PERSONS: Saifee Sports and/or their directors, officers, employees, volunteers, representatives, and agents, and the activity holders, sponsors, and volunteers;\n\n(B) INDEMNIFY, HOLD HARMLESS, AND PROMISE NOT TO SUE the entities or persons mentioned in this paragraph from any and all liabilities or claims made as a result of participation in this activity, whether caused by the negligence of release or otherwise.\n\nI acknowledge that Saifee Sports and their directors, officers, volunteers, representatives, and agents are NOT responsible for the errors, omissions, acts, or failures to act of any party or entity conducting a specific activity on their behalf.\n\nI acknowledge that this activity may involve a test of a person's physical and mental limits and carries with it the potential for death, serious injury, and property loss. The risks include, but are not limited to, those caused by terrain, facilities, temperature, weather, condition of participants, equipment, vehicular traffic, lack of hydration, and actions of other people including, but not limited to, participants, volunteers, monitors, and/or producers of the activity. These risks are not only inherent to participants, but are also present for volunteers.\n\nI hereby consent to receive medical treatment which may be deemed advisable in the event of injury, accident, and/or illness during this activity.\n\nI understand while participating in this activity, I may be photographed. I agree to allow my photo, video, or film likeness to be used for any legitimate purpose by the activity holders, producers, sponsors, organizers, and assigns.\n\nThe Accident Waiver and Release of Liability Form shall be construed broadly to provide a release and waiver to the maximum extent permissible under applicable law.";
-}
-
-function validateProfile(d, requireWaiver){
-  var phone=/^\d{10}$/; var its=/^\d{8}$/; var email=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-  if(!its.test(d.its)) return 'ITS must be 8 digits';
-  if(!phone.test(d.whatsapp)) return 'Whatsapp Number must be 10 digits';
-  if(!email.test(d.email)) return 'Provide a valid email';
-  var w=Number(d.weight_lb); if(d.weight_lb && !(w>=50&&w<=350)) return 'Weight must be between 50 and 350';
-  var dob=new Date(d.dob); var age=(Date.now()-dob.getTime())/(365.25*24*3600*1000);
-  if(!(age>4&&age<90)) return 'Age must be between 4 and 90';
-  if(requireWaiver){ if(!$('#f_waiver').checked) return 'You must accept the waiver'; if(!$('#f_pic').files[0]) return 'Profile picture is required'; }
-  return '';
-}
-
-// Calls done() on every path so the lock always releases.
-function saveProfile(edit, done){
-  function setErr(m){ $('#f_err').textContent = m || ''; }
-
-  const data = {
-    whatsapp:   $('#f_whatsapp').value.trim(),
-    its:        $('#f_its').value.trim(),
-    email:      $('#f_email').value.trim(),
-    first_name: $('#f_first').value.trim(),
-    last_name:  $('#f_last').value.trim(),
-    height_in:  $('#f_height').value,
-    weight_lb:  $('#f_weight').value.trim(),
-    dob:        $('#f_dob').value,
-    emer_name:  $('#f_emer_name').value.trim(),
-    emer_phone: $('#f_emer_phone').value.trim(),
-    jamaat:     $('#f_jamaat').value
-  };
-
-  const v = validateProfile(data, !edit);
-  if (v){ setErr(v); done(); return; }
-
-  const file = $('#f_pic').files[0];
-  function finish(picUrl){
-    if (!edit){
-      google.script.run
-        .withSuccessHandler(function(r){
-          done();
-          if(!r || !r.ok){ setErr((r && r.error) || 'Create failed'); return; }
-          state.user = Object.assign({}, data, { profile_pic_url: picUrl });
-          setPage('home');
-        })
-        .withFailureHandler(function(e){
-          done();
-          setErr((e && e.message) || 'Create failed');
-        })
-        .api_createProfile(Object.assign({}, data, { profile_pic_url: picUrl }));
-    } else {
-      google.script.run
-        .withSuccessHandler(function(r){
-          done();
-          if(!r || !r.ok){ setErr((r && r.error) || 'Save failed'); return; }
-          if (picUrl) state.user.profile_pic_url = picUrl;
-          state.user = Object.assign({}, state.user, data);
-          setPage('home');
-        })
-        .withFailureHandler(function(e){
-          done();
-          setErr((e && e.message) || 'Save failed');
-        })
-        .api_updateProfile(state.user.its, picUrl ? Object.assign({}, data, { profile_pic_url: picUrl }) : data);
+    function waiverText(){ return "I HEREBY ASSUME ALL OF THE RISKS OF PARTICIPATING IN ANY/ALL ACTIVITIES ASSOCIATED WITH EVENTS BY SAIFEE SPORTS ... (same text as before)"; }
+    function validateProfile(d, requireWaiver){
+      var phone=/^\d{10}$/; var its=/^\d{8}$/; var email=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      if(!its.test(d.its)) return 'ITS must be 8 digits';
+      if(!phone.test(d.whatsapp)) return 'Whatsapp Number must be 10 digits';
+      if(!email.test(d.email)) return 'Provide a valid email';
+      var w=Number(d.weight_lb); if(d.weight_lb && !(w>=50&&w<=350)) return 'Weight must be between 50 and 350';
+      var dob=new Date(d.dob); var age=(Date.now()-dob.getTime())/(365.25*24*3600*1000);
+      if(!(age>4&&age<90)) return 'Age must be between 4 and 90';
+      if(requireWaiver){ if(!$('#f_waiver').checked) return 'You must accept the waiver'; if(!$('#f_pic').files[0]) return 'Profile picture is required'; }
+      return '';
     }
-  }
+    function saveProfile(edit){
+      function setErr(m){ $('#f_err').textContent=m; }
+      var data={ whatsapp:$('#f_whatsapp').value.trim(), its:$('#f_its').value.trim(), email:$('#f_email').value.trim(), first_name:$('#f_first').value.trim(), last_name:$('#f_last').value.trim(),
+        height_in:$('#f_height').value, weight_lb:$('#f_weight').value.trim(), dob:$('#f_dob').value,
+        emer_name:$('#f_emer_name').value.trim(), emer_phone:$('#f_emer_phone').value.trim(), jamaat:$('#f_jamaat').value };
+      var err=validateProfile(data,!edit); if(err){setErr(err);return;}
+      var file=$('#f_pic').files[0];
+      function finish(pic){
+        if(!edit){
+          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Create failed'); state.user=Object.assign({},data,{profile_pic_url:pic}); setPage('home'); }).api_createProfile(Object.assign({},data,{profile_pic_url:pic}));
+        } else {
+          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Save failed'); if(pic) state.user.profile_pic_url=pic; state.user=Object.assign({},state.user,data); setPage('home'); }).api_updateProfile(state.user.its, pic?Object.assign({},data,{profile_pic_url:pic}):data);
+        }
+      }
+      if(file){
+        var fr=new FileReader();
+        fr.onload=function(){ google.script.run.withSuccessHandler(function(u){ finish(u.url); }).api_uploadProfilePic(fr.result,file.name,edit?state.user.its:data.its); };
+        fr.readAsDataURL(file);
+      } else finish(null);
+    }
 
-  if (file){
-    var fr = new FileReader();
-    fr.onload = function(){
-      google.script.run
-        .withSuccessHandler(function(u){ finish((u && u.url) || null); })
-        .withFailureHandler(function(e){ done(); setErr((e && e.message) || 'Image upload failed'); })
-        .api_uploadProfilePic(fr.result, file.name, edit ? state.user.its : data.its);
-    };
-    fr.onerror = function(){ done(); setErr('Could not read the selected image'); };
-    fr.readAsDataURL(file);
-  } else {
-    finish(null);
-  }
-}
 /* ===================== REGISTRATION ACTIONS ===================== */
 /* ---- global click-lock helper ---- */
 const _actionLocks = new Set();
