@@ -388,15 +388,15 @@ var router = {
       case 'admin_receipts':  return '#/admin/receipts';
       case 'captain':         return '#/captain/' + encodeURIComponent((opts && opts.sport) || '');
       case 'event':           return '#/event/' + encodeURIComponent((opts && opts.id) || '');
-      case 'stat':            return '#/stat';                  // <<< ADDED
       case 'create':          return '#/create';
       case 'edit':            return '#/edit';
+      case 'stat':            return '#/stat';                      // <-- NEW
       case 'landing':
       default:                return '#/landing';
     }
   },
 
-  // In router.parse(), replace the first lines with query-aware parsing:
+  // Query-aware parsing:
   parse(){
     const raw = (location.hash || '').replace(/^#\/?/, '');
     if (!raw) return { page: '' };
@@ -405,7 +405,7 @@ var router = {
     const parts = path.split('/');
     const seg = (parts[0]||'').toLowerCase();
 
-    // include 'stat' in the simple pages list
+    // ⬇ add 'stat' to the simple pages list
     if (['home','profile','balance','calendar','guests','landing','create','edit','stat'].includes(seg))
       return { page: seg };
 
@@ -415,7 +415,7 @@ var router = {
     if (seg === 'admin' && parts[1]==='receipts') return { page:'admin_receipts' };
     if (seg === 'event')   return { page:'event',   id: decodeURIComponent(parts[1]||'') };
 
-    // NEW: qr check-in landing
+    // QR check-in landing (already in your app)
     if (seg === 'checkin'){
       const p = new URLSearchParams(qs||'');
       return { page:'qrcheck', id: p.get('e')||'', token: p.get('k')||'' };
@@ -446,15 +446,15 @@ var router = {
       const route = router.parse();
 
       // Gate protected pages if signed out
-      const publicPages = new Set(['landing','create','edit','']);
+      const publicPages = new Set(['landing','create','edit','']); // 'stat' is intentionally NOT public
       if (!state.user && !publicPages.has(route.page)) {
         state.tmp = state.tmp || {};
-        state.tmp.returnTo = location.hash; // remember where they wanted to go
+        state.tmp.returnTo = location.hash; // remember where they wanted to go (e.g., #/stat)
         setPage('landing', {updateHash:false});
         return;
       }
 
-      // Special routes
+      // Route → page
       if (route.page === 'sport'){
         state.sport = route.sport || state.sport || 'Soccer';
         setPage('sport', {updateHash:false});
@@ -468,16 +468,8 @@ var router = {
         openEvent(route.id); // render event detail directly
         return;
       }
-      if (route.page === 'qrcheck'){           // if you handle QR check-in as a page
-        setPage('qrcheck', { id: route.id, token: route.token, updateHash:false });
-        return;
-      }
-      if (route.page === 'stat'){              // <<< ADDED
-        setPage('stat', {updateHash:false});   // your pageStatTracker() should be wired to 'stat'
-        return;
-      }
 
-      // Simple pages
+      // Simple pages (includes 'stat' now)
       setPage(route.page || 'landing', {updateHash:false});
     } finally {
       router.syncing = false;
