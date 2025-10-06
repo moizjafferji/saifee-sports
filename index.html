@@ -388,22 +388,15 @@ var router = {
       case 'admin_receipts':  return '#/admin/receipts';
       case 'captain':         return '#/captain/' + encodeURIComponent((opts && opts.sport) || '');
       case 'event':           return '#/event/' + encodeURIComponent((opts && opts.id) || '');
+      case 'stat':            return '#/stat';                  // <<< ADDED
       case 'create':          return '#/create';
       case 'edit':            return '#/edit';
-
-      // Allow programmatic navigation to a QR link if you ever need it:
-      case 'qrcheck': {
-        const id = (opts && opts.id) || '';
-        const token = (opts && opts.token) || '';
-        return '#/checkin?e=' + encodeURIComponent(id) + '&k=' + encodeURIComponent(token);
-      }
-
       case 'landing':
       default:                return '#/landing';
     }
   },
 
-  // Query-aware parsing (so #/checkin?e=<id>&k=<token> works)
+  // In router.parse(), replace the first lines with query-aware parsing:
   parse(){
     const raw = (location.hash || '').replace(/^#\/?/, '');
     if (!raw) return { page: '' };
@@ -412,7 +405,8 @@ var router = {
     const parts = path.split('/');
     const seg = (parts[0]||'').toLowerCase();
 
-    if (['home','profile','balance','calendar','guests','landing','create','edit'].includes(seg))
+    // include 'stat' in the simple pages list
+    if (['home','profile','balance','calendar','guests','landing','create','edit','stat'].includes(seg))
       return { page: seg };
 
     if (seg === 'sport')   return { page:'sport',   sport: decodeURIComponent(parts[1]||'Soccer') };
@@ -426,7 +420,6 @@ var router = {
       const p = new URLSearchParams(qs||'');
       return { page:'qrcheck', id: p.get('e')||'', token: p.get('k')||'' };
     }
-
     return { page:'landing' };
   },
 
@@ -452,12 +445,6 @@ var router = {
 
       const route = router.parse();
 
-      // Handle QR check-in BEFORE auth gating so the page can bounce-to-login-and-return.
-      if (route.page === 'qrcheck'){
-        pageQrCheckin(route.id, route.token); // must exist
-        return;
-      }
-
       // Gate protected pages if signed out
       const publicPages = new Set(['landing','create','edit','']);
       if (!state.user && !publicPages.has(route.page)) {
@@ -467,7 +454,7 @@ var router = {
         return;
       }
 
-      // Route → page
+      // Special routes
       if (route.page === 'sport'){
         state.sport = route.sport || state.sport || 'Soccer';
         setPage('sport', {updateHash:false});
@@ -481,6 +468,14 @@ var router = {
         openEvent(route.id); // render event detail directly
         return;
       }
+      if (route.page === 'qrcheck'){           // if you handle QR check-in as a page
+        setPage('qrcheck', { id: route.id, token: route.token, updateHash:false });
+        return;
+      }
+      if (route.page === 'stat'){              // <<< ADDED
+        setPage('stat', {updateHash:false});   // your pageStatTracker() should be wired to 'stat'
+        return;
+      }
 
       // Simple pages
       setPage(route.page || 'landing', {updateHash:false});
@@ -491,6 +486,7 @@ var router = {
 };
 
 window.addEventListener('hashchange', router.sync);
+
 
     /* ===================== GLOBAL STATE ===================== */
     var state = {
@@ -710,25 +706,30 @@ function showLoading(text){
         nav.appendChild(group);
       }
 
-      // Admin items (Events/Receipts)
-      var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
-      if (state.user && hasAdminSports){
-        nav.appendChild(el('<div class="nav-sep"></div>'));
-        navItem('Events','admin_events');
-        navItem('Receipts','admin_receipts');
-      }
+      // Admin items (Events/Receipts/Stat Tracker)
+var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
+if (state.user && hasAdminSports){
+  nav.appendChild(el('<div class="nav-sep"></div>'));
+  navItem('Events','admin_events');
+  navItem('Receipts','admin_receipts');
 
-      // Captain tabs from bootstrap (independent of normal admin)
-      if (state.user){
-        var caps = (state.admin && state.admin.captainLinks) || {};
-        var capSports = Object.keys(caps);
-        if (capSports.length){
-          nav.appendChild(el('<div class="nav-sep"></div>'));
-          capSports.forEach(function(sp){
-            navItem(sp+' Autodraft', 'captain_'+sp);
-          });
-        }
-      }
+  // >>> STATKIT-NAV-START
+  // Visible to admins; routes to #/stat (Stat Tracker)
+  navItem('Stat Tracker','stat');
+  // >>> STATKIT-NAV-END
+}
+
+// Captain tabs from bootstrap (independent of normal admin)
+if (state.user){
+  var caps = (state.admin && state.admin.captainLinks) || {};
+  var capSports = Object.keys(caps);
+  if (capSports.length){
+    nav.appendChild(el('<div class="nav-sep"></div>'));
+    capSports.forEach(function(sp){
+      navItem(sp+' Autodraft', 'captain_'+sp);
+    });
+  }
+}
 
       // Auth
       nav.appendChild(el('<div class="nav-sep"></div>'));
@@ -858,16 +859,25 @@ function showLoading(text){
       layout(el('<div class="card stack" style="align-items:center;text-align:center">Welcome, ' + (state.user.first_name || 'Athlete') + '!</div>'));
 
       setTimeout(function(){
-        var target = state.tmp && state.tmp.returnTo;
-        if (target){ delete state.tmp.returnTo; location.hash = target; }
-        else location.hash = res.requireValidation ? '#/edit' : '#/home';
-      }, 900);
+      // Require profile completion takes precedence
+      if (res.requireValidation) { location.hash = '#/edit'; return; }
+
+      // Return to where they were headed (e.g., #/stat) if we saved it in router.sync()
+      if (state.tmp && state.tmp.returnTo){
+        const dest = state.tmp.returnTo;
+        delete state.tmp.returnTo;
+        location.hash = dest;
+      } else {
+        location.hash = '#/home';
+      }
+    }, 600);
     })
     .withFailureHandler(function(e){
       if (btn){ btn.disabled = false; btn.textContent = orig; }
       err.textContent = (e && e.message) || 'Sign-in failed';
     })
     .api_signIn({ its, whatsapp });
+    
 }
 
 
@@ -985,8 +995,6 @@ async function pageHome(){
               '<div id="home_cd" class="countdown muted">—</div>'+
               '<div id="home_cd_sub" class="tiny"></div>'+
             '</div>'+
-            // Hidden by default; shown/enabled when window & status allow
-            '<button id="home_checkin" class="btn" style="display:none">Check In</button>'+
           '</div>'+
         '</div>'+
         '<div class="card stack">'+
@@ -2477,5 +2485,289 @@ function actDropout(eventId, its, btn){
       pageLanding();
     }
   </script>
+  <script id="STATKIT">
+/* ===================== STATKIT (client) ===================== */
+/* MVP voice+manual event stat recording for admins */
+
+(function(){
+
+  // ---- Local offline queue (simple, resilient) ----
+  const QKEY = 'statkitQueue.v1';
+  function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
+  function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
+  async function flushQueue(show){
+    if (!navigator.onLine) return;
+    let q = loadQ(); if (!q.length) return;
+    const keep = [];
+    for (const it of q){
+      try{
+        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw);
+        if (show && it.eventId === state.tmp?.stat_event_id) _statkit_renderRowLocal({its: it.its, stat: it.stat, local:true});
+      }catch(_){ keep.push(it); }
+    }
+    saveQ(keep);
+  }
+  window.addEventListener('online', ()=>flushQueue(true));
+
+  // ---- Page ----
+  async function pageStat(){
+    if (!guard()) return;
+    setDocTitle('Stat Tracker');
+    showLoading('Loading Stat Tracker…');
+
+    state.tmp = state.tmp || {};
+    const mySport = state.sport || 'Soccer';
+
+    try{
+      // bootstrap everything
+      const [boot, eventsRes] = await Promise.all([
+        gs('api_stats_bootstrap', state.user.its),
+        gs('api_listEvents', mySport)
+      ]);
+
+      // Permission gate: must be admin for this sport
+      const isAdmin = Array.isArray(boot.adminSports) && boot.adminSports.some(x=>String(x)===String(mySport));
+      if (!isAdmin){
+        layout(el('<div class="card">You must be an admin for '+esc(mySport)+' to use the Stat Tracker.</div>'));
+        return;
+      }
+
+      // Data maps
+      const jerseys = (boot.jerseys||[]).reduce((m,j)=>{ m[String(j.number).trim()] = String(j.its).trim(); return m; }, {});
+      const statMap = (boot.sports && boot.sports[mySport] && boot.sports[mySport].aliasToKey) || {};
+      const events  = (eventsRes && eventsRes.events) || (eventsRes||[]);
+      const upcoming = events
+          .filter(e => parseDT(e.end_datetime) && parseDT(e.end_datetime) > now())
+          .sort((a,b)=> new Date(a.start_datetime||0) - new Date(b.start_datetime||0));
+
+      // Build UI
+      const node = el(
+        '<div class="stack">'+
+          '<div class="card stack">'+
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'+
+              '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker — '+esc(mySport)+'</div>'+
+              '<div class="tiny muted">Voice: say “Number 6 touchdown” or use the input</div>'+
+            '</div>'+
+            '<div class="row">'+
+              '<div class="col">'+
+                '<label class="label">Event</label>'+
+                '<select id="st_evt" class="input"></select>'+
+              '</div>'+
+              '<div class="col">'+
+                '<label class="label">Manual Command</label>'+
+                '<div class="row">'+
+                  '<input id="st_manual" class="input" placeholder="e.g., Number 21 tackle">'+
+                  '<button class="btn" id="st_add">Record</button>'+
+                '</div>'+
+              '</div>'+
+              '<div class="col" style="min-width:220px">'+
+                '<label class="label">Voice</label>'+
+                '<div class="row">'+
+                  '<button class="btn" id="st_mic">Start Listening</button>'+
+                  '<div id="st_mic_status" class="tiny muted" style="align-self:center">Idle</div>'+
+                '</div>'+
+              '</div>'+
+            '</div>'+
+          '</div>'+
+
+          '<div class="row">'+
+            '<div class="col">'+
+              '<div class="card stack">'+
+                '<div class="label">Recorded (this event)</div>'+
+                '<div id="st_list"></div>'+
+                '<div class="tiny muted" id="st_hint"></div>'+
+              '</div>'+
+            '</div>'+
+            '<div class="col">'+
+              '<div class="card stack">'+
+                '<div class="label">Jersey Map</div>'+
+                '<div id="st_jersey"></div>'+
+              '</div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'
+      );
+      layout(node);
+
+      // Fill event select
+      const sel = $('#st_evt');
+      upcoming.forEach(e=>{
+        const o = document.createElement('option');
+        o.value = e.id; o.textContent = (e.sport? (e.sport+' — '):'') + (e.name||'') + ' — ' + fmtDT(e.start_datetime);
+        sel.appendChild(o);
+      });
+      if (upcoming[0]) sel.value = upcoming[0].id;
+      state.tmp.stat_event_id = sel.value || '';
+
+      // Jerseys table
+      (function renderJersey(){
+        const box = $('#st_jersey');
+        const rows = Object.keys(jerseys).sort((a,b)=>Number(a)-Number(b)).map(n=>{
+          return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:6px 0">'+
+                   '<div>#'+esc(n)+'</div><div class="tiny">ITS '+esc(jerseys[n])+'</div>'+
+                 '</div>';
+        }).join('') || '<div class="muted">No jerseys found. Add rows in the “Jerseys” sheet.</div>';
+        box.innerHTML = rows;
+      })();
+
+      // Recorded list
+      async function loadEventRows(){
+        const res = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
+        const list = (res && res.rows) || [];
+        _statkit_renderList(list);
+      }
+
+      function _statkit_renderList(list){
+        const box = $('#st_list');
+        if (!list.length){
+          box.innerHTML = '<div class="muted">No stats yet.</div>';
+          $('#st_hint').textContent = navigator.onLine ? '' : 'You are offline. New stats will be queued.';
+          return;
+        }
+        box.innerHTML = list.map(r=>{
+          return ''+
+          '<div class="row" style="align-items:center;border-bottom:1px solid var(--border);padding:6px 0">'+
+            '<div class="col" style="min-width:220px">ITS '+esc(r.its)+'</div>'+
+            '<div class="col">'+esc(r.stat)+'</div>'+
+            '<div class="col" style="min-width:160px">'+
+              '<button class="btn secondary" data-act="del" data-row="'+r.rowIndex+'">Delete</button>'+
+            '</div>'+
+          '</div>';
+        }).join('');
+        box.querySelectorAll('[data-act="del"]').forEach(b=>{
+          b.addEventListener('click', async ()=>{
+            const row = b.getAttribute('data-row');
+            try{
+              await gs('api_stats_delete', state.user.its, row);
+              loadEventRows();
+            }catch(e){ alert('Delete failed'); }
+          });
+        });
+      }
+
+      // For local instant feedback (queued)
+      function _statkit_renderRowLocal(r){
+        const box = $('#st_list');
+        const div = document.createElement('div');
+        div.className = 'row';
+        div.style.cssText = 'align-items:center;border-bottom:1px solid var(--border);padding:6px 0;opacity:.7';
+        div.innerHTML = '<div class="col" style="min-width:220px">ITS '+esc(r.its)+'</div>'+
+                        '<div class="col">'+esc(r.stat)+' <span class="tiny muted">(queued)</span></div>'+
+                        '<div class="col" style="min-width:160px"></div>';
+        if (!box.firstChild) box.appendChild(div); else box.insertBefore(div, box.firstChild);
+      }
+
+      // Event change
+      sel.addEventListener('change', ()=>{
+        state.tmp.stat_event_id = sel.value || '';
+        loadEventRows();
+      });
+
+      // Recognizer
+      const micBtn = $('#st_mic');
+      const micStatus = $('#st_mic_status');
+      const rec = _statkit_makeRecognizer();
+
+      function startMic(){
+        if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
+        rec.start();
+        micBtn.textContent = 'Stop Listening';
+        micStatus.textContent = 'Listening…';
+      }
+      function stopMic(){
+        if (rec) try{ rec.stop(); }catch(_){}
+        micBtn.textContent = 'Start Listening';
+        micStatus.textContent = 'Idle';
+      }
+      micBtn.addEventListener('click', ()=>{
+        if (micBtn.textContent.startsWith('Start')) startMic(); else stopMic();
+      });
+
+      if (rec){
+        rec.onresult = async (ev)=>{
+          const t = String(ev.results[0][0].transcript||'').trim();
+          micStatus.textContent = 'Heard: “'+esc(t)+'”';
+          await _statkit_processCommand(t);
+        };
+        rec.onend = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
+        rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
+      }
+
+      // Manual
+      $('#st_add').addEventListener('click', async ()=>{
+        const v = ($('#st_manual').value||'').trim();
+        if (!v) return;
+        await _statkit_processCommand(v);
+        $('#st_manual').value = '';
+      });
+
+      // Core: parse “Number 6 touchdown”
+      function _clean(s){ return s.toLowerCase().replace(/[^\w\s]/g,'').replace(/\s+/g,' ').trim(); }
+      function _parseCommand(text){
+        const s = _clean(text);
+        // accept optional leading words, then "number" optional
+        const m = s.match(/(?:number\s*)?(\d{1,3})\s+(.+)$/);
+        if (!m) return null;
+        const number = m[1];
+        const rest   = _clean(m[2]);
+        const key    = statMap[rest] || null; // alias→canonical
+        return key ? { number, stat: key } : null;
+      }
+
+      async function _statkit_processCommand(text){
+        if (!state.tmp.stat_event_id){ alert('Pick an event first'); return; }
+        const p = _parseCommand(text);
+        if (!p){ alert('Could not parse. Say “Number 12 touchdown” or use exact stat alias.'); return; }
+        const its = jerseys[String(p.number)];
+        if (!its){ alert('No ITS mapped to jersey #'+p.number+'. Add it in the Jerseys sheet.'); return; }
+
+        const recObj = { adminIts: state.user.its, eventId: state.tmp.stat_event_id, its, stat: p.stat, raw: text };
+        if (!navigator.onLine){
+          const q = loadQ(); q.push(recObj); saveQ(q);
+          _statkit_renderRowLocal({its, stat:p.stat});
+          $('#st_hint').textContent = 'Offline: queued. Will upload when online.';
+          return;
+        }
+
+        try{
+          await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw);
+          // Refresh the list quickly
+          loadEventRows();
+        }catch(e){
+          // If it fails online, queue as fallback
+          const q = loadQ(); q.push(recObj); saveQ(q);
+          _statkit_renderRowLocal({its, stat:p.stat});
+        }
+      }
+
+      // Initial data
+      await loadEventRows();
+      flushQueue(true);
+
+    }catch(e){
+      layout(el('<div class="card" style="color:var(--err)">Failed to load Stat Tracker: '+esc(e && e.message || e)+'</div>'));
+    }
+  }
+
+  // Expose page
+  window.pageStat = pageStat;
+
+  // Utilities (use your existing helpers if present)
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  function _statkit_makeRecognizer(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    const r = new SR();
+    r.lang = 'en-US';
+    r.interimResults = false;
+    r.maxAlternatives = 1;
+    return r;
+  }
+
+})(); // end IIFE
+/* =================== /STATKIT (client) =================== */
+</script>
+
 </body>
 </html>
