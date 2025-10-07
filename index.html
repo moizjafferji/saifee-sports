@@ -390,6 +390,9 @@ var router = {
       case 'event':           return '#/event/' + encodeURIComponent((opts && opts.id) || '');
       case 'create':          return '#/create';
       case 'edit':            return '#/edit';
+      case 'qrcheck':         return '#/checkin' + (opts && (opts.id || opts.token)
+      ? ('?' + new URLSearchParams({ e: (opts.id || ''), k: (opts.token || '') }).toString()): '');
+
       case 'stat':            return '#/stat';                      // <-- NEW
       case 'landing':
       default:                return '#/landing';
@@ -1398,7 +1401,7 @@ function pageBalance(){
 
     $('#bal_box').innerHTML =
       '<div class="label">Current Balance</div>'+
-      '<div style="font-size:var(--fs-xl);font-weight:800)">'+money(res.balance || 0)+'</div>'+
+      '<div style="font-size:var(--fs-xl);font-weight:800">'+money(res.balance || 0)+'</div>'+
       '<div class="muted" style="margin-top:10px;line-height:1.6">'+
         'Add to balance with Zelle to:<br/>'+
         '<strong id="zelleEmail">'+email+'</strong> '+
@@ -2355,7 +2358,7 @@ function actDropout(eventId, its, btn){
               <select id="ar_cat" class="input">
                 <option value="Space Rental">Space Rental</option>
                 <option value="Food">Food</option>
-                <option value="Equiptment Rental">Equiptment Rental</option>
+                <option value="Equipment Rental">Equipment Rental</option>
                 <option value="Shirts">Shirts</option>
                 <option value="Referees">Referees</option>
                 <option value="Trophies">Trophies</option>
@@ -2531,27 +2534,25 @@ async function pageStat(){
       return;
     }
 
-    // Build maps
-    const jerseys = (boot.jerseys||[]).reduce((m,j)=>{ m[String(j.number).trim()] = String(j.its).trim(); return m; }, {});
-    const statMap = (boot.sports && boot.sports[mySport] && boot.sports[mySport].aliasToKey) || {};
+// Build maps
+const jerseys = (boot.jerseys||[]).reduce((m,j)=>{ m[String(j.number).trim()] = String(j.its).trim(); return m; }, {});
+let   statMap = (boot.sports && boot.sports[mySport] && boot.sports[mySport].aliasToKey) || {};
 
-// Build a robust alias index from statMap (alias -> canonical stat key)
-const _aliasIndex = (() => {
-  // collapsed alias (letters+digits only) -> list of original aliases
+// Helper: (re)build alias index from the current statMap
+function _buildAliasIndex(map){
   const collapsed = {};
-  Object.keys(statMap || {}).forEach(alias => {
+  Object.keys(map || {}).forEach(alias => {
     const an = alias.toLowerCase().replace(/[^a-z0-9]/g, '');
     (collapsed[an] ||= []).push(alias);
   });
-
-  // canonical key -> Set(aliases) for helpful messages
   const keyToAliases = {};
-  Object.entries(statMap || {}).forEach(([alias, key]) => {
+  Object.entries(map || {}).forEach(([alias, key]) => {
     (keyToAliases[key] ||= new Set()).add(alias);
   });
-
   return { collapsed, keyToAliases };
-})();
+}
+let _aliasIndex = _buildAliasIndex(statMap);
+
 
 
     // Events from the Events sheet (same as Receipts)
@@ -2626,7 +2627,19 @@ const _aliasIndex = (() => {
     }
     if (!sel.value && evOptions[0]) sel.value = evOptions[0].id;
 
-    state.tmp.stat_event_id = sel.value || '';
+state.tmp.stat_event_id = sel.value || '';
+
+// One-time initial sport sync from the current option label
+(()=>{
+  const opt = sel.options[sel.selectedIndex];
+  const label = opt ? (opt.textContent || '') : '';
+  const inferredSport = (label.split(' - ')[0] || '').trim();
+  if (inferredSport) state.sport = inferredSport;
+
+  // Rebuild alias map + index for the inferred sport
+  statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
+  _aliasIndex = _buildAliasIndex(statMap);
+})();
 
     // Jerseys sidebar
     (function renderJersey(){
@@ -2691,12 +2704,25 @@ const _aliasIndex = (() => {
     }
     window._statkit_renderRowLocal = renderRowLocal;
 
-    // Change event → remember selection + reload
-    sel.addEventListener('change', ()=>{
-      state.tmp.stat_event_id = sel.value || '';
-      localStorage.setItem(LAST_KEY, state.tmp.stat_event_id || '');
-      loadEventRows();
-    });
+    // Change event → remember selection + reload (+ infer sport + rebuild aliases)
+sel.addEventListener('change', ()=>{
+  state.tmp.stat_event_id = sel.value || '';
+  localStorage.setItem(LAST_KEY, state.tmp.stat_event_id || '');
+
+  // Infer sport from "Sport - Name - Date"
+  const opt = sel.options[sel.selectedIndex];
+  const label = opt ? (opt.textContent || '') : '';
+  const inferredSport = (label.split(' - ')[0] || '').trim();
+  if (inferredSport) state.sport = inferredSport;
+
+  // Rebuild for (possibly) new sport
+  statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
+  _aliasIndex = _buildAliasIndex(statMap);
+
+  loadEventRows();
+});
+
+
 
     // Voice recognition (optional)
     const micBtn = $('#st_mic');
@@ -2728,13 +2754,34 @@ const _aliasIndex = (() => {
       rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
     }
 
-    // Manual entry
-    $('#st_add').addEventListener('click', async ()=>{
-      const v = ($('#st_manual').value||'').trim();
-      if (!v) return;
+    // Manual entry (Enter-to-submit + button lock)
+(()=>{
+  const input = $('#st_manual');
+  const btn   = $('#st_add');
+
+  async function submit(){
+    const v = (input.value || '').trim();
+    if (!v || btn.getAttribute('aria-busy') === '1') return;
+
+    const orig = btn.textContent;
+    btn.setAttribute('aria-busy','1');
+    btn.disabled = true;
+    btn.textContent = 'Recording…';
+    try{
       await _statkit_processCommand(v);
-      $('#st_manual').value = '';
-    });
+      input.value = '';
+    } finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      btn.textContent = orig;
+      input.focus();
+    }
+  }
+
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { e.preventDefault(); submit(); }});
+})();
+
 
     // Parse & record
 // Normalize text lightly (keep words)
