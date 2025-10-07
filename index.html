@@ -2535,6 +2535,25 @@ async function pageStat(){
     const jerseys = (boot.jerseys||[]).reduce((m,j)=>{ m[String(j.number).trim()] = String(j.its).trim(); return m; }, {});
     const statMap = (boot.sports && boot.sports[mySport] && boot.sports[mySport].aliasToKey) || {};
 
+// Build a robust alias index from statMap (alias -> canonical stat key)
+const _aliasIndex = (() => {
+  // collapsed alias (letters+digits only) -> list of original aliases
+  const collapsed = {};
+  Object.keys(statMap || {}).forEach(alias => {
+    const an = alias.toLowerCase().replace(/[^a-z0-9]/g, '');
+    (collapsed[an] ||= []).push(alias);
+  });
+
+  // canonical key -> Set(aliases) for helpful messages
+  const keyToAliases = {};
+  Object.entries(statMap || {}).forEach(([alias, key]) => {
+    (keyToAliases[key] ||= new Set()).add(alias);
+  });
+
+  return { collapsed, keyToAliases };
+})();
+
+
     // Events from the Events sheet (same as Receipts)
     const evOptions = (eventsPack && eventsPack.events) || [];
     if (!evOptions.length){
@@ -2703,7 +2722,7 @@ async function pageStat(){
       rec.onresult = async (ev)=>{
         const t = String(ev.results[0][0].transcript||'').trim();
         micStatus.textContent = 'Heard: “'+esc(t)+'”';
-        await processCommand(t);
+        await _statkit_processCommand(t);
       };
       rec.onend = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
       rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
@@ -2713,65 +2732,115 @@ async function pageStat(){
     $('#st_add').addEventListener('click', async ()=>{
       const v = ($('#st_manual').value||'').trim();
       if (!v) return;
-      await processCommand(v);
+      await _statkit_processCommand(v);
       $('#st_manual').value = '';
     });
 
     // Parse & record
-    function clean(s){ return s.toLowerCase().replace(/[^\w\s]/g,'').replace(/\s+/g,' ').trim(); }
-    function parseCommand(text){
-      const s = clean(text);
-      const m = s.match(/(?:number\s*)?(\d{1,3})\s+(.+)$/);
-      if (!m) return null;
-      const number = m[1];
-      const rest   = clean(m[2]);
-      const key    = statMap[rest] || null;
-      return key ? { number, stat: key } : null;
+// Normalize text lightly (keep words)
+  function _clean(s){
+    return String(s||'')
+    .toLowerCase()
+    .replace(/[^\w\s]/g,' ')  // punctuation -> space
+    .replace(/\s+/g,' ')
+    .trim();
+  }    
+// Extract a jersey number from digits *or* number words (0..99)
+function _extractNumber(text){
+  const digit = text.match(/\b(\d{1,3})\b/);
+  if (digit) return parseInt(digit[1], 10);
+
+  const ones = {
+    zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
+    ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
+    sixteen:16, seventeen:17, eighteen:18, nineteen:19
+  };
+  const tens = { twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90 };
+
+  const toks = _clean(text).split(' ');
+  for (let i=0; i<toks.length; i++){
+    const t = toks[i];
+    if (t in tens){
+      let v = tens[t];
+      if (i+1 < toks.length && toks[i+1] in ones) v += ones[toks[i+1]];
+      return v;
     }
-
-    async function processCommand(text){
-      if (!state.tmp.stat_event_id){ alert('Pick an event first'); return; }
-      const p = parseCommand(text);
-      if (!p){ alert('Could not parse. Say “Number 12 touchdown” or use a listed alias.'); return; }
-
-      const its = jerseys[String(p.number)];
-      if (!its){ alert('No ITS mapped to jersey #'+p.number+'. Add it in the Jerseys sheet.'); return; }
-
-      // IMPORTANT: eventId is the ID (value of the dropdown), not the label
-      const recObj = { adminIts: state.user.its, eventId: state.tmp.stat_event_id, its, stat: p.stat, raw: text };
-
-      if (!navigator.onLine){
-        const q = (JSON.parse(localStorage.getItem('statkitQueue.v1')||'[]'));
-        q.push(recObj); localStorage.setItem('statkitQueue.v1', JSON.stringify(q));
-        renderRowLocal({its, stat:p.stat});
-        $('#st_hint').textContent = 'Offline: queued. Will upload when online.';
-        return;
-      }
-
-      try{
-        await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw);
-        loadEventRows();
-      }catch(e){
-        const q = (JSON.parse(localStorage.getItem('statkitQueue.v1')||'[]'));
-        q.push(recObj); localStorage.setItem('statkitQueue.v1', JSON.stringify(q));
-        renderRowLocal({its, stat:p.stat});
-      }
+    if (t in ones) return ones[t];
+  }
+  return null;
+}
+// Find the canonical stat key anywhere in the utterance (order independent)
+function _findStatKey(text){
+  const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,''); // collapse spaces/hyphens
+  // try longest aliases first to avoid partial overshadowing
+  const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
+  for (const an of aliasesCollapsed){
+    if (norm.includes(an)){
+      const originalAlias = _aliasIndex.collapsed[an][0];
+      const key = statMap[originalAlias];
+      if (key) return key;
     }
+  }
+  return null;
+}
+
+    // Parse commands like:
+    // "number 6 touchdown", "6 td", "td number six", "player 21 assist", "jersey 10 tackle"
+function _parseCommand(text){
+  const n = _extractNumber(text);
+  const key = _findStatKey(text);
+  if (n==null || !key) return null;
+  return { number: String(n), stat: key };
+}
+async function _statkit_processCommand(text){
+  if (!state.tmp.stat_event_id){ alert('Pick an event first'); return; }
+
+  const p = _parseCommand(text);
+  if (!p){
+    // Helpful list of recognized phrases for this sport
+    const parts = [];
+    Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
+      const arr = Array.from(set);
+      const shown = arr.filter(a => a !== k);
+      parts.push(shown.length ? `${k} (${shown.join(', ')})` : k);
+    });
+    alert(
+      'Could not parse.\n\n' +
+      'Try “Number 12 touchdown”, “12 td”, or “td number twelve”.\n\n' +
+      'Recognized stats: ' + (parts.join(' • ') || '—')
+    );
+    return;
+  }
+
+  const its = jerseys[p.number]; // jersey# -> ITS (from your Jerseys sheet)
+  if (!its){ alert('No ITS mapped to jersey #'+p.number+'. Add it in the Jerseys sheet.'); return; }
+
+  const recObj = { adminIts: state.user.its, eventId: state.tmp.stat_event_id, its, stat: p.stat, raw: text };
+
+  // Offline-first queueing
+  if (!navigator.onLine){
+    const q = loadQ(); q.push(recObj); saveQ(q);
+    _statkit_renderRowLocal({ its, stat: p.stat });
+    const hint = document.getElementById('st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
+    return;
+  }
+
+  try{
+    await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw);
+    const res = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
+    const list = (res && res.rows) || [];
+    _renderList(list);
+  }catch(e){
+    // Fallback to queue if server call fails while "online"
+    const q = loadQ(); q.push(recObj); saveQ(q);
+    _statkit_renderRowLocal({ its, stat: p.stat });
+  }
+}
 
     // Initial load & flush any queued
     await loadEventRows();
-    (async function flushQueue(){
-      if (!navigator.onLine) return;
-      let q = JSON.parse(localStorage.getItem('statkitQueue.v1')||'[]'); if (!q.length) return;
-      const keep = [];
-      for (const it of q){
-        try{
-          await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw);
-          if (it.eventId === state.tmp.stat_event_id) renderRowLocal({its: it.its, stat: it.stat});
-        }catch(_){ keep.push(it); }
-      }
-      localStorage.setItem('statkitQueue.v1', JSON.stringify(keep));
-    })();
+    flushQueue(true);
+
 
   }catch(e){
     layout(el('<div class="card" style="color:var(--err)">Failed to load Stat Tracker: '+esc(e && e.message || e)+'</div>'));
