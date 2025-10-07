@@ -2490,6 +2490,8 @@ function actDropout(eventId, its, btn){
      04:19pm 02/07/2025
      Red 6 – Player Name
      touchdown
+
+   Jersey Map now includes names (from the current event roster).
 */
 
 (function(){
@@ -2585,6 +2587,9 @@ function actDropout(eventId, its, btn){
       }
       const _teamIndex = _buildTeamIndex(teamSet);
 
+      // Current event roster names (by ITS) for both list + jersey map
+      let currentNameByIts = {};
+
       // ===== Events from the Events sheet (same as Receipts) =====
       const evOptions = (eventsPack && eventsPack.events) || [];
       if (!evOptions.length){
@@ -2669,20 +2674,25 @@ function actDropout(eventId, its, btn){
         _aliasIndex = _buildAliasIndex(statMap);
       })();
 
-      // Jerseys sidebar (no ITS shown)
-      (function renderJersey(){
+      // Jerseys sidebar (now shows names if known via current event roster)
+      function renderJersey(nameByIts){
         const box = $('#st_jersey');
         const rows = [...jerseysArr]
           .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
           .map(j=>{
             const team = j.team ? String(j.team) : '';
             const num  = String(j.number||'');
+            const its  = String(j.its||'');
+            const name = (nameByIts && nameByIts[its]) || '';
             return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:6px 0">'+
-                     '<div>#'+esc(num)+'</div><div class="tiny">'+esc(team || '—')+'</div>'+
+                     '<div>#'+esc(num)+'</div>'+
+                     '<div class="tiny">'+esc(team || '—')+(name ? ' – '+esc(name) : '')+'</div>'+
                    '</div>';
           }).join('') || '<div class="muted">No jerseys found. Add rows in the “Jerseys” sheet.</div>';
         box.innerHTML = rows;
-      })();
+      }
+      // initial render (names may be blank until we load the event roster)
+      renderJersey(currentNameByIts);
 
       // ===== Recorded list (names via event details) =====
       async function loadEventRows(){
@@ -2698,10 +2708,12 @@ function actDropout(eventId, its, btn){
         const live = det && det.live || [];
         const nameByIts = {};
         live.forEach(r => { nameByIts[String(r.person)] = r.name || ''; });
-        _renderList(list, nameByIts);
+        currentNameByIts = nameByIts;           // keep for local renders & jersey map
+        renderJersey(currentNameByIts);         // refresh sidebar with names
+        _renderList(list);
       }
 
-      function _renderList(list, nameByIts){
+      function _renderList(list){
         const box = $('#st_list');
         if (!list.length){
           box.innerHTML = '<div class="muted">No stats yet.</div>';
@@ -2713,13 +2725,13 @@ function actDropout(eventId, its, btn){
           const j    = jerseysByIts[its] || {};
           const team = j.team || '';
           const num  = j.number || '';
-          const name = nameByIts && nameByIts[its] || '';
+          const name = currentNameByIts[its] || '';
           const when = r.time || '';
           return `
             <div class="row" style="align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0">
               <div class="col" style="min-width:260px">
                 <div class="tiny muted">${esc(when)}</div>
-                <div>${esc(team)} ${esc(num)} - ${esc(name)}</div>
+                <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
               </div>
               <div class="col">${esc(r.stat)}</div>
               <div class="col" style="min-width:160px">
@@ -2738,13 +2750,13 @@ function actDropout(eventId, its, btn){
         });
       }
 
-      // Local queued row (offline) — keeps new UI
-      function renderRowLocal(r, nameByIts){
+      // Local queued row (offline) — keeps new UI; names from current event roster
+      function renderRowLocal(r){
         const its  = String(r.its||'');
         const j    = jerseysByIts[its] || {};
         const team = j.team || '';
         const num  = j.number || '';
-        const name = (nameByIts && nameByIts[its]) || '';
+        const name = currentNameByIts[its] || '';
         const when = r.time || _fmtTime(new Date());
 
         const box = $('#st_list');
@@ -2754,7 +2766,7 @@ function actDropout(eventId, its, btn){
         div.innerHTML = `
           <div class="col" style="min-width:260px">
             <div class="tiny muted">${esc(when)}</div>
-            <div>${esc(team)} ${esc(num)} - ${esc(name)}</div>
+            <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
           </div>
           <div class="col">${esc(r.stat)} <span class="tiny muted">(queued)</span></div>
           <div class="col" style="min-width:160px"></div>`;
@@ -2993,6 +3005,7 @@ function actDropout(eventId, its, btn){
 
 })(); // end IIFE
 /* =================== /STATKIT (client) =================== */
+
 
 </script>
 
