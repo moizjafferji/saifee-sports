@@ -2661,12 +2661,15 @@ window.addEventListener('online', ()=>flushQueue(false));
                 '<select id="st_evt" class="input"></select>'+
               '</div>'+
               '<div class="col">'+
-              '<label class="label">Manual Command</label>'+
-                '<div class="row">'+
-                '<input id="st_manual" class="input" placeholder="e.g., Red 21 touchdown">'+
-                '<button class="btn" id="st_add">Record</button>'+
-                '</div>'+
-              '</div>'+
+  '<label class="label">Stats you can record</label>'+
+  '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
+  '<label class="label">Manual Command</label>'+
+  '<div class="row">'+
+    '<input id="st_manual" class="input" placeholder="e.g., Red 21 touchdown">'+
+    '<button class="btn" id="st_add">Record</button>'+
+  '</div>'+
+'</div>'+
+
               '<div class="col" style="min-width:220px">'+
                 '<label class="label">Voice</label>'+
                 '<div class="row">'+
