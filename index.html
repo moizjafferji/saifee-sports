@@ -2482,16 +2482,18 @@ function actDropout(eventId, its, btn){
       pageLanding();
     }
   </script>
+
+  
   <script id="STATKIT">
 /* ===================== STATKIT (client) ===================== */
-/* MVP voice+manual event stat recording for admins — now team-aware
+/* MVP voice+manual event stat recording for admins — team-aware
    Commands like: "Red 6 touchdown" or "Lions 7 td"
-   UI shows:
+   Recorded list shows:
      04:19pm 02/07/2025
-     Red 6 – Player Name
+     Red 6 - Player Name
      touchdown
 
-   Jersey Map now includes names (from the current event roster).
+   Jersey Map uses Jerseys tab columns: number, team, name → "<number> <team> - <name>"
 */
 
 (function(){
@@ -2506,10 +2508,10 @@ function actDropout(eventId, its, btn){
     const keep = [];
     for (const it of q){
       try{
-        // now sends time as the last arg
+        // send time as final arg (server already updated)
         await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time);
         if (show && window._statkit_renderRowLocal && it.eventId === (state.tmp && state.tmp.stat_event_id)) {
-          window._statkit_renderRowLocal({ its: it.its, stat: it.stat, time: it.time, local:true });
+          window._statkit_renderRowLocal({its: it.its, stat: it.stat, time: it.time, local:true});
         }
       }catch(_){ keep.push(it); }
     }
@@ -2543,19 +2545,21 @@ function actDropout(eventId, its, btn){
         return;
       }
 
-      // ===== Build maps (TEAM-AWARE) =====
+      // ===== Build maps (TEAM + NAME aware) =====
       const jerseysArr = boot.jerseys || [];
-      const jerseysByTeamNum = {};        // key: `${team.toLowerCase()}::${number}` -> its
-      const jerseysByIts     = {};        // its -> { team, number }
-      const teamSet          = new Set(); // unique teams present
+      // keys to resolve player: "<team>::<number>" (case-insensitive team)
+      const jerseysByTeamNum = {};                 // `${teamLower}::${number}` -> its
+      const itsToMeta = {};                        // its -> { team, number, name }
+      const teamSet = new Set();                   // set of team names from Jerseys
       jerseysArr.forEach(j=>{
         const team = String(j.team||'').trim();
         const num  = String(j.number||'').trim();
         const its  = String(j.its||'').trim();
+        const name = String(j.name||'').trim();
         if (!its || !num) return;
         if (team) teamSet.add(team);
         jerseysByTeamNum[`${team.toLowerCase()}::${num}`] = its;
-        jerseysByIts[its] = { team, number: num };
+        itsToMeta[its] = { team, number:num, name };
       });
 
       let statMap = (boot.sports && boot.sports[mySport] && boot.sports[mySport].aliasToKey) || {};
@@ -2586,9 +2590,6 @@ function actDropout(eventId, its, btn){
         return { collapsed, order };
       }
       const _teamIndex = _buildTeamIndex(teamSet);
-
-      // Current event roster names (by ITS) for both list + jersey map
-      let currentNameByIts = {};
 
       // ===== Events from the Events sheet (same as Receipts) =====
       const evOptions = (eventsPack && eventsPack.events) || [];
@@ -2674,42 +2675,33 @@ function actDropout(eventId, its, btn){
         _aliasIndex = _buildAliasIndex(statMap);
       })();
 
-      // Jerseys sidebar (now shows names if known via current event roster)
-      function renderJersey(nameByIts){
+      // ===== Jersey Map (uses Jerseys tab name) =====
+      function renderJersey(){
         const box = $('#st_jersey');
         const rows = [...jerseysArr]
           .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
           .map(j=>{
-            const team = j.team ? String(j.team) : '';
-            const num  = String(j.number||'');
-            const its  = String(j.its||'');
-            const name = (nameByIts && nameByIts[its]) || '';
+            const team = String(j.team||'').trim();
+            const num  = String(j.number||'').trim();
+            const nm   = String(j.name||'').trim();
+            // requested format: "<number> <team> - <name>"
             return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:6px 0">'+
-                     '<div>#'+esc(num)+'</div>'+
-                     '<div class="tiny">'+esc(team || '—')+(name ? ' – '+esc(name) : '')+'</div>'+
+                     '<div>'+esc(num)+' '+esc(team||'')+' - '+esc(nm||'')+'</div>'+
+                     '<div class="tiny"></div>'+
                    '</div>';
           }).join('') || '<div class="muted">No jerseys found. Add rows in the “Jerseys” sheet.</div>';
         box.innerHTML = rows;
       }
-      // initial render (names may be blank until we load the event roster)
-      renderJersey(currentNameByIts);
+      renderJersey();
 
-      // ===== Recorded list (names via event details) =====
+      // ===== Recorded list (newest first) =====
       async function loadEventRows(){
         if (!state.tmp.stat_event_id){
           $('#st_list').innerHTML = '<div class="muted">Pick an event above.</div>';
           return;
         }
-        const [res, det] = await Promise.all([
-          gs('api_stats_list_for_event', state.tmp.stat_event_id),
-          gs('api_eventDetails', state.tmp.stat_event_id).catch(()=>null)
-        ]);
-        const list = (res && res.rows) || [];
-        const live = det && det.live || [];
-        const nameByIts = {};
-        live.forEach(r => { nameByIts[String(r.person)] = r.name || ''; });
-        currentNameByIts = nameByIts;           // keep for local renders & jersey map
-        renderJersey(currentNameByIts);         // refresh sidebar with names
+        const res  = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
+        const list = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
         _renderList(list);
       }
 
@@ -2722,10 +2714,10 @@ function actDropout(eventId, its, btn){
         }
         box.innerHTML = list.map(r=>{
           const its  = String(r.its||'');
-          const j    = jerseysByIts[its] || {};
-          const team = j.team || '';
-          const num  = j.number || '';
-          const name = currentNameByIts[its] || '';
+          const meta = itsToMeta[its] || {};
+          const team = meta.team || '';
+          const num  = meta.number || '';
+          const name = meta.name || '';
           const when = r.time || '';
           return `
             <div class="row" style="align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0">
@@ -2750,13 +2742,13 @@ function actDropout(eventId, its, btn){
         });
       }
 
-      // Local queued row (offline) — keeps new UI; names from current event roster
+      // Local queued row (offline) — uses Jerseys tab names
       function renderRowLocal(r){
         const its  = String(r.its||'');
-        const j    = jerseysByIts[its] || {};
-        const team = j.team || '';
-        const num  = j.number || '';
-        const name = currentNameByIts[its] || '';
+        const meta = itsToMeta[its] || {};
+        const team = meta.team || '';
+        const num  = meta.number || '';
+        const name = meta.name || '';
         const when = r.time || _fmtTime(new Date());
 
         const box = $('#st_list');
@@ -2778,7 +2770,6 @@ function actDropout(eventId, its, btn){
       sel.addEventListener('change', ()=>{
         state.tmp.stat_event_id = sel.value || '';
         localStorage.setItem(LAST_KEY, state.tmp.stat_event_id || '');
-
         // Infer sport from "Sport - Name - Date"
         const opt = sel.options[sel.selectedIndex];
         const label = opt ? (opt.textContent || '') : '';
@@ -2792,13 +2783,14 @@ function actDropout(eventId, its, btn){
         loadEventRows();
       });
 
-      // ===== Voice recognition (optional) =====
+      // ===== Voice recognition =====
       const micBtn = $('#st_mic');
       const micStatus = $('#st_mic_status');
       const rec = _statkit_makeRecognizer();
 
       function startMic(){
         if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
+        // do NOT block offline use; just start listening
         rec.start();
         micBtn.textContent = 'Stop Listening';
         micStatus.textContent = 'Listening…';
@@ -2816,7 +2808,7 @@ function actDropout(eventId, its, btn){
         rec.onresult = async (ev)=>{
           const t = String(ev.results[0][0].transcript||'').trim();
           micStatus.textContent = 'Heard: “'+esc(t)+'”';
-          await _statkit_processCommand(t);
+          await _statkit_processCommand(t, { fromVoice:true });
         };
         rec.onend = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
         rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
@@ -2929,31 +2921,41 @@ function actDropout(eventId, its, btn){
         return { team, number: String(n), stat: key };
       }
 
-      async function _statkit_processCommand(text){
-        if (!state.tmp.stat_event_id){ alert('Pick an event first'); return; }
+      async function _statkit_processCommand(text, opts){
+        const fromVoice = !!(opts && opts.fromVoice);
+        if (!state.tmp.stat_event_id){
+          if (!fromVoice) alert('Pick an event first');
+          return;
+        }
 
         const p = _parseCommand(text);
         if (!p){
-          // Helpful list of recognized phrases for this sport
-          const parts = [];
-          Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
-            const arr = Array.from(set);
-            const shown = arr.filter(a => a !== k);
-            parts.push(shown.length ? `${k} (${shown.join(', ')})` : k);
-          });
-          const teams = Array.from(teamSet).join(' • ') || '—';
-          alert(
-            'Could not parse.\n\n' +
-            'Say things like “Red 12 touchdown”, “Lions 7 td”.\n\n' +
-            'Recognized stats: ' + (parts.join(' • ') || '—') + '\n' +
-            'Teams: ' + teams
-          );
+          // For voice input: suppress alert; just annotate mic status
+          if (fromVoice){
+            const s = document.getElementById('st_mic_status');
+            if (s) s.textContent = 'Didn’t catch that. Try “Red 12 touchdown”.';
+          } else {
+            // Helpful list of recognized phrases for this sport + teams (for manual input)
+            const parts = [];
+            Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
+              const arr = Array.from(set);
+              const shown = arr.filter(a => a !== k);
+              parts.push(shown.length ? `${k} (${shown.join(', ')})` : k);
+            });
+            const teams = Array.from(teamSet).join(' • ') || '—';
+            alert(
+              'Could not parse.\n\n' +
+              'Say things like “Red 12 touchdown”, “Lions 7 td”.\n\n' +
+              'Recognized stats: ' + (parts.join(' • ') || '—') + '\n' +
+              'Teams: ' + teams
+            );
+          }
           return;
         }
 
         const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
         if (!its){
-          alert(`No player mapped for ${p.team} #${p.number}. Update the Jerseys sheet (team, numbers, its).`);
+          alert(`No player mapped for ${p.team} ${p.number}. Update the Jerseys sheet (team, number, name, its).`);
           return;
         }
 
@@ -3005,6 +3007,7 @@ function actDropout(eventId, its, btn){
 
 })(); // end IIFE
 /* =================== /STATKIT (client) =================== */
+
 
 
 </script>
