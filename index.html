@@ -343,7 +343,6 @@
 <link rel="preload" as="image" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEipkSiLA8T6LZrbDw590cJw_ooRuoCnb0pPKdeD_3yJVc3EsrgAmCQnxnmv2A76dWQGyhvQiZsWi7jmXTcFnqRptoZwlfcrmn9QUqDFHh23nkmkL7haUiweej-qetfQeliR3x_kqY29GkeKGOlsF8ZIK_vmY44-JEheGeM-9YP1JjDWOxSu89nu1M15gyHp/s2380/AQMS%20Bayan.jpg">
   
 </head>
-  
 <body>
   <div class="app" id="appShell">
     <div class="backdrop" id="backdrop"></div>
@@ -2484,7 +2483,7 @@ function actDropout(eventId, its, btn){
     }
   </script>
 
-  
+
   <script id="STATKIT">
 /* ===================== STATKIT (client) ===================== */
 /* MVP voice+manual event stat recording for admins — team-aware
@@ -2499,27 +2498,58 @@ function actDropout(eventId, its, btn){
 
 (function(){
 
-  // ---- Local offline queue (simple, resilient) ----
-  const QKEY = 'statkitQueue.v1';
-  function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
-  function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
-  async function flushQueue(show){
-    if (!navigator.onLine) return;
-    let q = loadQ(); if (!q.length) return;
-    const keep = [];
-    for (const it of q){
-      try{
-        // send time as final arg (server already updated)
-        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time);
-        if (show && window._statkit_renderRowLocal && it.eventId === (state.tmp && state.tmp.stat_event_id)) {
-          window._statkit_renderRowLocal({its: it.its, stat: it.stat, time: it.time, local:true});
-        }
-      }catch(_){ keep.push(it); }
-    }
-    saveQ(keep);
-  }
+  // ---- Local offline queue (simple, resilient) + client-side dedupe ----
+const QKEY = 'statkitQueue.v1';
+const DKEY = 'statkitDedup.v1';  // fingerprint cache to suppress dupes for a short window
 
-  window.addEventListener('online', ()=>flushQueue(true));
+function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
+function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
+
+// Fingerprint helpers (eventId|its|stat|time)
+function _makeFP(it){
+  return [String(it.eventId||''), String(it.its||''), String(it.stat||''), String(it.time||'')].join('|');
+}
+function _loadDedup(){ try{ return JSON.parse(localStorage.getItem(DKEY)||'{}'); }catch(_){ return {}; } }
+function _saveDedup(map){ localStorage.setItem(DKEY, JSON.stringify(map||{})); }
+function _markFP(fp){
+  const m=_loadDedup(); const now=Date.now(); m[fp]=now;
+  // prune >2 min old and cap ~300 entries
+  const cutoff = now - 120000; const keys = Object.keys(m).sort((a,b)=>m[a]-m[b]);
+  for (const k of keys){ if (m[k] < cutoff || Object.keys(m).length > 300) delete m[k]; }
+  _saveDedup(m);
+}
+function _seenFP(fp, windowMs){ const ts = _loadDedup()[fp]||0; return (Date.now() - ts) <= (windowMs||60000); }
+
+// Compacts a queue by removing duplicate fingerprints (keeps first)
+function _uniqQueue(q){
+  const seen = new Set(); const out=[];
+  for(const it of q){
+    const fp = _makeFP(it);
+    if (seen.has(fp)) continue;
+    seen.add(fp); out.push(it);
+  }
+  return out;
+}
+
+async function flushQueue(show){
+  if (!navigator.onLine) return;
+  let q = loadQ(); if (!q.length) return;
+  // de-dupe before flushing
+  q = _uniqQueue(q);
+  const keep = [];
+  for (const it of q){
+    try{
+      await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time);
+      // Do NOT re-preview items during flush; they were already shown when added offline.
+      // If you want a visual confirmation, call _statkit_renderRowLocal here, but it will duplicate the preview.
+    }catch(_){ keep.push(it); }
+  }
+  saveQ(keep);
+}
+
+// Quietly upload when coming back online (no duplicate previews)
+window.addEventListener('online', ()=>flushQueue(false));
+
 
   // ---- Page ----
   async function pageStat(){
@@ -2580,6 +2610,24 @@ function actDropout(eventId, its, btn){
       }
       let _aliasIndex = _buildAliasIndex(statMap);
 
+    function renderStatsList(){
+  const box = document.getElementById('st_statslist');
+  if (!box) return;
+  const entries = Object.entries(_aliasIndex.keyToAliases || {});
+  if (!entries.length){
+    box.innerHTML = '<span class="muted">—</span>';
+    return;
+  }
+  entries.sort((a,b)=>a[0].localeCompare(b[0]));
+  const chips = entries.map(([key, set])=>{
+    const aliases = Array.from(set).filter(a => a !== key);
+    const title = aliases.length ? `${key} (${aliases.join(', ')})` : key;
+    return `<span style="border:1px solid var(--border);border-radius:999px;padding:2px 8px;line-height:1.8">${esc(title)}</span>`;
+  });
+  box.innerHTML = chips.join('');
+}
+
+
       // Team index for parsing (longest-first)
       function _buildTeamIndex(set){
         const collapsed = {};
@@ -2604,7 +2652,7 @@ function actDropout(eventId, its, btn){
         '<div class="stack">'+
           '<div class="card stack">'+
             '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'+
-              '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker — '+String(mySport)+'</div>'+
+              '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
               '<div class="tiny muted">Voice: say “Red 6 touchdown”, or use the input</div>'+
             '</div>'+
             '<div class="row">'+
@@ -2613,10 +2661,10 @@ function actDropout(eventId, its, btn){
                 '<select id="st_evt" class="input"></select>'+
               '</div>'+
               '<div class="col">'+
-                '<label class="label">Manual Command</label>'+
+              '<label class="label">Manual Command</label>'+
                 '<div class="row">'+
-                  '<input id="st_manual" class="input" placeholder="e.g., Red 21 touchdown">'+
-                  '<button class="btn" id="st_add">Record</button>'+
+                '<input id="st_manual" class="input" placeholder="e.g., Red 21 touchdown">'+
+                '<button class="btn" id="st_add">Record</button>'+
                 '</div>'+
               '</div>'+
               '<div class="col" style="min-width:220px">'+
@@ -2673,7 +2721,9 @@ function actDropout(eventId, its, btn){
         const inferredSport = (label.split(' - ')[0] || '').trim();
         if (inferredSport) state.sport = inferredSport;
         statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
-        _aliasIndex = _buildAliasIndex(statMap);
+_aliasIndex = _buildAliasIndex(statMap);
+renderStatsList();
+
       })();
 
       // ===== Jersey Map (uses Jerseys tab name) =====
@@ -2779,9 +2829,11 @@ function actDropout(eventId, its, btn){
 
         // Rebuild for (possibly) new sport
         statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
-        _aliasIndex = _buildAliasIndex(statMap);
+_aliasIndex = _buildAliasIndex(statMap);
+renderStatsList();
 
-        loadEventRows();
+loadEventRows();
+
       });
 
       // ===== Voice recognition =====
@@ -2805,15 +2857,31 @@ function actDropout(eventId, its, btn){
         if (micBtn.textContent.startsWith('Start')) startMic(); else stopMic();
       });
 
-      if (rec){
-        rec.onresult = async (ev)=>{
-          const t = String(ev.results[0][0].transcript||'').trim();
-          micStatus.textContent = 'Heard: “'+esc(t)+'”';
-          await _statkit_processCommand(t, { fromVoice:true });
-        };
-        rec.onend = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
-        rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
-      }
+      let _lastHeard = { text:'', ts:0 };
+if (rec){
+  rec.onresult = async (ev)=>{
+    const tRaw = ev && ev.results && ev.results[0] && ev.results[0][0]
+      ? String(ev.results[0][0].transcript||'')
+      : '';
+    const t = tRaw.trim();
+    const now = Date.now();
+
+    // Suppress immediate duplicate transcripts (speech APIs can fire twice)
+    if (t && _lastHeard.text === t && (now - _lastHeard.ts) < 1500){
+      const s = document.getElementById('st_mic_status');
+      if (s) s.textContent = 'Heard duplicate, ignored';
+      return;
+    }
+    _lastHeard = { text: t, ts: now };
+
+    const s = document.getElementById('st_mic_status');
+    if (s) s.textContent = 'Heard: “'+esc(t)+'”';
+    await _statkit_processCommand(t);
+  };
+  rec.onend   = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
+  rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
+}
+
 
       // ===== Manual entry (Enter-to-submit + button lock) =====
       (()=>{
@@ -2922,64 +2990,85 @@ function actDropout(eventId, its, btn){
         return { team, number: String(n), stat: key };
       }
 
-      async function _statkit_processCommand(text, opts){
-        const fromVoice = !!(opts && opts.fromVoice);
-        if (!state.tmp.stat_event_id){
-          if (!fromVoice) alert('Pick an event first');
-          return;
-        }
+      async function _statkit_processCommand(text){
+  if (!state.tmp.stat_event_id){
+    if (navigator.onLine) alert('Pick an event first');
+    else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first'; }
+    return;
+  }
 
-        const p = _parseCommand(text);
-        if (!p){
-          // For voice input: suppress alert; just annotate mic status
-          if (fromVoice){
-            const s = document.getElementById('st_mic_status');
-            if (s) s.textContent = 'Didn’t catch that. Try “Red 12 touchdown”.';
-          } else {
-            // Helpful list of recognized phrases for this sport + teams (for manual input)
-            const parts = [];
-            Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
-              const arr = Array.from(set);
-              const shown = arr.filter(a => a !== k);
-              parts.push(shown.length ? `${k} (${shown.join(', ')})` : k);
-            });
-            const teams = Array.from(teamSet).join(' • ') || '—';
-            alert(
-              'Could not parse.\n\n' +
-              'Say things like “Red 12 touchdown”, “Lions 7 td”.\n\n' +
-              'Recognized stats: ' + (parts.join(' • ') || '—') + '\n' +
-              'Teams: ' + teams
-            );
-          }
-          return;
-        }
+  const p = _parseCommand(text);
+  if (!p){
+    // No alerts while offline
+    if (!navigator.onLine){
+      const s = document.getElementById('st_mic_status');
+      if (s) s.textContent = 'Could not parse (offline)';
+      return;
+    }
+    // Online: show helpful aliases/teams as before
+    const parts = [];
+    Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
+      const arr = Array.from(set);
+      const shown = arr.filter(a => a !== k);
+      parts.push(shown.length ? `${k} (${shown.join(', ')})` : k);
+    });
+    const teams = Array.from(teamSet).join(' • ') || '—';
+    alert(
+      'Could not parse.\n\n' +
+      'Say things like “Red 12 touchdown”, “Lions 7 td”.\n\n' +
+      'Recognized stats: ' + (parts.join(' • ') || '—') + '\n' +
+      'Teams: ' + teams
+    );
+    return;
+  }
 
-        const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
-        if (!its){
-          alert(`No player mapped for ${p.team} ${p.number}. Update the Jerseys sheet (team, number, name, its).`);
-          return;
-        }
+  const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
+  if (!its){
+    if (navigator.onLine) alert(`No player mapped for ${p.team} #${p.number}. Update the Jerseys sheet (team, numbers, its).`);
+    else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = `No mapping for ${p.team} #${p.number}`; }
+    return;
+  }
 
-        const timeStr = _fmtTime(new Date());
-        const recObj = { adminIts: state.user.its, eventId: state.tmp.stat_event_id, its, stat: p.stat, raw: text, time: timeStr };
+  const timeStr = _fmtTime(new Date());
+  const recObj = { adminIts: state.user.its, eventId: state.tmp.stat_event_id, its, stat: p.stat, raw: text, time: timeStr };
 
-        // Offline-first queueing
-        if (!navigator.onLine){
-          const q = loadQ(); q.push(recObj); saveQ(q);
-          _statkit_renderRowLocal({ its, stat: p.stat, time: timeStr });
-          const hint = document.getElementById('st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
-          return;
-        }
+  // Build a short-lived fingerprint to stop accidental duplicates
+  const fp = _makeFP(recObj);
+  if (_seenFP(fp, 60000)){  // 60s window
+    const s = document.getElementById('st_mic_status');
+    if (s) s.textContent = 'Duplicate ignored';
+    return;
+  }
+  _markFP(fp);
 
-        try{
-          await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time);
-          await loadEventRows();
-        }catch(e){
-          // Fallback to queue if server call fails while "online"
-          const q = loadQ(); q.push(recObj); saveQ(q);
-          _statkit_renderRowLocal({ its, stat: p.stat, time: timeStr });
-        }
-      }
+  // Offline-first queueing (de-dupe inside queue as well)
+  if (!navigator.onLine){
+    let q = loadQ();
+    if (!q.some(x => _makeFP(x) === fp)){
+      q.push(recObj); saveQ(q);
+      _statkit_renderRowLocal({ its, stat: p.stat, time: timeStr });
+    } else {
+      const s = document.getElementById('st_mic_status');
+      if (s) s.textContent = 'Already queued';
+    }
+    const hint = document.getElementById('st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
+    return;
+  }
+
+  // Online path
+  try{
+    await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time);
+    await loadEventRows();
+  }catch(e){
+    // If server call fails while online, fall back to queue, still de-duped
+    let q = loadQ();
+    if (!q.some(x => _makeFP(x) === fp)){
+      q.push(recObj); saveQ(q);
+      _statkit_renderRowLocal({ its, stat: p.stat, time: timeStr });
+    }
+  }
+}
+
 
       // Initial load & flush any queued
       await loadEventRows();
