@@ -2486,14 +2486,11 @@ function actDropout(eventId, its, btn){
 
   <script id="STATKIT">
 /* ===================== STATKIT (client) ===================== */
-/* MVP voice+manual event stat recording for admins — team-aware
-   Commands like: "19 Red pass to 18 Red for touchdown"
-   Recorded list shows:
-     04:19pm 02/07/2025
-     Red 19 - Player Name
-     touchdown
-
-   Jersey Map uses Jerseys tab columns: number, team, name → "<number> <team> - <name>"
+/* Team/name-aware stat tracker with robust parsing and per-Game filtering.
+   - Shows list, score, and jersey map ONLY for the selected Game.
+   - Pairs: completion/reception; target/incomplete; interception thrown/defensive pick.
+   - Overrides: TD/XP go to BOTH players for completion/reception, but for INT+TD only the defender gets TD.
+   - Canonicals: "interception thrown" and "defensive pick".
 */
 
 (function(){
@@ -2501,61 +2498,40 @@ function actDropout(eventId, its, btn){
   // ---- Local offline queue (simple, resilient) + client-side dedupe ----
   const QKEY = 'statkitQueue.v1';
   const DKEY = 'statkitDedup.v1';  // fingerprint cache to suppress dupes for a short window
-
   function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
   function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
 
   // Fingerprint helpers (eventId|game|its|stat|time)
   function _makeFP(it){
-    return [
-      String(it.eventId||''),
-      String(it.game||''),
-      String(it.its||''),
-      String(it.stat||''),
-      String(it.time||'')
-    ].join('|');
+    return [String(it.eventId||''), String(it.game||''), String(it.its||''), String(it.stat||''), String(it.time||'')].join('|');
   }
   function _loadDedup(){ try{ return JSON.parse(localStorage.getItem(DKEY)||'{}'); }catch(_){ return {}; } }
   function _saveDedup(map){ localStorage.setItem(DKEY, JSON.stringify(map||{})); }
   function _markFP(fp){
     const m=_loadDedup(); const now=Date.now(); m[fp]=now;
-    // prune >2 min old and cap ~300 entries
     const cutoff = now - 120000; const keys = Object.keys(m).sort((a,b)=>m[a]-m[b]);
     for (const k of keys){ if (m[k] < cutoff || Object.keys(m).length > 300) delete m[k]; }
     _saveDedup(m);
   }
   function _seenFP(fp, windowMs){ const ts = _loadDedup()[fp]||0; return (Date.now() - ts) <= (windowMs||60000); }
-
-  // Compacts a queue by removing duplicate fingerprints (keeps first)
   function _uniqQueue(q){
     const seen = new Set(); const out=[];
-    for(const it of q){
-      const fp = _makeFP(it);
-      if (seen.has(fp)) continue;
-      seen.add(fp); out.push(it);
-    }
+    for(const it of q){ const fp = _makeFP(it); if (seen.has(fp)) continue; seen.add(fp); out.push(it); }
     return out;
   }
-
-  async function flushQueue(show){
+  async function flushQueue(){
     if (!navigator.onLine) return;
     let q = loadQ(); if (!q.length) return;
-    // de-dupe before flushing
     q = _uniqQueue(q);
     const keep = [];
     for (const it of q){
       try{
-        // server expected to accept (..., raw, time, game)
         await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time, it.game);
-        // No duplicate preview during flush
       }catch(_){ keep.push(it); }
     }
     saveQ(keep);
   }
-
-  // Quietly upload when coming back online (no duplicate previews)
-  window.addEventListener('online', ()=>flushQueue(false));
-
+  window.addEventListener('online', ()=>flushQueue());
 
   // ---- Page ----
   async function pageStat(){
@@ -2567,15 +2543,11 @@ function actDropout(eventId, its, btn){
     const mySport = state.sport || 'Soccer';
 
     try{
-      // Bootstrap + Events sheet (same source as Receipts tab)
       const [boot, eventsPack] = await Promise.all([
         gs('api_stats_bootstrap', state.user.its),
-        new Promise(resolve => {
-          AdminAPI.receiptsList(state.user.its, resolve, () => resolve({ events: [] }));
-        })
+        new Promise(resolve => { AdminAPI.receiptsList(state.user.its, resolve, () => resolve({ events: [] })); })
       ]);
 
-      // Must be admin for the current sport
       const isAdmin = Array.isArray(boot.adminSports) && boot.adminSports.some(x=>String(x)===String(mySport));
       if (!isAdmin){
         layout(el('<div class="card">You must be an admin for '+String(mySport) +' to use the Stat Tracker.</div>'));
@@ -2584,10 +2556,9 @@ function actDropout(eventId, its, btn){
 
       // ===== Build maps (TEAM + NAME aware) =====
       const jerseysArr = boot.jerseys || [];
-      // keys to resolve player: "<team>::<number>" (case-insensitive team)
-      const jerseysByTeamNum = {};                 // `${teamLower}::${number}` -> its
-      const itsToMeta = {};                        // its -> { team, number, name }
-      const teamSet = new Set();                   // set of team names from Jerseys
+      const jerseysByTeamNum = {}; // `${teamLower}::${number}` -> its
+      const itsToMeta = {};        // its -> { team, number, name }
+      const teamSet = new Set();
       jerseysArr.forEach(j=>{
         const team = String(j.team||'').trim();
         const num  = String(j.number||'').trim();
@@ -2601,7 +2572,7 @@ function actDropout(eventId, its, btn){
 
       let statMap = (boot.sports && boot.sports[mySport] && boot.sports[mySport].aliasToKey) || {};
 
-      // Helper: (re)build alias index from the current statMap
+      // Alias index
       function _buildAliasIndex(map){
         const collapsed = {};
         Object.keys(map || {}).forEach(alias => {
@@ -2620,15 +2591,9 @@ function actDropout(eventId, its, btn){
         const box = document.getElementById('st_statslist');
         if (!box) return;
         const entries = Object.entries(_aliasIndex.keyToAliases || {});
-        if (!entries.length){
-          box.innerHTML = '<span class="muted">—</span>';
-          return;
-        }
-        // Show only canonical keys (hide aliases in parentheses)
+        if (!entries.length){ box.innerHTML = '<span class="muted">—</span>'; return; }
         const keys = entries.map(([key])=>key).sort((a,b)=>a.localeCompare(b));
-        const chips = keys.map(key=>{
-          return `<span style="border:1px solid var(--border);border-radius:999px;padding:2px 8px;line-height:1.8">${esc(key)}</span>`;
-        });
+        const chips = keys.map(key=>`<span style="border:1px solid var(--border);border-radius:999px;padding:2px 8px;line-height:1.8">${esc(key)}</span>`);
         box.innerHTML = chips.join('');
       }
 
@@ -2644,7 +2609,7 @@ function actDropout(eventId, its, btn){
       }
       const _teamIndex = _buildTeamIndex(teamSet);
 
-      // ===== Events from the Events sheet (same as Receipts) =====
+      // ===== Events =====
       const evOptions = (eventsPack && eventsPack.events) || [];
       if (!evOptions.length){
         layout(el('<div class="card stack"><div class="label">Stat Tracker — '+String(mySport)+'</div><div class="muted">No events found in the Events sheet.</div></div>'));
@@ -2663,14 +2628,10 @@ function actDropout(eventId, its, btn){
                 '<label class="label">Event</label>'+
                 '<select id="st_evt" class="input"></select>'+
               '</div>'+
-
-              // GAME SELECT
               '<div class="col" style="min-width:120px">'+
                 '<label class="label">Game</label>'+
                 '<select id="st_game" class="input"></select>'+
               '</div>'+
-
-              // SCOREBOX
               '<div class="col" style="min-width:260px">'+
                 '<label class="label">Score</label>'+
                 '<div id="st_score" class="stack" style="gap:6px">'+
@@ -2684,7 +2645,6 @@ function actDropout(eventId, its, btn){
                   '</div>'+
                 '</div>'+
               '</div>'+
-
               '<div class="col">'+
                 '<label class="label">Stats you can record</label>'+
                 '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
@@ -2693,6 +2653,7 @@ function actDropout(eventId, its, btn){
                   '<input id="st_manual" class="input" placeholder="19 Red pass to 18 Red for touchdown">'+
                   '<button class="btn" id="st_add">Record</button>'+
                 '</div>'+
+                '<div id="st_posting" class="tiny muted" style="margin-top:4px"></div>'+
               '</div>'+
               '<div class="col" style="min-width:240px">'+
                 '<label class="label">Voice</label>'+
@@ -2700,7 +2661,6 @@ function actDropout(eventId, its, btn){
                   '<button class="btn" id="st_mic">Start Listening</button>'+
                   '<div class="stack" style="gap:2px">'+
                     '<div id="st_mic_status" class="tiny muted">Idle</div>'+
-                    '<div id="st_posting" class="tiny muted"></div>'+
                   '</div>'+
                 '</div>'+
               '</div>'+
@@ -2725,53 +2685,36 @@ function actDropout(eventId, its, btn){
       );
       layout(node);
 
-      // Fill event select
+      // Selects
       const sel = $('#st_evt');
       const selGame = $('#st_game');
       const LAST_KEY = 'statkit.lastEventId';
 
-      // Build Game dropdown 1..99
+      // Build Game dropdown 1..99 (remember per-event)
       (function buildGameSelect(){
         selGame.innerHTML = '';
         for (let i=1;i<=99;i++){
-          const o = document.createElement('option');
-          o.value = String(i);
-          o.textContent = String(i);
-          selGame.appendChild(o);
+          const o = document.createElement('option'); o.value = String(i); o.textContent = String(i); selGame.appendChild(o);
         }
       })();
+      function _gameKeyForEvent(eid){ return `statkit.lastGame.${eid}`; }
+      function _loadGameForEvent(eid){ const v = localStorage.getItem(_gameKeyForEvent(eid)); return (v && /^\d+$/.test(v)) ? v : '1'; }
+      function _saveGameForEvent(eid, v){ localStorage.setItem(_gameKeyForEvent(eid), String(v||'1')); }
 
       const lastId = localStorage.getItem(LAST_KEY);
       evOptions.forEach(e=>{
-        const o = document.createElement('option');
-        o.value = e.id;
-        o.textContent = e.label || e.id;
-        sel.appendChild(o);
+        const o = document.createElement('option'); o.value = e.id; o.textContent = e.label || e.id; sel.appendChild(o);
       });
-
-      if (lastId && evOptions.some(e=>String(e.id)===String(lastId))) {
-        sel.value = lastId;
-      }
+      if (lastId && evOptions.some(e=>String(e.id)===String(lastId))) sel.value = lastId;
       if (!sel.value && evOptions[0]) sel.value = evOptions[0].id;
-
-      // Pick default game for this event (remember per-event)
-      function _gameKeyForEvent(eid){ return `statkit.lastGame.${eid}`; }
-      function _loadGameForEvent(eid){
-        const v = localStorage.getItem(_gameKeyForEvent(eid));
-        return (v && /^\d+$/.test(v)) ? v : '1';
-      }
-      function _saveGameForEvent(eid, v){
-        localStorage.setItem(_gameKeyForEvent(eid), String(v||'1'));
-      }
 
       state.tmp.stat_event_id = sel.value || '';
       selGame.value = _loadGameForEvent(state.tmp.stat_event_id);
       state.tmp.stat_game = selGame.value;
 
-      // One-time initial sport sync from current option label
+      // One-time sport infer + alias build
       (()=>{
-        const opt = sel.options[sel.selectedIndex];
-        const label = opt ? (opt.textContent || '') : '';
+        const opt = sel.options[sel.selectedIndex]; const label = opt ? (opt.textContent || '') : '';
         const inferredSport = (label.split(' - ')[0] || '').trim();
         if (inferredSport) state.sport = inferredSport;
         statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
@@ -2779,27 +2722,23 @@ function actDropout(eventId, its, btn){
         renderStatsList();
       })();
 
-      // ===== Jersey Map (uses Jerseys tab name) =====
-      function renderJersey(onlyTeams){
+      // ===== Jersey Map =====
+      function renderJersey(teamsSet){
         const box = $('#st_jersey');
-        const filtered = Array.isArray(onlyTeams) && onlyTeams.length
-          ? jerseysArr.filter(j => onlyTeams.includes(String(j.team||'').trim()))
-          : jerseysArr;
-
-        const rows = [...filtered]
+        const rows = [...jerseysArr]
+          .filter(j => !teamsSet || !teamsSet.size || teamsSet.has(String(j.team||'').trim()))
           .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
           .map(j=>{
             const team = String(j.team||'').trim();
             const num  = String(j.number||'').trim();
             const nm   = String(j.name||'').trim();
             return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:6px 0">'+
-                     '<div>'+esc(num)+' '+esc(team||'')+' - '+esc(nm||'')+'</div>'+
-                     '<div class="tiny"></div>'+
-                   '</div>';
+                   '<div>'+esc(num)+' '+esc(team||'')+' - '+esc(nm||'')+'</div>'+
+                   '<div class="tiny"></div></div>';
           }).join('') || '<div class="muted">No jerseys found. Add rows in the “Jerseys” sheet.</div>';
         box.innerHTML = rows;
       }
-      renderJersey();
+      renderJersey(); // until we know teams for the selected game
 
       // ===== Scorebox helpers =====
       function _parseTimeStr(s){
@@ -2815,7 +2754,7 @@ function actDropout(eventId, its, btn){
       }
 
       function _renderScorebox(list){
-        // Determine which two teams to display
+        // Use ONLY the rows for the current game (list already filtered upstream)
         const seenTeams = [];
         list.forEach(r=>{
           const meta = itsToMeta[String(r.its||'')] || {};
@@ -2823,26 +2762,16 @@ function actDropout(eventId, its, btn){
           if (t && !seenTeams.includes(t)) seenTeams.push(t);
         });
         let teams = seenTeams.slice(0,2);
-        if (teams.length < 2){
-          for (const j of jerseysArr){
-            const t = String(j.team||'').trim();
-            if (t && !teams.includes(t)) teams.push(t);
-            if (teams.length >= 2) break;
-          }
-        }
         const [teamA, teamB] = [teams[0]||'Team A', teams[1]||'Team B'];
 
-        // Update labels
         $('#st_score_teamA').textContent = teamA;
         $('#st_score_teamB').textContent = teamB;
 
-        // Canonical keys
         const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
         const k1  = _resolveKeyAlias('1 point')   || '1 point';
         const k2  = _resolveKeyAlias('2 point')   || '2 point';
         const k3  = _resolveKeyAlias('3 point')   || '3 point';
 
-        // Collect events per team with timestamps
         const evByTeam = {};
         list.forEach(r=>{
           const meta = itsToMeta[String(r.its||'')] || {};
@@ -2854,57 +2783,70 @@ function actDropout(eventId, its, btn){
         });
         Object.values(evByTeam).forEach(arr=>arr.sort((a,b)=>a.t-b.t));
 
-        // 2-min window accumulators (per team; independent TD/XP windows)
         function calcScore(team){
           const arr = evByTeam[team] || [];
           let score = 0;
           let lastTdStart = -Infinity;
           let lastXpStart = -Infinity;
           const WIN = 2*60*1000;
-
           for (const e of arr){
             if (e.stat === kTD){
-              if (e.t - lastTdStart > WIN){
-                score += 6;
-                lastTdStart = e.t;
-              }
+              if (e.t - lastTdStart > WIN){ score += 6; lastTdStart = e.t; }
             }else if (e.stat === k1 || e.stat === k2 || e.stat === k3){
               const pts = (e.stat === k3) ? 3 : (e.stat === k2 ? 2 : 1);
-              if (e.t - lastXpStart > WIN){
-                score += pts;
-                lastXpStart = e.t;
-              }
+              if (e.t - lastXpStart > WIN){ score += pts; lastXpStart = e.t; }
             }
           }
           return score;
         }
 
-        const sA = calcScore(teamA);
-        const sB = calcScore(teamB);
-        $('#st_score_valA').textContent = String(sA);
-        $('#st_score_valB').textContent = String(sB);
-
-        // Filter jersey map to these two teams once we have two distinct teams recorded
-        renderJersey(teams.length === 2 ? teams : null);
+        $('#st_score_valA').textContent = String(calcScore(teamA));
+        $('#st_score_valB').textContent = String(calcScore(teamB));
       }
 
-      // ===== Recorded list (newest first) =====
+      // ===== Recorded list (filter by Game) =====
+      let _allRows = [];
       async function loadEventRows(){
         if (!state.tmp.stat_event_id){
           $('#st_list').innerHTML = '<div class="muted">Pick an event above.</div>';
           return;
         }
         const res  = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
-        const list = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
+        _allRows = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
+        _refreshForGame();
+      }
+
+      function _filterByGame(list){
+        const g = String(state.tmp.stat_game||'');
+        // legacy rows with empty game → show in Game 1
+        return (list||[]).filter(r => String(r.game||'') === g || (g==='1' && !String(r.game||'').trim()));
+      }
+
+      function _teamsFromList(list){
+        const s = new Set();
+        (list||[]).forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          if (meta.team) s.add(meta.team);
+        });
+        return s;
+      }
+
+      function _refreshForGame(){
+        const list = _filterByGame(_allRows);
         _renderList(list);
         _renderScorebox(list);
+        renderJersey(_teamsFromList(list)); // jersey map only for teams that have stats in THIS game
       }
 
       function _renderList(list){
         const box = $('#st_list');
         if (!list.length){
-          box.innerHTML = '<div class="muted">No stats yet.</div>';
+          box.innerHTML = '<div class="muted">No stats yet for this game.</div>';
           $('#st_hint').textContent = navigator.onLine ? '' : 'You are offline. New stats will be queued.';
+          $('#st_score_valA').textContent = '0';
+          $('#st_score_valB').textContent = '0';
+          $('#st_score_teamA').textContent = 'Team A';
+          $('#st_score_teamB').textContent = 'Team B';
           return;
         }
         box.innerHTML = list.map(r=>{
@@ -2914,10 +2856,11 @@ function actDropout(eventId, its, btn){
           const num  = meta.number || '';
           const name = meta.name || '';
           const when = r.time || '';
+          const g    = String(r.game || state.tmp.stat_game || '');
           return `
             <div class="row" style="align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0">
               <div class="col" style="min-width:260px">
-                <div class="tiny muted">${esc(when)}</div>
+                <div class="tiny muted">${esc(when)} · Game ${esc(g)}</div>
                 <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
               </div>
               <div class="col">${esc(r.stat)}</div>
@@ -2929,16 +2872,17 @@ function actDropout(eventId, its, btn){
         box.querySelectorAll('[data-act="del"]').forEach(b=>{
           b.addEventListener('click', async ()=>{
             const row = b.getAttribute('data-row');
-            try{
-              await gs('api_stats_delete', state.user.its, row);
-              loadEventRows();
-            }catch(e){ alert('Delete failed'); }
+            try{ await gs('api_stats_delete', state.user.its, row); loadEventRows(); }
+            catch(e){ alert('Delete failed'); }
           });
         });
       }
 
-      // Local queued row (offline) — uses Jerseys tab names
+      // Local queued row (only show if it's for the current game)
       function renderRowLocal(r){
+        const game = String(r.game||state.tmp.stat_game||'');
+        if (game !== String(state.tmp.stat_game||'')) return;
+
         const its  = String(r.its||'');
         const meta = itsToMeta[its] || {};
         const team = meta.team || '';
@@ -2952,7 +2896,7 @@ function actDropout(eventId, its, btn){
         div.style.cssText = 'align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0;opacity:.7';
         div.innerHTML = `
           <div class="col" style="min-width:260px">
-            <div class="tiny muted">${esc(when)}</div>
+            <div class="tiny muted">${esc(when)} · Game ${esc(game)}</div>
             <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
           </div>
           <div class="col">${esc(r.stat)} <span class="tiny muted">(queued)</span></div>
@@ -2965,19 +2909,13 @@ function actDropout(eventId, its, btn){
       sel.addEventListener('change', ()=>{
         state.tmp.stat_event_id = sel.value || '';
         localStorage.setItem(LAST_KEY, state.tmp.stat_event_id || '');
+        selGame.value = _loadGameForEvent(state.tmp.stat_event_id);
+        state.tmp.stat_game = selGame.value;
 
-        // load saved game for this event
-        const gv = _loadGameForEvent(state.tmp.stat_event_id);
-        selGame.value = gv;
-        state.tmp.stat_game = gv;
-
-        // Infer sport from "Sport - Name - Date"
         const opt = sel.options[sel.selectedIndex];
         const label = opt ? (opt.textContent || '') : '';
         const inferredSport = (label.split(' - ')[0] || '').trim();
         if (inferredSport) state.sport = inferredSport;
-
-        // Rebuild for (possibly) new sport
         statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
         _aliasIndex = _buildAliasIndex(statMap);
         renderStatsList();
@@ -2985,67 +2923,47 @@ function actDropout(eventId, its, btn){
         loadEventRows();
       });
 
-      // Game change (remember per event)
+      // Game change (remember per event + refilter immediately)
       selGame.addEventListener('change', ()=>{
         state.tmp.stat_game = selGame.value || '1';
         _saveGameForEvent(state.tmp.stat_event_id, state.tmp.stat_game);
+        _refreshForGame();
       });
 
       // ===== Voice recognition =====
       const micBtn = $('#st_mic');
       const micStatus = $('#st_mic_status');
-      const micPosting = $('#st_posting');
       const rec = _statkit_makeRecognizer();
 
       function startMic(){
         if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
-        // do NOT block offline use; just start listening
         rec.start();
         micBtn.textContent = 'Stop Listening';
         micStatus.textContent = 'Listening…';
-        micPosting.textContent = '';
+        $('#st_posting').textContent = '';
       }
       function stopMic(){
         if (rec) try{ rec.stop(); }catch(_){}
         micBtn.textContent = 'Start Listening';
         micStatus.textContent = 'Idle';
       }
-      micBtn.addEventListener('click', ()=>{
-        if (micBtn.textContent.startsWith('Start')) startMic(); else stopMic();
-      });
+      micBtn.addEventListener('click', ()=>{ if (micBtn.textContent.startsWith('Start')) startMic(); else stopMic(); });
 
       let _lastHeard = { text:'', ts:0 };
       if (rec){
         rec.onresult = async (ev)=>{
-          const tRaw = ev && ev.results && ev.results[0] && ev.results[0][0]
-            ? String(ev.results[0][0].transcript||'')
-            : '';
-          const t = tRaw.trim();
-          const now = Date.now();
-
-          // Suppress immediate duplicate transcripts
-          if (t && _lastHeard.text === t && (now - _lastHeard.ts) < 1500){
-            const s = document.getElementById('st_mic_status');
-            if (s) s.textContent = 'Heard duplicate, ignored';
-            return;
-          }
+          const tRaw = ev && ev.results && ev.results[0] && ev.results[0][0] ? String(ev.results[0][0].transcript||'') : '';
+          const t = tRaw.trim(); const now = Date.now();
+          if (t && _lastHeard.text === t && (now - _lastHeard.ts) < 1500){ micStatus.textContent = 'Heard duplicate, ignored'; return; }
           _lastHeard = { text: t, ts: now };
-
-          const s = document.getElementById('st_mic_status');
-          if (s) s.textContent = 'Heard: “'+esc(t)+'”';
-
-          // Live preview of what will be posted
-          const preview = _buildPostingPreview(t);
-          micPosting.textContent = preview ? ('Posting: '+preview) : '';
-
-          await _statkit_processCommand(t);
-          setTimeout(()=>{ micPosting.textContent = ''; }, 1500);
+          micStatus.textContent = 'Heard: “'+esc(t)+'”';
+          await _statkit_processCommand(t, /*fromVoice*/true);
         };
         rec.onend   = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
         rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
       }
 
-      // ===== Manual entry (Enter-to-submit + button lock) =====
+      // ===== Manual entry =====
       (()=>{
         const input = $('#st_manual');
         const btn   = $('#st_add');
@@ -3053,27 +2971,15 @@ function actDropout(eventId, its, btn){
         async function submit(){
           const v = (input.value || '').trim();
           if (!v || btn.getAttribute('aria-busy') === '1') return;
-
           const orig = btn.textContent;
-          btn.setAttribute('aria-busy','1');
-          btn.disabled = true;
-          btn.textContent = 'Recording…';
-
-          const preview = _buildPostingPreview(v);
-          if (micPosting) micPosting.textContent = preview ? ('Posting: '+preview) : '';
-
+          btn.setAttribute('aria-busy','1'); btn.disabled = true; btn.textContent = 'Recording…';
           try{
-            await _statkit_processCommand(v);
+            await _statkit_processCommand(v, /*fromVoice*/false);
             input.value = '';
           } finally {
-            btn.disabled = false;
-            btn.removeAttribute('aria-busy');
-            btn.textContent = orig;
-            input.focus();
-            setTimeout(()=>{ if (micPosting) micPosting.textContent=''; }, 1500);
+            btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = orig; input.focus();
           }
         }
-
         btn.addEventListener('click', submit);
         input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { e.preventDefault(); submit(); }});
       })();
@@ -3081,8 +2987,7 @@ function actDropout(eventId, its, btn){
       // ===== Parse & record helpers =====
       function _fmtTime(d){
         const pad = n => String(n).padStart(2,'0');
-        let h = d.getHours();
-        const m = d.getMinutes();
+        let h = d.getHours(), m = d.getMinutes();
         const ampm = h>=12 ? 'pm' : 'am';
         h = h%12; if (h===0) h=12;
         return `${pad(h)}:${pad(m)}${ampm} ${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()}`;
@@ -3096,28 +3001,29 @@ function actDropout(eventId, its, btn){
           .trim();
       }
 
-      function _extractNumber(text){
-        // Prefer immediate digits if present
-        const digit = String(text||'').match(/\b(\d{1,3})\b/);
-        if (digit) return parseInt(digit[1], 10);
+      // tolerant number extraction for spoken "twenty one"
+      function _extractNumber(tokens, startIdx){
         const ones = {zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
-          ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
-          sixteen:16, seventeen:17, eighteen:18, nineteen:19};
+          ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19};
         const tens = { twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90 };
-        const toks = _clean(text).split(' ');
-        for (let i=0; i<toks.length; i++){
-          const t = toks[i];
-          if (t in tens){
-            let v = tens[t];
-            if (i+1 < toks.length && toks[i+1] in ones) v += ones[toks[i+1]];
-            return v;
-          }
+        for (let i=startIdx; i<Math.min(tokens.length, startIdx+4); i++){
+          const t = tokens[i];
+          if (/^\d{1,3}$/.test(t)) return parseInt(t,10);
+          if (t in tens){ let v = tens[t]; if (i+1<tokens.length && tokens[i+1] in ones) v += ones[tokens[i+1]]; return v; }
           if (t in ones) return ones[t];
         }
         return null;
       }
 
-      // --- prefer non-scoring base action even if scoring words present ---
+      function _resolveKeyAlias(raw){
+        if (!raw) return null;
+        const norm = String(raw).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+        if (statMap[norm]) return statMap[norm];
+        const tight = norm.replace(/\s+/g,'');
+        for (const alias of Object.keys(statMap)){ if (alias.replace(/\s+/g,'') === tight) return statMap[alias]; }
+        return null;
+      }
+
       function _isScoringKey(key){
         if (!key) return false;
         const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
@@ -3126,6 +3032,7 @@ function actDropout(eventId, its, btn){
         const k3  = _resolveKeyAlias('3 point')   || '3 point';
         return key === kTD || key === k1 || key === k2 || key === k3;
       }
+
       function _findPrimaryActionKey(text){
         const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
         const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
@@ -3141,18 +3048,40 @@ function actDropout(eventId, its, btn){
         return nonScoring || matches[0] || null;
       }
 
-      function _resolveKeyAlias(raw){
-        if (!raw) return null;
-        const norm = String(raw).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
-        if (statMap[norm]) return statMap[norm];
-        const tight = norm.replace(/\s+/g,'');
-        for (const alias of Object.keys(statMap)){
-          if (alias.replace(/\s+/g,'') === tight) return statMap[alias];
+      // Robust player extraction (handles "Red 19" and "19 Red", sliding windows)
+      function _extractPlayersLoose(text){
+        const tokens = _clean(text).split(' ');
+        const players = [];
+        // search both orders around each token window
+        for (let i=0;i<tokens.length;i++){
+          // team then number
+          for (const an of _teamIndex.order){
+            const origTeam = _teamIndex.collapsed[an][0];
+            const teamWords = origTeam.toLowerCase().split(' ');
+            const slice = tokens.slice(i, i + teamWords.length).join(''); // collapsed
+            if (slice === an){
+              const num = _extractNumber(tokens, i + teamWords.length);
+              if (num!=null) players.push({ team: origTeam, number: String(num) });
+            }
+          }
+          // number then team
+          if (/^\d+$/.test(tokens[i]) || /^(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)$/.test(tokens[i])){
+            const n = _extractNumber(tokens, i);
+            for (const an of _teamIndex.order){
+              const origTeam = _teamIndex.collapsed[an][0];
+              const teamWords = origTeam.toLowerCase().split(' ');
+              const slice = tokens.slice(i+1, i+1 + teamWords.length).join('');
+              if (n!=null && slice === an){ players.push({ team: origTeam, number: String(n) }); }
+            }
+          }
         }
-        return null;
+        // dedupe by team::number keeping order
+        const seen = new Set(); const out=[];
+        for (const p of players){ const k = p.team.toLowerCase()+'::'+p.number; if (!seen.has(k)){ seen.add(k); out.push(p);} }
+        return out.slice(0,2); // we only ever use A and B
       }
 
-      function _mentionsStat(aliasLike, text){
+      function _mentions(aliasLike, text){
         const key = _resolveKeyAlias(aliasLike);
         if (!key) return false;
         const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -3160,81 +3089,10 @@ function actDropout(eventId, its, btn){
         return aliases.some(a => norm.includes(a.replace(/[^a-z0-9]/g,'')));
       }
 
-      // Extract up to two players — supports BOTH orders:
-      //   "Red 19 ..."  and  "19 Red ..."
-      function _extractPlayersFromText(text){
-        const words = String(text||'').split(/\s+/);
-        const L = words.length;
-
-        function findTeamAt(i){
-          for (const an of _teamIndex.order){
-            const pretty = _teamIndex.collapsed[an][0];
-            const parts = pretty.split(/\s+/);
-            const span = parts.length;
-            const slice = words.slice(i, i+span).join(' ').toLowerCase().replace(/[^a-z0-9 ]/g,'').trim();
-            if (slice === pretty.toLowerCase()){
-              return { name: pretty, span };
-            }
-          }
-          return null;
-        }
-
-        function findNumberAt(i){
-          const s = words.slice(i, i+2).join(' ');
-          const n = _extractNumber(s);
-          return (n==null) ? null : { num: String(n), span: (/\b\d+\b/.test(words[i]) ? 1 : (words[i+1] ? 2 : 1)) };
-        }
-
-        const out = [];
-        let i = 0;
-        while (i < L && out.length < 2){
-          const tHit = findTeamAt(i);
-          if (tHit){
-            let j = i + tHit.span;
-            let nHit = null;
-            for (let k=j; k<Math.min(L, j+3); k++){
-              const maybe = findNumberAt(k);
-              if (maybe){ nHit = { idx:k, ...maybe }; break; }
-            }
-            if (nHit){
-              out.push({ team: tHit.name, number: nHit.num });
-              i = nHit.idx + nHit.span;
-              continue;
-            }
-          }
-
-          const nHit0 = findNumberAt(i);
-          if (nHit0){
-            let j = i + nHit0.span;
-            let tHit2 = null;
-            for (let k=j; k<Math.min(L, j+3); k++){
-              const maybeT = findTeamAt(k);
-              if (maybeT){ tHit2 = { idx:k, ...maybeT }; break; }
-            }
-            if (tHit2){
-              out.push({ team: tHit2.name, number: nHit0.num });
-              i = tHit2.idx + tHit2.span;
-              continue;
-            }
-          }
-
-          i++;
-        }
-
-        const resolved = [];
-        for (const p of out){
-          const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
-          if (its) resolved.push({ ...p, its });
-        }
-        return resolved;
-      }
-
-      // Natural pair rules (single & two-player)
-      function _expandPairwise(players, primaryKey, rawText){
+      function _expandPairwise(playersResolved, primaryKey, rawText){
         const actions = [];
-        if (!players.length || !primaryKey) return actions;
-
-        const A = players[0], B = players[1];
+        if (!playersResolved.length || !primaryKey) return actions;
+        const A = playersResolved[0], B = playersResolved[1];
 
         const kCompletion   = _resolveKeyAlias('completion')             || 'completion';
         const kReception    = _resolveKeyAlias('reception')              || 'reception';
@@ -3251,9 +3109,8 @@ function actDropout(eventId, its, btn){
         const key = primaryKey;
 
         // “A incomplete to B drop” → B drop only
-        if (B && _mentionsStat('incomplete', rawText) && _mentionsStat('drop', rawText)) {
-          actions.push({ its:B.its, stat:kDrop });
-          return actions;
+        if (B && _mentions('incomplete', rawText) && _mentions('drop', rawText)) {
+          actions.push({ its:B.its, stat:kDrop }); return actions;
         }
 
         if (B) {
@@ -3264,15 +3121,13 @@ function actDropout(eventId, its, btn){
             return actions;
           }
           // Interception: A interception thrown, B defensive pick
-          // (aliases “interception” / “pick” in your sheet should resolve to these canonicals)
-          if (key === kInterThrown || key === kDefPick ||
-              _mentionsStat('interception', rawText) || _mentionsStat('pick', rawText)) {
+          if (key === kInterThrown || key === kDefPick || _mentions('interception', rawText) || _mentions('pick', rawText)) {
             actions.push({ its:A.its, stat:kInterThrown });
             actions.push({ its:B.its, stat:kDefPick    });
             return actions;
           }
           // Target / Incomplete pairing
-          if (key === kTarget || _mentionsStat('target', rawText)) {
+          if (key === kTarget || _mentions('target', rawText)) {
             actions.push({ its:A.its, stat:kIncomp });
             actions.push({ its:B.its, stat:kTarget });
             return actions;
@@ -3280,50 +3135,25 @@ function actDropout(eventId, its, btn){
         }
 
         // Single-actor rush
-        if (!B && key === kRush) {
-          actions.push({ its:A.its, stat:kRush });
-          return actions;
-        }
+        if (!B && key === kRush) { actions.push({ its:A.its, stat:kRush }); return actions; }
 
         // Fallback: single actor gets the key
         actions.push({ its:A.its, stat:key });
         return actions;
       }
 
-      // Detect global score intent (TD or XP variants)
       function _detectScoreIntent(text){
         const t = String(text||'').toLowerCase();
         if (/\b(td|touchdown|t\.?d\.?)\b/.test(t)) return { mode:'TD' };
-
         const xp2 = /\b(2\s*(pt|point|points|xp)|two\s*(point|points)|2\s*pointer)\b/.test(t);
         const xp3 = /\b(3\s*(pt|point|points|xp)|three\s*(point|points)|3\s*pointer)\b/.test(t);
         const xp1 = /\b(1\s*(pt|point|points|xp)|extra\s*point|xp|1\s*pointer)\b/.test(t);
-
         if (xp3) return { mode:'XP', points:3 };
         if (xp2) return { mode:'XP', points:2 };
         if (xp1) return { mode:'XP', points:1 };
         return null;
       }
 
-      // Main parse → players + baseActions + possible overrides
-      function _parseCommand(text){
-        const players = _extractPlayersFromText(text);
-        if (!players.length) return null;
-
-        const override = _detectScoreIntent(text);
-
-        // Prefer non-scoring action as the primary when both appear
-        const primaryKey = _findPrimaryActionKey(text);
-        const base = primaryKey ? _expandPairwise(players, primaryKey, text) : [];
-
-        if (override && override.mode === 'TD')  return { players, baseActions: base, override:'TD', raw:text };
-        if (override && override.mode === 'XP')  return { players, baseActions: base, override:'XP', xpPoints: override.points, raw:text };
-
-        if (!base.length) return null; // no meaningful stat found
-        return { players, baseActions: base, override: null, raw:text };
-      }
-
-      // Determine if this parsed command is an interception context (has A thrown + B pick)
       function _isInterceptionContext(parsed){
         const kInterThrown  = _resolveKeyAlias('interception thrown') || 'interception thrown';
         const kDefPick      = _resolveKeyAlias('defensive pick')     || 'defensive pick';
@@ -3331,7 +3161,35 @@ function actDropout(eventId, its, btn){
         return stats.has(kInterThrown) && stats.has(kDefPick);
       }
 
-      // Build preview string from a raw command
+      function _combineBaseAndOverrides(parsed){
+        let actions = [...(parsed.baseActions || [])];
+        if (parsed.override === 'TD' || parsed.override === 'XP'){
+          const interceptionCtx = _isInterceptionContext(parsed);
+          let targetsIts;
+          if (interceptionCtx){
+            const kDefPick = _resolveKeyAlias('defensive pick') || 'defensive pick';
+            targetsIts = Array.from(new Set((parsed.baseActions||[]).filter(a=>a.stat===kDefPick).map(a=>a.its)));
+          }else{
+            targetsIts = Array.from(new Set(parsed.players.map(p=>p.its)));
+          }
+
+          if (parsed.override === 'TD'){
+            const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+            actions.push(...targetsIts.map(its => ({ its, stat:kTD })));
+          }else{
+            const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
+            const key2 = _resolveKeyAlias('2 point') || '2 point';
+            const key3 = _resolveKeyAlias('3 point') || '3 point';
+            const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
+            actions.push(...targetsIts.map(its => ({ its, stat:key })));
+          }
+        }
+        // de-dupe
+        const seen = new Set();
+        actions = actions.filter(a=>{ const k = `${a.its}::${a.stat}`; if (seen.has(k)) return false; seen.add(k); return true; });
+        return actions;
+      }
+
       function _buildPostingPreview(text){
         const p = _parseCommand(text);
         if (!p) return '';
@@ -3345,89 +3203,66 @@ function actDropout(eventId, its, btn){
         return labels.join('; ');
       }
 
-      // Combine base pairwise actions + global overrides (TD/XP) and de-dupe
-      function _combineBaseAndOverrides(parsed){
-        let actions = [...(parsed.baseActions || [])];
+      // ---- Parser entry (tolerant) ----
+      function _parseCommand(text){
+        const rawText = String(text||'');
+        const playersFound = _extractPlayersLoose(rawText); // [{team,number}, ...]
+        if (!playersFound.length) return null;
 
-        // Add override stats with interception exception:
-        // - For completion/reception, TD/XP → both players
-        // - For interception/pick, TD/XP → ONLY defender (B) i.e., whoever got defensive pick
-        if (parsed.override === 'TD' || parsed.override === 'XP'){
-          const interceptionCtx = _isInterceptionContext(parsed);
+        // resolve to ITS
+        const players = playersFound.map(p=>{
+          const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
+          return its ? { ...p, its } : null;
+        }).filter(Boolean);
+        if (!players.length) return null;
 
-          // who gets the override?
-          let targetsIts;
-          if (interceptionCtx){
-            const kDefPick = _resolveKeyAlias('defensive pick') || 'defensive pick';
-            targetsIts = Array.from(new Set((parsed.baseActions||[])
-              .filter(a => a.stat === kDefPick)
-              .map(a => a.its)));
-          }else{
-            targetsIts = Array.from(new Set(parsed.players.map(p=>p.its)));
-          }
+        const override = _detectScoreIntent(rawText);
 
-          if (parsed.override === 'TD'){
-            const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
-            actions.push(...targetsIts.map(its => ({ its, stat:kTD })));
-          }else if (parsed.override === 'XP'){
-            const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
-            const key2 = _resolveKeyAlias('2 point') || '2 point';
-            const key3 = _resolveKeyAlias('3 point') || '3 point';
-            const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
-            actions.push(...targetsIts.map(its => ({ its, stat:key })));
-          }
+        // Find primary action; prefer non-scoring
+        let primaryKey = _findPrimaryActionKey(rawText);
+
+        // Helpful default: if two players connected by "to" and no primary key, treat as completion/reception
+        if (!primaryKey && players.length>=2 && /\bto\b/.test(_clean(rawText))){
+          primaryKey = _resolveKeyAlias('completion') || 'completion';
         }
 
-        // De-dupe same (its, stat)
-        const seen = new Set();
-        actions = actions.filter(a=>{
-          const k = `${a.its}::${a.stat}`;
-          if (seen.has(k)) return false;
-          seen.add(k);
-          return true;
-        });
-        return actions;
+        const base = primaryKey ? _expandPairwise(players, primaryKey, rawText) : [];
+
+        if (override && override.mode === 'TD')  return { players, baseActions: base, override:'TD', raw:rawText };
+        if (override && override.mode === 'XP')  return { players, baseActions: base, override:'XP', xpPoints: override.points, raw:rawText };
+
+        if (!base.length) return null;
+        return { players, baseActions: base, override:null, raw:rawText };
       }
 
       // ---------- Recorder ----------
-      async function _statkit_processCommand(text){
+      async function _statkit_processCommand(text, fromVoice){
         if (!state.tmp.stat_event_id){
-          if (navigator.onLine) alert('Pick an event first');
-          else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first'; }
+          if (navigator.onLine && !fromVoice) alert('Pick an event first');
+          else { $('#st_mic_status').textContent = 'Pick an event first'; }
           return;
         }
 
         const parsed = _parseCommand(text);
         if (!parsed){
-          if (!navigator.onLine){
-            const s = document.getElementById('st_mic_status');
-            if (s) s.textContent = 'Could not parse (offline)';
-            return;
+          const hint = 'Could not parse. Try “19 Red pass to 18 Red for touchdown”, “7 White incomplete to White 10”, “Blue 4 interception to Red 19 for touchdown”.';
+          if (fromVoice){ $('#st_posting').textContent = hint; }
+          else{
+            // keep this as a non-blocking UI hint instead of alert spam
+            $('#st_posting').textContent = hint;
           }
-          const keys = Object.keys((_aliasIndex && _aliasIndex.keyToAliases) || {});
-          alert(
-            'Could not parse.\n\n' +
-            'Try phrases like:\n' +
-            ' • "19 Red pass to 18 Red for touchdown"\n' +
-            ' • "7 White incomplete to White 10"\n' +
-            ' • "Blue 4 interception to Red 19 for touchdown"\n\n' +
-            'Recognized stats: ' + (keys.sort().join(' • ') || '—')
-          );
           return;
         }
 
-        // Combine base + overrides per your rule (with interception exception)
         const actions = _combineBaseAndOverrides(parsed);
         const timeStr = _fmtTime(new Date());
         const gameNum = state.tmp.stat_game || '1';
 
-        const micPosting = $('#st_posting');
-        if (micPosting){
-          micPosting.textContent = 'Posting: ' + actions.map(a=>{
-            const m = itsToMeta[a.its] || {};
-            return `${m.team||''} ${m.number||''} - ${m.name||''} — ${a.stat} (G${gameNum})`;
-          }).join('; ');
-        }
+        const posting = actions.map(a=>{
+          const m = itsToMeta[a.its] || {};
+          return `${m.team||''} ${m.number||''} - ${m.name||''} — ${a.stat} (G${gameNum})`;
+        }).join('; ');
+        $('#st_posting').textContent = posting;
 
         for (const a of actions){
           const recObj = {
@@ -3439,45 +3274,37 @@ function actDropout(eventId, its, btn){
             time:     timeStr,
             game:     gameNum
           };
-
           const fp = _makeFP(recObj);
-          if (_seenFP(fp, 60000)){
-            const s = document.getElementById('st_mic_status');
-            if (s) s.textContent = 'Duplicate ignored';
-            continue;
-          }
+          if (_seenFP(fp, 60000)){ $('#st_mic_status').textContent = 'Duplicate ignored'; continue; }
           _markFP(fp);
 
           if (!navigator.onLine){
             let q = loadQ();
             if (!q.some(x => _makeFP(x) === fp)){
               q.push(recObj); saveQ(q);
-              _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr });
+              _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr, game: gameNum });
             }
-            const hint = document.getElementById('st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
+            $('#st_hint').textContent = 'Offline: queued. Will upload when online.';
             continue;
           }
-
           try{
             await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time, recObj.game);
           }catch(e){
             let q = loadQ();
             if (!q.some(x => _makeFP(x) === fp)){
               q.push(recObj); saveQ(q);
-              _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr });
+              _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr, game: gameNum });
             }
           }
         }
 
-        if (navigator.onLine){
-          await loadEventRows();
-        }
+        if (navigator.onLine){ await loadEventRows(); }
         setTimeout(()=>{ const p = $('#st_posting'); if (p) p.textContent = ''; }, 1500);
       }
 
       // Initial load & flush any queued
       await loadEventRows();
-      flushQueue(true);
+      flushQueue();
 
     }catch(e){
       layout(el('<div class="card" style="color:var(--err)">Failed to load Stat Tracker: '+esc(e && e.message || e)+'</div>'));
@@ -3489,24 +3316,13 @@ function actDropout(eventId, its, btn){
 
   // Utilities
   function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
   function _statkit_makeRecognizer(){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return null;
-    const r = new SR();
-    r.lang = 'en-US';
-    r.interimResults = false;
-    r.maxAlternatives = 1;
-    return r;
+    if (!SR) return null; const r = new SR(); r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 1; return r;
   }
 
 })(); // end IIFE
 /* =================== /STATKIT (client) =================== */
-
-
-
-
-
 
 </script>
 
