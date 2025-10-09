@@ -2486,69 +2486,72 @@ function actDropout(eventId, its, btn){
 
   <script id="STATKIT">
 /* ===================== STATKIT (client) ===================== */
-/* MVP voice+manual event stat recording for admins — team-aware
-   Commands like: "Red 6 touchdown" or "Lions 7 td"
+/* MVP voice+manual event stat recording for admins — team-aware + composites
+   Commands like:
+     "Red 2 pass to Red 3 for touchdown"
+     "Red 2 interception to Black 5 for touchdown"
+     "Red 2 target to Red 4"
    Recorded list shows:
      04:19pm 02/07/2025
      Red 6 - Player Name
      touchdown
 
    Jersey Map uses Jerseys tab columns: number, team, name → "<number> <team> - <name>"
+   Score Box shows two teams and computes points from recorded rows.
 */
 
 (function(){
 
   // ---- Local offline queue (simple, resilient) + client-side dedupe ----
-const QKEY = 'statkitQueue.v1';
-const DKEY = 'statkitDedup.v1';  // fingerprint cache to suppress dupes for a short window
+  const QKEY = 'statkitQueue.v1';
+  const DKEY = 'statkitDedup.v1';  // fingerprint cache to suppress dupes for a short window
 
-function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
-function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
+  function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
+  function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
 
-// Fingerprint helpers (eventId|its|stat|time)
-function _makeFP(it){
-  return [String(it.eventId||''), String(it.its||''), String(it.stat||''), String(it.time||'')].join('|');
-}
-function _loadDedup(){ try{ return JSON.parse(localStorage.getItem(DKEY)||'{}'); }catch(_){ return {}; } }
-function _saveDedup(map){ localStorage.setItem(DKEY, JSON.stringify(map||{})); }
-function _markFP(fp){
-  const m=_loadDedup(); const now=Date.now(); m[fp]=now;
-  // prune >2 min old and cap ~300 entries
-  const cutoff = now - 120000; const keys = Object.keys(m).sort((a,b)=>m[a]-m[b]);
-  for (const k of keys){ if (m[k] < cutoff || Object.keys(m).length > 300) delete m[k]; }
-  _saveDedup(m);
-}
-function _seenFP(fp, windowMs){ const ts = _loadDedup()[fp]||0; return (Date.now() - ts) <= (windowMs||60000); }
-
-// Compacts a queue by removing duplicate fingerprints (keeps first)
-function _uniqQueue(q){
-  const seen = new Set(); const out=[];
-  for(const it of q){
-    const fp = _makeFP(it);
-    if (seen.has(fp)) continue;
-    seen.add(fp); out.push(it);
+  // Fingerprint helpers (eventId|its|stat|time)
+  function _makeFP(it){
+    return [String(it.eventId||''), String(it.its||''), String(it.stat||''), String(it.time||'')].join('|');
   }
-  return out;
-}
-
-async function flushQueue(show){
-  if (!navigator.onLine) return;
-  let q = loadQ(); if (!q.length) return;
-  // de-dupe before flushing
-  q = _uniqQueue(q);
-  const keep = [];
-  for (const it of q){
-    try{
-      await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time);
-      // Do NOT re-preview items during flush; they were already shown when added offline.
-      // If you want a visual confirmation, call _statkit_renderRowLocal here, but it will duplicate the preview.
-    }catch(_){ keep.push(it); }
+  function _loadDedup(){ try{ return JSON.parse(localStorage.getItem(DKEY)||'{}'); }catch(_){ return {}; } }
+  function _saveDedup(map){ localStorage.setItem(DKEY, JSON.stringify(map||{})); }
+  function _markFP(fp){
+    const m=_loadDedup(); const now=Date.now(); m[fp]=now;
+    // prune >2 min old and cap ~300 entries
+    const cutoff = now - 120000; const keys = Object.keys(m).sort((a,b)=>m[a]-m[b]);
+    for (const k of keys){ if (m[k] < cutoff || Object.keys(m).length > 300) delete m[k]; }
+    _saveDedup(m);
   }
-  saveQ(keep);
-}
+  function _seenFP(fp, windowMs){ const ts = _loadDedup()[fp]||0; return (Date.now() - ts) <= (windowMs||60000); }
 
-// Quietly upload when coming back online (no duplicate previews)
-window.addEventListener('online', ()=>flushQueue(false));
+  // Compacts a queue by removing duplicate fingerprints (keeps first)
+  function _uniqQueue(q){
+    const seen = new Set(); const out=[];
+    for(const it of q){
+      const fp = _makeFP(it);
+      if (seen.has(fp)) continue;
+      seen.add(fp); out.push(it);
+    }
+    return out;
+  }
+
+  async function flushQueue(show){
+    if (!navigator.onLine) return;
+    let q = loadQ(); if (!q.length) return;
+    // de-dupe before flushing
+    q = _uniqQueue(q);
+    const keep = [];
+    for (const it of q){
+      try{
+        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time);
+        // Do NOT re-preview items during flush; they were already shown when added offline.
+      }catch(_){ keep.push(it); }
+    }
+    saveQ(keep);
+  }
+
+  // Quietly upload when coming back online (no duplicate previews)
+  window.addEventListener('online', ()=>flushQueue(false));
 
 
   // ---- Page ----
@@ -2610,23 +2613,22 @@ window.addEventListener('online', ()=>flushQueue(false));
       }
       let _aliasIndex = _buildAliasIndex(statMap);
 
-    function renderStatsList(){
-  const box = document.getElementById('st_statslist');
-  if (!box) return;
-  const entries = Object.entries(_aliasIndex.keyToAliases || {});
-  if (!entries.length){
-    box.innerHTML = '<span class="muted">—</span>';
-    return;
-  }
-  entries.sort((a,b)=>a[0].localeCompare(b[0]));
-  const chips = entries.map(([key, set])=>{
-    const aliases = Array.from(set).filter(a => a !== key);
-    const title = aliases.length ? `${key} (${aliases.join(', ')})` : key;
-    return `<span style="border:1px solid var(--border);border-radius:999px;padding:2px 8px;line-height:1.8">${esc(title)}</span>`;
-  });
-  box.innerHTML = chips.join('');
-}
-
+      function renderStatsList(){
+        const box = document.getElementById('st_statslist');
+        if (!box) return;
+        const entries = Object.entries(_aliasIndex.keyToAliases || {});
+        if (!entries.length){
+          box.innerHTML = '<span class="muted">—</span>';
+          return;
+        }
+        entries.sort((a,b)=>a[0].localeCompare(b[0]));
+        const chips = entries.map(([key, set])=>{
+          const aliases = Array.from(set).filter(a => a !== key);
+          const title = aliases.length ? `${key} (${aliases.join(', ')})` : key;
+          return `<span style="border:1px solid var(--border);border-radius:999px;padding:2px 8px;line-height:1.8">${esc(title)}</span>`;
+        });
+        box.innerHTML = chips.join('');
+      }
 
       // Team index for parsing (longest-first)
       function _buildTeamIndex(set){
@@ -2640,10 +2642,13 @@ window.addEventListener('online', ()=>flushQueue(false));
       }
       const _teamIndex = _buildTeamIndex(teamSet);
 
+      // Track the two active teams (from recorded rows this session)
+      let _activeTeams = new Set();
+
       // ===== Events from the Events sheet (same as Receipts) =====
       const evOptions = (eventsPack && eventsPack.events) || [];
       if (!evOptions.length){
-        layout(el('<div class="card stack"><div class="label">Stat Tracker — '+String(mySport)+'</div><div class="muted">No events found in the Events sheet.</div></div>'));
+        layout(el('<div class="card stack"><div class="label">Stat Tracker</div><div class="muted">No events found in the Events sheet.</div></div>'));
         return;
       }
 
@@ -2660,22 +2665,36 @@ window.addEventListener('online', ()=>flushQueue(false));
                 '<label class="label">Event (from Events sheet)</label>'+
                 '<select id="st_evt" class="input"></select>'+
               '</div>'+
-              '<div class="col">'+
-  '<label class="label">Stats you can record</label>'+
-  '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
-  '<label class="label">Manual Command</label>'+
-  '<div class="row">'+
-    '<input id="st_manual" class="input" placeholder="e.g., Red 21 touchdown">'+
-    '<button class="btn" id="st_add">Record</button>'+
-  '</div>'+
-'</div>'+
 
-              '<div class="col" style="min-width:220px">'+
-                '<label class="label">Voice</label>'+
+              // Score Box column
+              '<div class="col" style="min-width:260px">'+
+                '<label class="label">Score</label>'+
+                '<div id="st_score" class="row" style="gap:8px;align-items:center">'+
+                  '<div id="st_teamA" class="chip"></div>'+
+                  '<div id="st_scoreA" class="badge">0</div>'+
+                  '<div class="tiny muted">vs</div>'+
+                  '<div id="st_teamB" class="chip"></div>'+
+                  '<div id="st_scoreB" class="badge">0</div>'+
+                '</div>'+
+              '</div>'+
+
+              '<div class="col">'+
+                '<label class="label">Stats you can record</label>'+
+                '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
+                '<label class="label">Manual Command</label>'+
                 '<div class="row">'+
+                  '<input id="st_manual" class="input" placeholder="e.g., Red 21 touchdown">'+
+                  '<button class="btn" id="st_add">Record</button>'+
+                '</div>'+
+              '</div>'+
+
+              '<div class="col" style="min-width:260px">'+
+                '<label class="label">Voice</label>'+
+                '<div class="row" style="gap:8px;align-items:center">'+
                   '<button class="btn" id="st_mic">Start Listening</button>'+
                   '<div id="st_mic_status" class="tiny muted" style="align-self:center">Idle</div>'+
                 '</div>'+
+                '<div class="tiny muted" id="st_parse_status" style="margin-top:6px"></div>'+
               '</div>'+
             '</div>'+
           '</div>'+
@@ -2724,15 +2743,17 @@ window.addEventListener('online', ()=>flushQueue(false));
         const inferredSport = (label.split(' - ')[0] || '').trim();
         if (inferredSport) state.sport = inferredSport;
         statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
-_aliasIndex = _buildAliasIndex(statMap);
-renderStatsList();
-
+        _aliasIndex = _buildAliasIndex(statMap);
+        renderStatsList();
       })();
 
       // ===== Jersey Map (uses Jerseys tab name) =====
       function renderJersey(){
         const box = $('#st_jersey');
+        // Filter to active teams if we’ve locked onto 2
+        const filter = (_activeTeams.size >= 2) ? new Set(_activeTeams) : null;
         const rows = [...jerseysArr]
+          .filter(j => !filter || filter.has(String(j.team||'')))
           .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
           .map(j=>{
             const team = String(j.team||'').trim();
@@ -2748,6 +2769,77 @@ renderStatsList();
       }
       renderJersey();
 
+      // ===== Score Box =====
+      // ===== Score Box =====
+function renderScore(list){
+  // Determine the two teams seen in the event rows; else fall back to active or jersey teams
+  const teamsInRows = [];
+  const seenTeams = new Set();
+  (list||[]).forEach(r=>{
+    const meta = itsToMeta[String(r.its||'')] || {};
+    const t = meta.team || '';
+    if (t && !seenTeams.has(t)){ seenTeams.add(t); teamsInRows.push(t); }
+  });
+  const teamA = teamsInRows[0] || Array.from(_activeTeams)[0] || '';
+  const teamB = teamsInRows[1] || Array.from(_activeTeams)[1] || '';
+
+  $('#st_teamA').textContent = teamA || '—';
+  $('#st_teamB').textContent = teamB || '—';
+
+  const points = { [teamA]:0, [teamB]:0 };
+
+  // Scoring rules (per time group):
+  // - If any "touchdown" rows exist for a team, add +6 ONCE for that team.
+  // - If any extra-point rows (1/2/3) exist for a team, add the HIGHEST one ONCE for that team.
+  const byTime = {};
+  (list||[]).forEach(r=>{
+    const when = r.time || '';
+    (byTime[when] ||= []).push(r);
+  });
+
+  Object.keys(byTime).forEach(when=>{
+    const group = byTime[when];
+
+    // Track per-team flags for this group
+    const perTeam = {}; // team -> { td:boolean, extra:number }
+    function ensure(team){
+      if (!team) return null;
+      if (!perTeam[team]) perTeam[team] = { td:false, extra:0 };
+      return perTeam[team];
+    }
+
+    group.forEach(r=>{
+      const s = String(r.stat||'').toLowerCase();
+      const t = (itsToMeta[String(r.its||'')]||{}).team || '';
+      if (!t) return;
+      const entry = ensure(t);
+      if (!entry) return;
+
+      if (s === 'touchdown'){
+        entry.td = true; // only mark; we’ll add +6 once below
+      } else if (s === '1 point' || s === '1 points'){
+        entry.extra = Math.max(entry.extra, 1);
+      } else if (s === '2 point' || s === '2 points'){
+        entry.extra = Math.max(entry.extra, 2);
+      } else if (s === '3 point' || s === '3 points'){
+        entry.extra = Math.max(entry.extra, 3);
+      }
+    });
+
+    // Apply once per team for this time group
+    Object.keys(perTeam).forEach(team=>{
+      if (!(team in points)) return;
+      const { td, extra } = perTeam[team];
+      if (td) points[team] += 6;
+      if (extra > 0) points[team] += extra;
+    });
+  });
+
+  $('#st_scoreA').textContent = points[teamA] || 0;
+  $('#st_scoreB').textContent = points[teamB] || 0;
+}
+
+
       // ===== Recorded list (newest first) =====
       async function loadEventRows(){
         if (!state.tmp.stat_event_id){
@@ -2757,6 +2849,7 @@ renderStatsList();
         const res  = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
         const list = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
         _renderList(list);
+        renderScore(list);
       }
 
       function _renderList(list){
@@ -2830,26 +2923,30 @@ renderStatsList();
         const inferredSport = (label.split(' - ')[0] || '').trim();
         if (inferredSport) state.sport = inferredSport;
 
+        // reset active teams on event change
+        _activeTeams = new Set();
+
         // Rebuild for (possibly) new sport
         statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
-_aliasIndex = _buildAliasIndex(statMap);
-renderStatsList();
+        _aliasIndex = _buildAliasIndex(statMap);
+        renderStatsList();
 
-loadEventRows();
-
+        renderJersey();
+        loadEventRows();
       });
 
       // ===== Voice recognition =====
       const micBtn = $('#st_mic');
       const micStatus = $('#st_mic_status');
+      const parseStatus = $('#st_parse_status');
       const rec = _statkit_makeRecognizer();
 
       function startMic(){
         if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
-        // do NOT block offline use; just start listening
         rec.start();
         micBtn.textContent = 'Stop Listening';
         micStatus.textContent = 'Listening…';
+        parseStatus.textContent = '';
       }
       function stopMic(){
         if (rec) try{ rec.stop(); }catch(_){}
@@ -2861,30 +2958,29 @@ loadEventRows();
       });
 
       let _lastHeard = { text:'', ts:0 };
-if (rec){
-  rec.onresult = async (ev)=>{
-    const tRaw = ev && ev.results && ev.results[0] && ev.results[0][0]
-      ? String(ev.results[0][0].transcript||'')
-      : '';
-    const t = tRaw.trim();
-    const now = Date.now();
+      if (rec){
+        rec.onresult = async (ev)=>{
+          const tRaw = ev && ev.results && ev.results[0] && ev.results[0][0]
+            ? String(ev.results[0][0].transcript||'')
+            : '';
+          const t = tRaw.trim();
+          const now = Date.now();
 
-    // Suppress immediate duplicate transcripts (speech APIs can fire twice)
-    if (t && _lastHeard.text === t && (now - _lastHeard.ts) < 1500){
-      const s = document.getElementById('st_mic_status');
-      if (s) s.textContent = 'Heard duplicate, ignored';
-      return;
-    }
-    _lastHeard = { text: t, ts: now };
+          // Suppress immediate duplicate transcripts (speech APIs can fire twice)
+          if (t && _lastHeard.text === t && (now - _lastHeard.ts) < 1500){
+            const s = document.getElementById('st_mic_status');
+            if (s) s.textContent = 'Heard duplicate, ignored';
+            return;
+          }
+          _lastHeard = { text: t, ts: now };
 
-    const s = document.getElementById('st_mic_status');
-    if (s) s.textContent = 'Heard: “'+esc(t)+'”';
-    await _statkit_processCommand(t);
-  };
-  rec.onend   = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
-  rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
-}
-
+          const s = document.getElementById('st_mic_status');
+          if (s) s.textContent = 'Heard: “'+esc(t)+'”';
+          await _statkit_processCommand(t);
+        };
+        rec.onend   = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
+        rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
+      }
 
       // ===== Manual entry (Enter-to-submit + button lock) =====
       (()=>{
@@ -2983,95 +3079,257 @@ if (rec){
         return null;
       }
 
-      // Parse commands like:
-      // "Red 6 touchdown", "Lions 7 td", "Blue twelve interception"
-      function _parseCommand(text){
+      // Parse helpers to extract a `<team num>` token
+      function _extractPlayerToken(text){
         const team = _extractTeam(text);
         const n    = _extractNumber(text);
-        const key  = _findStatKey(text);
-        if (!team || n==null || !key) return null;
-        return { team, number: String(n), stat: key };
+        if (!team || n==null) return null;
+        return { team, number:String(n) };
+      }
+
+      // Parse commands like:
+      // "Red 2 touchdown", "Lions 7 td", "Red 2 pass to Red 3 for touchdown",
+      // "Red 2 interception to Black 5 for touchdown", "Red 2 target to Red 4"
+      function _parseComposite(text){
+        const cleaned = _clean(text);
+        // tokens
+        const toIdx  = cleaned.indexOf(' to ') >= 0 ? cleaned.indexOf(' to ') : -1;
+        const forIdx = cleaned.indexOf(' for ') >= 0 ? cleaned.indexOf(' for ') : -1;
+
+        // Identify primary verb using alias map (completion, interception, target, touchdown, rush, etc.)
+        // But for composite we will map:
+        //  - pass/throw/complete => 'completion' (passer) + 'reception' (receiver if present)
+        //  - interception ... to X => 'interception' (first) + 'pick' (receiver) [+ 'touchdown' if mentioned]
+        //  - target to X => passer 'incomplete' + receiver 'target'
+        //  - "for touchdown" ⇒ add touchdown for receiver (on pass) or same player if not receiver
+        const verbs = {
+          completion: ['completion','complete','pass','throw'],
+          reception:  ['reception','catch'],
+          interception:['interception','pick'],
+          target:     ['target','targeted'],
+          touchdown:  ['touchdown','td'],
+          rush:       ['rush','run'],
+          // extras:
+          one:        ['1 point','1 pointer','xp','extra point'],
+          two:        ['2 point','2 points','2 pointer','2xp'],
+          three:      ['3 point','3 points','3 pointer','3xp']
+        };
+
+        function hasVerb(list){
+          return list.some(a=>{
+            const an = a.toLowerCase().replace(/[^a-z0-9]/g,'');
+            const norm = text.toLowerCase().replace(/[^a-z0-9]/g,'');
+            return norm.includes(an);
+          });
+        }
+
+        const primary = {
+          passLike: hasVerb(verbs.completion),
+          pickLike: hasVerb(verbs.interception),
+          targetLike: hasVerb(verbs.target),
+          td: hasVerb(verbs.touchdown),
+          rushLike: hasVerb(verbs.rush),
+          one: hasVerb(verbs.one),
+          two: hasVerb(verbs.two),
+          three: hasVerb(verbs.three)
+        };
+
+        // players
+        // try to split "A ... to B ... for ..." pattern
+        let lhsText = text, rhsText = '';
+        if (toIdx >= 0){
+          lhsText = text.slice(0, toIdx);
+          rhsText = text.slice(toIdx + 4, (forIdx>=0?forIdx:text.length));
+        }
+        const A = _extractPlayerToken(lhsText);
+        const B = rhsText ? _extractPlayerToken(rhsText) : null;
+
+        // Build resulting atomic stats from composite intent
+        const out = []; // [{team, number, key}]
+        function add(team, number, key){
+          if (!team || !number || !key) return;
+          out.push({ team, number, key });
+        }
+
+        // Map to canonical keys exactly as defined in sports tab
+        const K = {
+          completion: 'completion',
+          reception: 'reception',
+          target: 'target',
+          incomplete: 'incomplete',
+          interception: 'interception',
+          pick: 'pick',
+          touchdown: 'touchdown',
+          one: '1 point',
+          two: '2 point',
+          three: '3 point'
+        };
+
+        if (primary.passLike && A){
+          // passer completion
+          add(A.team, A.number, K.completion);
+          // receiver reception
+          if (B) add(B.team, B.number, K.reception);
+          // "for touchdown" ⇒ touchdown for receiver if present else passer
+          if (primary.td){
+            if (B) add(B.team, B.number, K.touchdown);
+            else   add(A.team, A.number, K.touchdown);
+          }
+        } else if (primary.pickLike && A){
+          // A did interception
+          add(A.team, A.number, K.interception);
+          if (B){
+            // receiver gets 'pick'
+            add(B.team, B.number, K.pick);
+            if (primary.td) add(B.team, B.number, K.touchdown);
+          } else if (primary.td){
+            // same player returns for TD
+            add(A.team, A.number, K.touchdown);
+          }
+        } else if (primary.targetLike && A){
+          // "target to B" ⇒ A incomplete + B target
+          if (B){
+            add(A.team, A.number, K.incomplete);
+            add(B.team, B.number, K.target);
+          } else {
+            add(A.team, A.number, K.incomplete);
+          }
+        } else if (primary.rushLike && A){
+          add(A.team, A.number, 'rush'); // not scored by itself; kept as a stat if present in your sheet
+          if (primary.td) add(A.team, A.number, K.touchdown);
+        } else if (primary.td && A){
+          add(A.team, A.number, K.touchdown);
+        } else if (primary.one && A){
+          add(A.team, A.number, K.one);
+        } else if (primary.two && A){
+          add(A.team, A.number, K.two);
+        } else if (primary.three && A){
+          add(A.team, A.number, K.three);
+        } else {
+          // Fall back: single-actor phrase like "Red 2 flag pull" (already supported by generic finder)
+          const key = _findStatKey(text);
+          if (A && key) add(A.team, A.number, key);
+        }
+
+        // If nothing parsed, return null to trigger help (online only)
+        if (!out.length) return null;
+        return out;
       }
 
       async function _statkit_processCommand(text){
-  if (!state.tmp.stat_event_id){
-    if (navigator.onLine) alert('Pick an event first');
-    else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first'; }
-    return;
-  }
+        const status = $('#st_parse_status');
+        if (status) status.textContent = '';
 
-  const p = _parseCommand(text);
-  if (!p){
-    // No alerts while offline
-    if (!navigator.onLine){
-      const s = document.getElementById('st_mic_status');
-      if (s) s.textContent = 'Could not parse (offline)';
-      return;
-    }
-    // Online: show helpful aliases/teams as before
-    const parts = [];
-    Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
-      const arr = Array.from(set);
-      const shown = arr.filter(a => a !== k);
-      parts.push(shown.length ? `${k} (${shown.join(', ')})` : k);
-    });
-    const teams = Array.from(teamSet).join(' • ') || '—';
-    alert(
-      'Could not parse.\n\n' +
-      'Say things like “Red 12 touchdown”, “Lions 7 td”.\n\n' +
-      'Recognized stats: ' + (parts.join(' • ') || '—') + '\n' +
-      'Teams: ' + teams
-    );
-    return;
-  }
+        if (!state.tmp.stat_event_id){
+          if (navigator.onLine) alert('Pick an event first');
+          else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first'; }
+          return;
+        }
 
-  const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
-  if (!its){
-    if (navigator.onLine) alert(`No player mapped for ${p.team} #${p.number}. Update the Jerseys sheet (team, numbers, its).`);
-    else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = `No mapping for ${p.team} #${p.number}`; }
-    return;
-  }
+        const parsed = _parseComposite(text);
+        if (!parsed){
+          // No alerts while offline
+          if (!navigator.onLine){
+            const s = document.getElementById('st_mic_status');
+            if (s) s.textContent = 'Could not parse (offline)';
+            return;
+          }
+          // Online: show helpful aliases/teams as before
+          const parts = [];
+          Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
+            const arr = Array.from(set);
+            const shown = arr.filter(a => a !== k);
+            parts.push(shown.length ? `${k} (${shown.join(', ')})` : k);
+          });
+          const teams = Array.from(teamSet).join(' • ') || '—';
+          alert(
+            'Could not parse.\n\n' +
+            'Say things like “Red 12 pass to Red 3 for touchdown”, “Red 2 target to Red 4”, “Red 2 interception to Black 5 for touchdown”.\n\n' +
+            'Recognized stats: ' + (parts.join(' • ') || '—') + '\n' +
+            'Teams: ' + teams
+          );
+          return;
+        }
 
-  const timeStr = _fmtTime(new Date());
-  const recObj = { adminIts: state.user.its, eventId: state.tmp.stat_event_id, its, stat: p.stat, raw: text, time: timeStr };
+        // Resolve ITS for each parsed item; de-dupe within this composite by (team,number,key)
+        const uniq = new Set();
+        const items = [];
+        for (const it of parsed){
+          const key = statMap[it.key] || it.key; // if 'key' already canonical in sports tab, this is a no-op
+          const its = jerseysByTeamNum[`${it.team.toLowerCase()}::${it.number}`];
+          if (!its) continue; // quietly skip missing mapping; UX shows below
+          const fpLocal = `${it.team}|${it.number}|${key}`;
+          if (uniq.has(fpLocal)) continue;
+          uniq.add(fpLocal);
+          items.push({ team: it.team, number: it.number, stat: key, its });
+        }
 
-  // Build a short-lived fingerprint to stop accidental duplicates
-  const fp = _makeFP(recObj);
-  if (_seenFP(fp, 60000)){  // 60s window
-    const s = document.getElementById('st_mic_status');
-    if (s) s.textContent = 'Duplicate ignored';
-    return;
-  }
-  _markFP(fp);
+        if (!items.length){
+          const s = document.getElementById('st_mic_status');
+          if (s) s.textContent = 'No mapped players for that command';
+          return;
+        }
 
-  // Offline-first queueing (de-dupe inside queue as well)
-  if (!navigator.onLine){
-    let q = loadQ();
-    if (!q.some(x => _makeFP(x) === fp)){
-      q.push(recObj); saveQ(q);
-      _statkit_renderRowLocal({ its, stat: p.stat, time: timeStr });
-    } else {
-      const s = document.getElementById('st_mic_status');
-      if (s) s.textContent = 'Already queued';
-    }
-    const hint = document.getElementById('st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
-    return;
-  }
+        // Live preview of what will be posted
+        const preview = items.map(i=>`${i.team} ${i.number} – ${i.stat}`).join(' • ');
+        if (status) status.textContent = `Parsed: ${preview}  — posting…`;
 
-  // Online path
-  try{
-    await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time);
-    await loadEventRows();
-  }catch(e){
-    // If server call fails while online, fall back to queue, still de-duped
-    let q = loadQ();
-    if (!q.some(x => _makeFP(x) === fp)){
-      q.push(recObj); saveQ(q);
-      _statkit_renderRowLocal({ its, stat: p.stat, time: timeStr });
-    }
-  }
-}
+        // maintain active teams (cap at 2 and freeze)
+        items.forEach(i=>{
+          if (_activeTeams.size < 2) _activeTeams.add(i.team);
+        });
+        renderJersey();
 
+        const timeStr = _fmtTime(new Date());
+        const base = { adminIts: state.user.its, eventId: state.tmp.stat_event_id, raw: text, time: timeStr };
+
+        // Client de-dupe per atomic item
+        const toSubmit = items.map(i => ({ ...base, its: i.its, stat: i.stat }));
+
+        // Offline path (queue all; render queued rows) — honor fingerprint de-dupe
+        if (!navigator.onLine){
+          let q = loadQ();
+          for (const recObj of toSubmit){
+            const fp = _makeFP(recObj);
+            if (_seenFP(fp, 60000)){
+              continue;
+            }
+            _markFP(fp);
+            if (!q.some(x => _makeFP(x) === fp)){
+              q.push(recObj);
+              _statkit_renderRowLocal({ its: recObj.its, stat: recObj.stat, time: timeStr });
+            }
+          }
+          saveQ(q);
+          const hint = document.getElementById('st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
+          if (status) status.textContent = `Queued: ${preview}`;
+          return;
+        }
+
+        // Online path: post sequentially
+        try{
+          for (const recObj of toSubmit){
+            const fp = _makeFP(recObj);
+            if (_seenFP(fp, 60000)) continue;
+            _markFP(fp);
+            await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time);
+          }
+          if (status) status.textContent = `Posted: ${preview}`;
+          await loadEventRows();
+        }catch(e){
+          // If server call fails while online, fall back to queue, still de-duped
+          let q = loadQ();
+          for (const recObj of toSubmit){
+            const fp = _makeFP(recObj);
+            if (!q.some(x => _makeFP(x) === fp)){
+              q.push(recObj);
+              _statkit_renderRowLocal({ its: recObj.its, stat: recObj.stat, time: timeStr });
+            }
+          }
+          saveQ(q);
+          if (status) status.textContent = `Partially queued (network error): ${preview}`;
+        }
+      }
 
       // Initial load & flush any queued
       await loadEventRows();
@@ -3100,6 +3358,7 @@ if (rec){
 
 })(); // end IIFE
 /* =================== /STATKIT (client) =================== */
+
 
 
 
