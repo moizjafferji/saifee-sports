@@ -2662,7 +2662,7 @@ function actDropout(eventId, its, btn){
               '<div class="col">'+
                 '<label class="label">Event</label>'+
                 '<select id="st_evt" class="input"></select>'+
-            '</div>'+
+              '</div>'+
 
               // GAME SELECT
               '<div class="col" style="min-width:120px">'+
@@ -2670,7 +2670,7 @@ function actDropout(eventId, its, btn){
                 '<select id="st_game" class="input"></select>'+
               '</div>'+
 
-              // SCOREBOX (between Event and Stats list)
+              // SCOREBOX
               '<div class="col" style="min-width:260px">'+
                 '<label class="label">Score</label>'+
                 '<div id="st_score" class="stack" style="gap:6px">'+
@@ -2854,7 +2854,7 @@ function actDropout(eventId, its, btn){
         });
         Object.values(evByTeam).forEach(arr=>arr.sort((a,b)=>a.t-b.t));
 
-        // 2-min window accumulators (per team, separate windows for TD and XP)
+        // 2-min window accumulators (per team; independent TD/XP windows)
         function calcScore(team){
           const arr = evByTeam[team] || [];
           let score = 0;
@@ -3097,6 +3097,7 @@ function actDropout(eventId, its, btn){
       }
 
       function _extractNumber(text){
+        // Prefer immediate digits if present
         const digit = String(text||'').match(/\b(\d{1,3})\b/);
         if (digit) return parseInt(digit[1], 10);
         const ones = {zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
@@ -3217,42 +3218,49 @@ function actDropout(eventId, its, btn){
         return resolved;
       }
 
+      // Natural pair rules (single & two-player)
       function _expandPairwise(players, primaryKey, rawText){
         const actions = [];
         if (!players.length || !primaryKey) return actions;
 
         const A = players[0], B = players[1];
 
-        const kCompletion = _resolveKeyAlias('completion') || 'completion';
-        const kReception  = _resolveKeyAlias('reception')  || 'reception';
-        const kInterc     = _resolveKeyAlias('interception') || 'interception';
-        const kPick       = _resolveKeyAlias('pick') || _resolveKeyAlias('pass defense') || 'pick';
-        const kTarget     = _resolveKeyAlias('target') || 'target';
-        const kIncomp     = _resolveKeyAlias('incomplete') || 'incomplete';
-        const kPass       = _resolveKeyAlias('pass');
-        const kComplete   = _resolveKeyAlias('complete') || _resolveKeyAlias('completion');
-        const kThrows     = _resolveKeyAlias('throws');
+        const kCompletion   = _resolveKeyAlias('completion')           || 'completion';
+        const kReception    = _resolveKeyAlias('reception')            || 'reception';
+        const kInterThrown  = _resolveKeyAlias('interception throw')   || 'interception throw';
+        const kDefPick      = _resolveKeyAlias('defensive pick')       || 'defensive pick';
+        const kTarget       = _resolveKeyAlias('target')               || 'target';
+        const kIncomp       = _resolveKeyAlias('incomplete')           || 'incomplete';
+        const kPass         = _resolveKeyAlias('pass');
+        const kComplete     = _resolveKeyAlias('complete') || _resolveKeyAlias('completion');
+        const kThrows       = _resolveKeyAlias('throws');
+        const kRush         = _resolveKeyAlias('rush')                 || 'rush';
+        const kDrop         = _resolveKeyAlias('drop')                 || 'drop';
 
         const key = primaryKey;
 
         // “A incomplete to B drop” → B drop only
         if (B && _mentionsStat('incomplete', rawText) && _mentionsStat('drop', rawText)) {
-          const kDrop = _resolveKeyAlias('drop') || 'drop';
           actions.push({ its:B.its, stat:kDrop });
           return actions;
         }
 
         if (B) {
+          // Completion family
           if (key === kCompletion || key === kPass || key === kComplete || (kThrows && key === kThrows)) {
             actions.push({ its:A.its, stat:kCompletion });
             actions.push({ its:B.its, stat:kReception  });
             return actions;
           }
-          if (key === kInterc || _resolveKeyAlias('pick') === key) {
-            actions.push({ its:A.its, stat:kInterc });
-            actions.push({ its:B.its, stat:kPick  });
+          // Interception: A interception thrown, B defensive pick
+          // (aliases “interception” / “pick” in your sheet should resolve to these canonicals)
+          if (key === kInterThrown || key === kDefPick ||
+              _mentionsStat('interception', rawText) || _mentionsStat('pick', rawText)) {
+            actions.push({ its:A.its, stat:kInterThrown });
+            actions.push({ its:B.its, stat:kDefPick    });
             return actions;
           }
+          // Target / Incomplete pairing
           if (key === kTarget || _mentionsStat('target', rawText)) {
             actions.push({ its:A.its, stat:kIncomp });
             actions.push({ its:B.its, stat:kTarget });
@@ -3260,10 +3268,18 @@ function actDropout(eventId, its, btn){
           }
         }
 
+        // Single-actor rush
+        if (!B && key === kRush) {
+          actions.push({ its:A.its, stat:kRush });
+          return actions;
+        }
+
+        // Fallback: single actor gets the key
         actions.push({ its:A.its, stat:key });
         return actions;
       }
 
+      // Detect global score intent (TD or XP variants)
       function _detectScoreIntent(text){
         const t = String(text||'').toLowerCase();
         if (/\b(td|touchdown|t\.?d\.?)\b/.test(t)) return { mode:'TD' };
@@ -3278,47 +3294,87 @@ function actDropout(eventId, its, btn){
         return null;
       }
 
+      // Main parse → players + baseActions + possible overrides
       function _parseCommand(text){
         const players = _extractPlayersFromText(text);
         if (!players.length) return null;
 
         const override = _detectScoreIntent(text);
-        if (override && override.mode === 'TD') {
-          return { players, actions: [], override:'TD' };
-        }
-        if (override && override.mode === 'XP') {
-          return { players, actions: [], override:'XP', xpPoints: override.points };
-        }
 
-        const primaryKey = _findStatKey(text);
-        if (!primaryKey) return null;
+        const primaryKey = _findStatKey(text); // resolve via aliases
+        const base = primaryKey ? _expandPairwise(players, primaryKey, text) : [];
 
-        const pairActions = _expandPairwise(players, primaryKey, text);
-        return { players, actions: pairActions, override: null };
+        if (override && override.mode === 'TD')  return { players, baseActions: base, override:'TD', raw:text };
+        if (override && override.mode === 'XP')  return { players, baseActions: base, override:'XP', xpPoints: override.points, raw:text };
+
+        if (!base.length) return null; // no meaningful stat found
+        return { players, baseActions: base, override: null, raw:text };
       }
 
+      // Determine if this parsed command is an interception context (has A thrown + B pick)
+      function _isInterceptionContext(parsed){
+        const kInterThrown  = _resolveKeyAlias('interception throw') || 'interception throw';
+        const kDefPick      = _resolveKeyAlias('defensive pick')     || 'defensive pick';
+        const stats = new Set((parsed.baseActions||[]).map(a=>a.stat));
+        return stats.has(kInterThrown) && stats.has(kDefPick);
+      }
+
+      // Build preview string from a raw command
       function _buildPostingPreview(text){
         const p = _parseCommand(text);
         if (!p) return '';
-        let actions = p.actions || [];
-        if (p.override === 'TD'){
-          const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
-          const uniqIts = Array.from(new Set(p.players.map(x=>x.its)));
-          actions = uniqIts.map(its => ({ its, stat: kTD }));
-        }else if (p.override === 'XP'){
-          const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
-          const key2 = _resolveKeyAlias('2 point') || '2 point';
-          const key3 = _resolveKeyAlias('3 point') || '3 point';
-          const key = p.xpPoints === 3 ? key3 : p.xpPoints === 2 ? key2 : key1;
-          const uniqIts = Array.from(new Set(p.players.map(x=>x.its)));
-          actions = uniqIts.map(its => ({ its, stat: key }));
-        }
+        const actions = _combineBaseAndOverrides(p);
+        const gameNum = state.tmp.stat_game || '1';
         const labels = actions.map(a=>{
           const meta = itsToMeta[a.its] || {};
           const person = `${meta.team||''} ${meta.number||''} - ${meta.name||''}`.trim();
-          return `${person} — ${a.stat}`;
+          return `${person} — ${a.stat} (G${gameNum})`;
         });
         return labels.join('; ');
+      }
+
+      // Combine base pairwise actions + global overrides (TD/XP) and de-dupe
+      function _combineBaseAndOverrides(parsed){
+        let actions = [...(parsed.baseActions || [])];
+
+        // Add override stats with interception exception:
+        // - For completion/reception, TD/XP → both players
+        // - For interception/pick, TD/XP → ONLY defender (B) i.e., whoever got defensive pick
+        if (parsed.override === 'TD' || parsed.override === 'XP'){
+          const interceptionCtx = _isInterceptionContext(parsed);
+
+          // who gets the override?
+          let targetsIts;
+          if (interceptionCtx){
+            const kDefPick = _resolveKeyAlias('defensive pick') || 'defensive pick';
+            targetsIts = Array.from(new Set((parsed.baseActions||[])
+              .filter(a => a.stat === kDefPick)
+              .map(a => a.its)));
+          }else{
+            targetsIts = Array.from(new Set(parsed.players.map(p=>p.its)));
+          }
+
+          if (parsed.override === 'TD'){
+            const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+            actions.push(...targetsIts.map(its => ({ its, stat:kTD })));
+          }else if (parsed.override === 'XP'){
+            const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
+            const key2 = _resolveKeyAlias('2 point') || '2 point';
+            const key3 = _resolveKeyAlias('3 point') || '3 point';
+            const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
+            actions.push(...targetsIts.map(its => ({ its, stat:key })));
+          }
+        }
+
+        // De-dupe same (its, stat)
+        const seen = new Set();
+        actions = actions.filter(a=>{
+          const k = `${a.its}::${a.stat}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        return actions;
       }
 
       // ---------- Recorder ----------
@@ -3342,29 +3398,16 @@ function actDropout(eventId, its, btn){
             'Try phrases like:\n' +
             ' • "19 Red pass to 18 Red for touchdown"\n' +
             ' • "7 White incomplete to White 10"\n' +
-            ' • "Lime 4 interception to Red 19"\n\n' +
+            ' • "Blue 4 interception to Red 19 for touchdown"\n\n' +
             'Recognized stats: ' + (keys.sort().join(' • ') || '—')
           );
           return;
         }
 
-        // Build action set with overrides
-        let actions = parsed.actions || [];
+        // Combine base + overrides per your rule (with interception exception)
+        const actions = _combineBaseAndOverrides(parsed);
         const timeStr = _fmtTime(new Date());
         const gameNum = state.tmp.stat_game || '1';
-
-        if (parsed.override === 'TD'){
-          const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
-          const uniqIts = Array.from(new Set(parsed.players.map(p=>p.its)));
-          actions = uniqIts.map(its => ({ its, stat: kTD }));
-        } else if (parsed.override === 'XP'){
-          const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
-          const key2 = _resolveKeyAlias('2 point') || '2 point';
-          const key3 = _resolveKeyAlias('3 point') || '3 point';
-          const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
-          const uniqIts = Array.from(new Set(parsed.players.map(p=>p.its)));
-          actions = uniqIts.map(its => ({ its, stat: key }));
-        }
 
         const micPosting = $('#st_posting');
         if (micPosting){
@@ -3447,6 +3490,7 @@ function actDropout(eventId, its, btn){
 
 })(); // end IIFE
 /* =================== /STATKIT (client) =================== */
+
 
 
 
