@@ -2487,10 +2487,10 @@ function actDropout(eventId, its, btn){
   <script id="STATKIT">
 /* ===================== STATKIT (client) ===================== */
 /* MVP voice+manual event stat recording for admins — team-aware
-   Commands like: "Red 6 touchdown", "19 Red pass to 18 Red for touchdown"
+   Commands like: "19 Red pass to 18 Red for touchdown"
    Recorded list shows:
      04:19pm 02/07/2025
-     Red 6 - Player Name
+     Red 19 - Player Name
      touchdown
 
    Jersey Map uses Jerseys tab columns: number, team, name → "<number> <team> - <name>"
@@ -2650,27 +2650,45 @@ function actDropout(eventId, its, btn){
           '<div class="card stack">'+
             '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'+
               '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
-              '<div class="tiny muted">Say: “19 Red pass to 18 Red for touchdown”</div>'+
             '</div>'+
             '<div class="row">'+
               '<div class="col">'+
                 '<label class="label">Event (from Events sheet)</label>'+
                 '<select id="st_evt" class="input"></select>'+
               '</div>'+
+
+              // SCOREBOX (between Event and Stats list)
+              '<div class="col" style="min-width:260px">'+
+                '<label class="label">Score (last 2-min windows)</label>'+
+                '<div id="st_score" class="stack" style="gap:6px">'+
+                  '<div class="row" style="align-items:center;gap:8px">'+
+                    '<div id="st_score_teamA" class="tiny muted" style="min-width:120px">Team A</div>'+
+                    '<div id="st_score_valA" class="badge" style="font-size:22px">0</div>'+
+                  '</div>'+
+                  '<div class="row" style="align-items:center;gap:8px">'+
+                    '<div id="st_score_teamB" class="tiny muted" style="min-width:120px">Team B</div>'+
+                    '<div id="st_score_valB" class="badge" style="font-size:22px">0</div>'+
+                  '</div>'+
+                '</div>'+
+              '</div>'+
+
               '<div class="col">'+
                 '<label class="label">Stats you can record</label>'+
                 '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
                 '<label class="label">Manual Command</label>'+
                 '<div class="row">'+
-                  '<input id="st_manual" class="input" placeholder="e.g., Red 21 pass to Red 3">'+
+                  '<input id="st_manual" class="input" placeholder="19 Red pass to 18 Red for touchdown">'+
                   '<button class="btn" id="st_add">Record</button>'+
                 '</div>'+
               '</div>'+
-              '<div class="col" style="min-width:220px">'+
+              '<div class="col" style="min-width:240px">'+
                 '<label class="label">Voice</label>'+
-                '<div class="row">'+
+                '<div class="row" style="align-items:center;gap:10px">'+
                   '<button class="btn" id="st_mic">Start Listening</button>'+
-                  '<div id="st_mic_status" class="tiny muted" style="align-self:center">Idle</div>'+
+                  '<div class="stack" style="gap:2px">'+
+                    '<div id="st_mic_status" class="tiny muted">Idle</div>'+
+                    '<div id="st_posting" class="tiny muted"></div>'+
+                  '</div>'+
                 '</div>'+
               '</div>'+
             '</div>'+
@@ -2725,9 +2743,13 @@ function actDropout(eventId, its, btn){
       })();
 
       // ===== Jersey Map (uses Jerseys tab name) =====
-      function renderJersey(){
+      function renderJersey(onlyTeams){
         const box = $('#st_jersey');
-        const rows = [...jerseysArr]
+        const filtered = Array.isArray(onlyTeams) && onlyTeams.length
+          ? jerseysArr.filter(j => onlyTeams.includes(String(j.team||'').trim()))
+          : jerseysArr;
+
+        const rows = [...filtered]
           .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
           .map(j=>{
             const team = String(j.team||'').trim();
@@ -2743,6 +2765,94 @@ function actDropout(eventId, its, btn){
       }
       renderJersey();
 
+      // ===== Scorebox helpers =====
+      function _parseTimeStr(s){
+        if (!s) return null;
+        const m = String(s).match(/^(\d{2}):(\d{2})(am|pm)\s+(\d{2})\/(\d{2})\/(\d{4})$/i);
+        if (!m) return null;
+        let h = parseInt(m[1],10), mi = parseInt(m[2],10);
+        const ampm = m[3].toLowerCase();
+        const month = parseInt(m[4],10)-1, day=parseInt(m[5],10), year=parseInt(m[6],10);
+        if (ampm === 'pm' && h !== 12) h += 12;
+        if (ampm === 'am' && h === 12) h = 0;
+        return new Date(year, month, day, h, mi, 0, 0);
+      }
+
+      function _renderScorebox(list){
+        // Determine which two teams to display
+        const seenTeams = [];
+        list.forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          const t = meta.team || '';
+          if (t && !seenTeams.includes(t)) seenTeams.push(t);
+        });
+        let teams = seenTeams.slice(0,2);
+        if (teams.length < 2){
+          // fallback to first two distinct teams in roster
+          for (const j of jerseysArr){
+            const t = String(j.team||'').trim();
+            if (t && !teams.includes(t)) teams.push(t);
+            if (teams.length >= 2) break;
+          }
+        }
+        const [teamA, teamB] = [teams[0]||'Team A', teams[1]||'Team B'];
+
+        // Update labels
+        $('#st_score_teamA').textContent = teamA;
+        $('#st_score_teamB').textContent = teamB;
+
+        // Canonical keys
+        const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+        const k1  = _resolveKeyAlias('1 point')   || '1 point';
+        const k2  = _resolveKeyAlias('2 point')   || '2 point';
+        const k3  = _resolveKeyAlias('3 point')   || '3 point';
+
+        // Collect events per team with timestamps
+        const evByTeam = {};
+        list.forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          const team = meta.team || '';
+          if (!team) return;
+          const d = _parseTimeStr(r.time || '');
+          if (!d) return;
+          (evByTeam[team] ||= []).push({ t:d.getTime(), stat:String(r.stat||'') });
+        });
+        Object.values(evByTeam).forEach(arr=>arr.sort((a,b)=>a.t-b.t));
+
+        // 2-min window accumulators (per team, separate windows for TD and XP)
+        function calcScore(team){
+          const arr = evByTeam[team] || [];
+          let score = 0;
+          let lastTdStart = -Infinity;
+          let lastXpStart = -Infinity;
+          const WIN = 2*60*1000;
+
+          for (const e of arr){
+            if (e.stat === kTD){
+              if (e.t - lastTdStart > WIN){
+                score += 6;
+                lastTdStart = e.t;
+              }
+            }else if (e.stat === k1 || e.stat === k2 || e.stat === k3){
+              const pts = (e.stat === k3) ? 3 : (e.stat === k2 ? 2 : 1);
+              if (e.t - lastXpStart > WIN){
+                score += pts;
+                lastXpStart = e.t;
+              }
+            }
+          }
+          return score;
+        }
+
+        const sA = calcScore(teamA);
+        const sB = calcScore(teamB);
+        $('#st_score_valA').textContent = String(sA);
+        $('#st_score_valB').textContent = String(sB);
+
+        // Filter jersey map to these two teams once we have two distinct teams recorded
+        renderJersey(teams.length === 2 ? teams : null);
+      }
+
       // ===== Recorded list (newest first) =====
       async function loadEventRows(){
         if (!state.tmp.stat_event_id){
@@ -2752,6 +2862,7 @@ function actDropout(eventId, its, btn){
         const res  = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
         const list = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
         _renderList(list);
+        _renderScorebox(list);
       }
 
       function _renderList(list){
@@ -2836,6 +2947,7 @@ function actDropout(eventId, its, btn){
       // ===== Voice recognition =====
       const micBtn = $('#st_mic');
       const micStatus = $('#st_mic_status');
+      const micPosting = $('#st_posting');
       const rec = _statkit_makeRecognizer();
 
       function startMic(){
@@ -2844,17 +2956,19 @@ function actDropout(eventId, its, btn){
         rec.start();
         micBtn.textContent = 'Stop Listening';
         micStatus.textContent = 'Listening…';
+        micPosting.textContent = '';
       }
       function stopMic(){
         if (rec) try{ rec.stop(); }catch(_){}
         micBtn.textContent = 'Start Listening';
         micStatus.textContent = 'Idle';
+        // do not clear posting—let it show until done
       }
       micBtn.addEventListener('click', ()=>{
         if (micBtn.textContent.startsWith('Start')) startMic(); else stopMic();
       });
 
-      // (kept your current behavior; no changes here)
+      // (kept your current behavior; plus posting preview below)
       let _lastHeard = { text:'', ts:0 };
       if (rec){
         rec.onresult = async (ev)=>{
@@ -2874,7 +2988,14 @@ function actDropout(eventId, its, btn){
 
           const s = document.getElementById('st_mic_status');
           if (s) s.textContent = 'Heard: “'+esc(t)+'”';
+
+          // Live preview of what will be posted
+          const preview = _buildPostingPreview(t);
+          micPosting.textContent = preview ? ('Posting: '+preview) : '';
+
           await _statkit_processCommand(t);
+          // After process, refresh list & score if online (process handles it); clear preview if nothing queued/posted
+          setTimeout(()=>{ micPosting.textContent = ''; }, 1500);
         };
         rec.onend   = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
         rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
@@ -2893,6 +3014,12 @@ function actDropout(eventId, its, btn){
           btn.setAttribute('aria-busy','1');
           btn.disabled = true;
           btn.textContent = 'Recording…';
+
+          // Posting preview
+          const micPosting = $('#st_posting');
+          const preview = _buildPostingPreview(v);
+          if (micPosting) micPosting.textContent = preview ? ('Posting: '+preview) : '';
+
           try{
             await _statkit_processCommand(v);
             input.value = '';
@@ -2901,6 +3028,7 @@ function actDropout(eventId, its, btn){
             btn.removeAttribute('aria-busy');
             btn.textContent = orig;
             input.focus();
+            setTimeout(()=>{ if (micPosting) micPosting.textContent=''; }, 1500);
           }
         }
 
@@ -3148,6 +3276,31 @@ function actDropout(eventId, its, btn){
         return { players, actions: pairActions, override: null };
       }
 
+      // Build "Posting: ..." preview text for current utterance
+      function _buildPostingPreview(text){
+        const p = _parseCommand(text);
+        if (!p) return '';
+        let actions = p.actions || [];
+        if (p.override === 'TD'){
+          const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+          const uniqIts = Array.from(new Set(p.players.map(x=>x.its)));
+          actions = uniqIts.map(its => ({ its, stat: kTD }));
+        }else if (p.override === 'XP'){
+          const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
+          const key2 = _resolveKeyAlias('2 point') || '2 point';
+          const key3 = _resolveKeyAlias('3 point') || '3 point';
+          const key = p.xpPoints === 3 ? key3 : p.xpPoints === 2 ? key2 : key1;
+          const uniqIts = Array.from(new Set(p.players.map(x=>x.its)));
+          actions = uniqIts.map(its => ({ its, stat: key }));
+        }
+        const labels = actions.map(a=>{
+          const meta = itsToMeta[a.its] || {};
+          const person = `${meta.team||''} ${meta.number||''} - ${meta.name||''}`.trim();
+          return `${person} — ${a.stat}`;
+        });
+        return labels.join('; ');
+      }
+
       // ---------- Recorder (unchanged mic; quiet offline) ----------
       async function _statkit_processCommand(text){
         if (!state.tmp.stat_event_id){
@@ -3172,8 +3325,8 @@ function actDropout(eventId, its, btn){
             'Could not parse.\n\n' +
             'Try phrases like:\n' +
             ' • "19 Red pass to 18 Red for touchdown"\n' +
-            ' • "Red 2 incomplete to Red 4"\n' +
-            ' • "Red 2 interception to Black 5 for 2 point"\n\n' +
+            ' • "7 White incomplete to White 10"\n' +
+            ' • "Lime 4 interception to Red 19"\n\n' +
             'Recognized stats: ' + (keys.sort().join(' • ') || '—')
           );
           return;
@@ -3194,6 +3347,15 @@ function actDropout(eventId, its, btn){
           const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
           const uniqIts = Array.from(new Set(parsed.players.map(p=>p.its)));
           actions = uniqIts.map(its => ({ its, stat: key }));
+        }
+
+        // Show posting line immediately
+        const micPosting = $('#st_posting');
+        if (micPosting){
+          micPosting.textContent = 'Posting: ' + actions.map(a=>{
+            const m = itsToMeta[a.its] || {};
+            return `${m.team||''} ${m.number||''} - ${m.name||''} — ${a.stat}`;
+          }).join('; ');
         }
 
         // Record each action; de-dupe locally & queue if offline
@@ -3238,8 +3400,10 @@ function actDropout(eventId, its, btn){
         }
 
         if (navigator.onLine){
-          await loadEventRows();
+          await loadEventRows(); // also refreshes scorebox
         }
+        // clear posting line shortly after
+        setTimeout(()=>{ const p = $('#st_posting'); if (p) p.textContent = ''; }, 1500);
       }
 
       // Initial load & flush any queued
@@ -3269,6 +3433,7 @@ function actDropout(eventId, its, btn){
 
 })(); // end IIFE
 /* =================== /STATKIT (client) =================== */
+
 
 </script>
 
