@@ -2930,38 +2930,71 @@ function actDropout(eventId, its, btn){
         _refreshForGame();
       });
 
-      // ===== Voice recognition =====
-      const micBtn = $('#st_mic');
-      const micStatus = $('#st_mic_status');
-      const rec = _statkit_makeRecognizer();
+      // ===== Voice recognition (dictate into Manual input; no auto-submit) =====
+const micBtn      = $('#st_mic');
+const micStatus   = $('#st_mic_status');
+const micPosting  = $('#st_posting');
+const inputManual = $('#st_manual');
+const rec         = _statkit_makeRecognizer();
 
-      function startMic(){
-        if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
-        rec.start();
-        micBtn.textContent = 'Stop Listening';
-        micStatus.textContent = 'Listening…';
-        $('#st_posting').textContent = '';
-      }
-      function stopMic(){
-        if (rec) try{ rec.stop(); }catch(_){}
-        micBtn.textContent = 'Start Listening';
-        micStatus.textContent = 'Idle';
-      }
-      micBtn.addEventListener('click', ()=>{ if (micBtn.textContent.startsWith('Start')) startMic(); else stopMic(); });
+let dictationActive = false;
+let accFinal = '';
 
-      let _lastHeard = { text:'', ts:0 };
-      if (rec){
-        rec.onresult = async (ev)=>{
-          const tRaw = ev && ev.results && ev.results[0] && ev.results[0][0] ? String(ev.results[0][0].transcript||'') : '';
-          const t = tRaw.trim(); const now = Date.now();
-          if (t && _lastHeard.text === t && (now - _lastHeard.ts) < 1500){ micStatus.textContent = 'Heard duplicate, ignored'; return; }
-          _lastHeard = { text: t, ts: now };
-          micStatus.textContent = 'Heard: “'+esc(t)+'”';
-          await _statkit_processCommand(t, /*fromVoice*/true);
-        };
-        rec.onend   = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
-        rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
+function startMic(){
+  if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
+  // Clear the Manual Command box at the start of a dictation session
+  accFinal = '';
+  if (inputManual) inputManual.value = '';
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  try { rec.start(); } catch(_) {}
+  dictationActive = true;
+  micBtn.textContent = 'Stop Listening';
+  micStatus.textContent = 'Listening… (fills Manual Command only)';
+  if (micPosting) micPosting.textContent = '';
+}
+
+function stopMic(){
+  if (rec) { try { rec.stop(); } catch(_) {} }
+  dictationActive = false;
+  micBtn.textContent = 'Start Listening';
+  micStatus.textContent = accFinal ? `Heard: “${accFinal.trim()}”` : 'Idle';
+}
+
+if (rec){
+  rec.onresult = (ev)=>{
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++){
+      const chunk = ev.results[i][0].transcript;
+      if (ev.results[i].isFinal){
+        accFinal = accFinal ? (accFinal + ' ' + chunk) : chunk;
+      } else {
+        interim += chunk;
       }
+    }
+    const combined = (accFinal + ' ' + interim).replace(/\s+/g,' ').trim();
+    if (inputManual) inputManual.value = combined;
+    micStatus.textContent = combined ? `Heard: “${combined}”` : 'Listening…';
+  };
+
+  rec.onend = ()=>{
+    dictationActive = false;
+    micBtn.textContent = 'Start Listening';
+    micStatus.textContent = accFinal ? `Heard: “${accFinal.trim()}”` : 'Idle';
+    // Text remains in #st_manual; user can press Record to submit
+  };
+
+  rec.onerror = ()=>{
+    dictationActive = false;
+    micBtn.textContent = 'Start Listening';
+    micStatus.textContent = 'Idle';
+  };
+}
+
+micBtn.addEventListener('click', ()=>{
+  if (!dictationActive) startMic(); else stopMic();
+});
+
 
       // ===== Manual entry =====
       (()=>{
