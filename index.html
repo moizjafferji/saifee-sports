@@ -2485,27 +2485,29 @@ function actDropout(eventId, its, btn){
 
 
   <script id="STATKIT">
-//<!-- ===================== STATKIT (client) ===================== -->//
-//<!-- Team/name aware stat tracker with Game selector (1–99). Records "game" with each stat, filters UI & scoring by selected game. -->//
+/* ===================== STATKIT (client) ===================== */
+/* MVP voice+manual event stat recording for admins — team-aware
+   Commands like: "Red 6 touchdown", "19 Red pass to 18 Red for touchdown"
+   Recorded list shows:
+     04:19pm 02/07/2025
+     Red 6 - Player Name
+     touchdown
+
+   Jersey Map uses Jerseys tab columns: number, team, name → "<number> <team> - <name>"
+*/
+
 (function(){
 
   // ---- Local offline queue (simple, resilient) + client-side dedupe ----
   const QKEY = 'statkitQueue.v1';
   const DKEY = 'statkitDedup.v1';  // fingerprint cache to suppress dupes for a short window
-  const GKEY = 'statkit.lastGame'; // remember game selection
 
   function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
   function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
 
-  // Fingerprint helpers (eventId|game|its|stat|time)
+  // Fingerprint helpers (eventId|its|stat|time)
   function _makeFP(it){
-    return [
-      String(it.eventId||''),
-      String(it.game||''),
-      String(it.its||''),
-      String(it.stat||''),
-      String(it.time||'')
-    ].join('|');
+    return [String(it.eventId||''), String(it.its||''), String(it.stat||''), String(it.time||'')].join('|');
   }
   function _loadDedup(){ try{ return JSON.parse(localStorage.getItem(DKEY)||'{}'); }catch(_){ return {}; } }
   function _saveDedup(map){ localStorage.setItem(DKEY, JSON.stringify(map||{})); }
@@ -2537,7 +2539,8 @@ function actDropout(eventId, its, btn){
     const keep = [];
     for (const it of q){
       try{
-        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time, it.game);
+        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time);
+        // No duplicate preview during flush
       }catch(_){ keep.push(it); }
     }
     saveQ(keep);
@@ -2614,11 +2617,10 @@ function actDropout(eventId, its, btn){
           box.innerHTML = '<span class="muted">—</span>';
           return;
         }
-        entries.sort((a,b)=>a[0].localeCompare(b[0]));
-        const chips = entries.map(([key, set])=>{
-          const aliases = Array.from(set).filter(a => a !== key);
-          const title = aliases.length ? `${key} (${aliases.join(', ')})` : key;
-          return `<span style="border:1px solid var(--border);border-radius:999px;padding:2px 8px;line-height:1.8">${esc(title)}</span>`;
+        // Show only canonical keys (hide aliases in parentheses)
+        const keys = entries.map(([key])=>key).sort((a,b)=>a.localeCompare(b));
+        const chips = keys.map(key=>{
+          return `<span style="border:1px solid var(--border);border-radius:999px;padding:2px 8px;line-height:1.8">${esc(key)}</span>`;
         });
         box.innerHTML = chips.join('');
       }
@@ -2638,7 +2640,7 @@ function actDropout(eventId, its, btn){
       // ===== Events from the Events sheet (same as Receipts) =====
       const evOptions = (eventsPack && eventsPack.events) || [];
       if (!evOptions.length){
-        layout(el('<div class="card stack"><div class="label">Stat Tracker</div><div class="muted">No events found in the Events sheet.</div></div>'));
+        layout(el('<div class="card stack"><div class="label">Stat Tracker — '+String(mySport)+'</div><div class="muted">No events found in the Events sheet.</div></div>'));
         return;
       }
 
@@ -2648,34 +2650,21 @@ function actDropout(eventId, its, btn){
           '<div class="card stack">'+
             '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'+
               '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
-              '<div class="tiny muted">Voice: say “Red 6 touchdown”, or use the input</div>'+
+              '<div class="tiny muted">Say: “19 Red pass to 18 Red for touchdown”</div>'+
             '</div>'+
-            '<div class="row" style="row-gap:10px">'+
+            '<div class="row">'+
               '<div class="col">'+
                 '<label class="label">Event (from Events sheet)</label>'+
                 '<select id="st_evt" class="input"></select>'+
               '</div>'+
-              '<div class="col" style="max-width:140px">'+
-                '<label class="label">Game</label>'+
-                '<select id="st_game" class="input"></select>'+
-              '</div>'+
               '<div class="col">'+
-                '<div id="st_scorewrap" class="stack" style="gap:6px;margin-top:4px">'+
-                  '<label class="label">Score</label>'+
-                  '<div class="row" style="gap:8px;align-items:center">'+
-                    '<div><strong id="st_teamA">—</strong> <span id="st_scoreA">0</span></div>'+
-                    '<div class="tiny muted">vs</div>'+
-                    '<div><strong id="st_teamB">—</strong> <span id="st_scoreB">0</span></div>'+
-                  '</div>'+
-                '</div>'+
-                '<label class="label" style="margin-top:8px">Stats you can record</label>'+
+                '<label class="label">Stats you can record</label>'+
                 '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
                 '<label class="label">Manual Command</label>'+
                 '<div class="row">'+
-                  '<input id="st_manual" class="input" placeholder="e.g., Red 21 touchdown">'+
+                  '<input id="st_manual" class="input" placeholder="e.g., Red 21 pass to Red 3">'+
                   '<button class="btn" id="st_add">Record</button>'+
                 '</div>'+
-                '<div id="st_pending" class="tiny muted" style="min-height:18px;margin-top:4px"></div>'+
               '</div>'+
               '<div class="col" style="min-width:220px">'+
                 '<label class="label">Voice</label>'+
@@ -2694,7 +2683,7 @@ function actDropout(eventId, its, btn){
                 '<div class="tiny muted" id="st_hint"></div>'+
               '</div>'+
             '</div>'+
-            '<div class="col">'+
+            '<div class="col">'++
               '<div class="card stack">'+
                 '<div class="label">Jersey Map</div>'+
                 '<div id="st_jersey"></div>'+
@@ -2704,25 +2693,6 @@ function actDropout(eventId, its, btn){
         '</div>'
       );
       layout(node);
-
-      // Fill game select 1..99
-      const gameSel = $('#st_game');
-      (function fillGames(){
-        const lastGame = localStorage.getItem(GKEY);
-        for (let i=1; i<=99; i++){
-          const o = document.createElement('option');
-          o.value = String(i);
-          o.textContent = String(i);
-          gameSel.appendChild(o);
-        }
-        gameSel.value = lastGame && /^\d+$/.test(lastGame) ? lastGame : '1';
-        state.tmp.stat_game = gameSel.value;
-      })();
-      gameSel.addEventListener('change', ()=>{
-        state.tmp.stat_game = gameSel.value;
-        localStorage.setItem(GKEY, state.tmp.stat_game);
-        loadEventRows(); // refilter list & rescore
-      });
 
       // Fill event select: label for humans, value is the ID (important!)
       const sel = $('#st_evt');
@@ -2755,19 +2725,15 @@ function actDropout(eventId, its, btn){
       })();
 
       // ===== Jersey Map (uses Jerseys tab name) =====
-      function renderJersey(filteredTeams){
+      function renderJersey(){
         const box = $('#st_jersey');
         const rows = [...jerseysArr]
-          .filter(j=>{
-            if (!filteredTeams || filteredTeams.size===0) return true;
-            return filteredTeams.has(String(j.team||'').trim());
-          })
           .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
           .map(j=>{
             const team = String(j.team||'').trim();
             const num  = String(j.number||'').trim();
             const nm   = String(j.name||'').trim();
-            // "<number> <team> - <name>"
+            // requested format: "<number> <team> - <name>"
             return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:6px 0">'+
                      '<div>'+esc(num)+' '+esc(team||'')+' - '+esc(nm||'')+'</div>'+
                      '<div class="tiny"></div>'+
@@ -2777,43 +2743,22 @@ function actDropout(eventId, its, btn){
       }
       renderJersey();
 
-      // After two teams have activity, keep only those in jersey map
-      const _activeTeams = new Set();
-      function _noteActiveTeam(t){
-        if (!t) return;
-        if (_activeTeams.has(t)) return;
-        _activeTeams.add(t);
-        if (_activeTeams.size >= 2){
-          renderJersey(_activeTeams);
-        }
-      }
-
       // ===== Recorded list (newest first) =====
-      let _lastFetchedList = []; // cache full list to re-filter by game quickly
       async function loadEventRows(){
         if (!state.tmp.stat_event_id){
           $('#st_list').innerHTML = '<div class="muted">Pick an event above.</div>';
           return;
         }
         const res  = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
-        _lastFetchedList = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
-        _renderList(_filterByGame(_lastFetchedList));
-        renderScore(_filterByGame(_lastFetchedList));
-      }
-      function _filterByGame(list){
-        const g = String(state.tmp.stat_game||'');
-        return (list||[]).filter(r => String(r.game||'') === g || (g && r.game==null && g==='1')); // legacy rows (no game) -> visible in game 1
+        const list = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
+        _renderList(list);
       }
 
       function _renderList(list){
         const box = $('#st_list');
         if (!list.length){
-          box.innerHTML = '<div class="muted">No stats yet for this game.</div>';
+          box.innerHTML = '<div class="muted">No stats yet.</div>';
           $('#st_hint').textContent = navigator.onLine ? '' : 'You are offline. New stats will be queued.';
-          $('#st_scoreA').textContent = '0';
-          $('#st_scoreB').textContent = '0';
-          $('#st_teamA').textContent = '—';
-          $('#st_teamB').textContent = '—';
           return;
         }
         box.innerHTML = list.map(r=>{
@@ -2823,11 +2768,10 @@ function actDropout(eventId, its, btn){
           const num  = meta.number || '';
           const name = meta.name || '';
           const when = r.time || '';
-          _noteActiveTeam(team);
           return `
             <div class="row" style="align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0">
               <div class="col" style="min-width:260px">
-                <div class="tiny muted">${esc(when)} · Game ${esc(String(r.game||state.tmp.stat_game||''))}</div>
+                <div class="tiny muted">${esc(when)}</div>
                 <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
               </div>
               <div class="col">${esc(r.stat)}</div>
@@ -2855,9 +2799,6 @@ function actDropout(eventId, its, btn){
         const num  = meta.number || '';
         const name = meta.name || '';
         const when = r.time || _fmtTime(new Date());
-        const game = String(r.game||state.tmp.stat_game||'');
-
-        _noteActiveTeam(team);
 
         const box = $('#st_list');
         const div = document.createElement('div');
@@ -2865,7 +2806,7 @@ function actDropout(eventId, its, btn){
         div.style.cssText = 'align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0;opacity:.7';
         div.innerHTML = `
           <div class="col" style="min-width:260px">
-            <div class="tiny muted">${esc(when)} · Game ${esc(game)}</div>
+            <div class="tiny muted">${esc(when)}</div>
             <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
           </div>
           <div class="col">${esc(r.stat)} <span class="tiny muted">(queued)</span></div>
@@ -2899,6 +2840,7 @@ function actDropout(eventId, its, btn){
 
       function startMic(){
         if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
+        // do NOT block offline use; just start listening
         rec.start();
         micBtn.textContent = 'Stop Listening';
         micStatus.textContent = 'Listening…';
@@ -2912,6 +2854,7 @@ function actDropout(eventId, its, btn){
         if (micBtn.textContent.startsWith('Start')) startMic(); else stopMic();
       });
 
+      // (kept your current behavior; no changes here)
       let _lastHeard = { text:'', ts:0 };
       if (rec){
         rec.onresult = async (ev)=>{
@@ -2921,7 +2864,7 @@ function actDropout(eventId, its, btn){
           const t = tRaw.trim();
           const now = Date.now();
 
-          // Suppress immediate duplicate transcripts (speech APIs can fire twice)
+          // Suppress immediate duplicate transcripts
           if (t && _lastHeard.text === t && (now - _lastHeard.ts) < 1500){
             const s = document.getElementById('st_mic_status');
             if (s) s.textContent = 'Heard duplicate, ignored';
@@ -2974,18 +2917,6 @@ function actDropout(eventId, its, btn){
         h = h%12; if (h===0) h=12;
         return `${pad(h)}:${pad(m)}${ampm} ${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()}`;
       }
-      function _parseTimeStr(s){
-        // "04:19pm 02/07/2025"
-        const m = String(s||'').match(/^(\d{2}):(\d{2})(am|pm)\s+(\d{2})\/(\d{2})\/(\d{4})$/i);
-        if (!m) return null;
-        let hh = parseInt(m[1],10), mm = parseInt(m[2],10);
-        const ampm = m[3].toLowerCase();
-        const mo = parseInt(m[4],10)-1, dd = parseInt(m[5],10), yyyy = parseInt(m[6],10);
-        if (ampm === 'pm' && hh < 12) hh += 12;
-        if (ampm === 'am' && hh === 12) hh = 0;
-        const d = new Date(yyyy, mo, dd, hh, mm, 0, 0);
-        return isNaN(d.getTime()) ? null : d;
-      }
 
       // Normalize text lightly (keep words)
       function _clean(s){
@@ -2996,7 +2927,12 @@ function actDropout(eventId, its, btn){
           .trim();
       }
 
-      function _extractNumberFromTokens(tokens, startIdx){
+      // Extract a jersey number from digits *or* number words (0..99)
+      function _extractNumber(text){
+        // Prefer immediate digits if present
+        const digit = String(text||'').match(/\b(\d{1,3})\b/);
+        if (digit) return parseInt(digit[1], 10);
+
         const ones = {
           zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
           ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
@@ -3004,12 +2940,12 @@ function actDropout(eventId, its, btn){
         };
         const tens = { twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90 };
 
-        for (let i=startIdx; i<tokens.length && i<startIdx+4; i++){
-          const t = tokens[i];
-          if (/^\d{1,3}$/.test(t)) return parseInt(t,10);
+        const toks = _clean(text).split(' ');
+        for (let i=0; i<toks.length; i++){
+          const t = toks[i];
           if (t in tens){
             let v = tens[t];
-            if (i+1<tokens.length && tokens[i+1] in ones) v += ones[tokens[i+1]];
+            if (i+1 < toks.length && toks[i+1] in ones) v += ones[toks[i+1]];
             return v;
           }
           if (t in ones) return ones[t];
@@ -3017,8 +2953,9 @@ function actDropout(eventId, its, btn){
         return null;
       }
 
+      // Find the canonical stat key anywhere in the utterance (order independent)
       function _findStatKey(text){
-        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,''); // collapse spaces/hyphens
         const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
         for (const an of aliasesCollapsed){
           if (norm.includes(an)){
@@ -3030,266 +2967,279 @@ function actDropout(eventId, its, btn){
         return null;
       }
 
-      function _findAllStatKeys(text){
-        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-        const keys = new Set();
-        const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
-        for (const an of aliasesCollapsed){
-          if (norm.includes(an)){
-            const originalAlias = _aliasIndex.collapsed[an][0];
-            const key = statMap[originalAlias];
-            if (key) keys.add(key);
-          }
-        }
-        return Array.from(keys);
-      }
-
-      function _extractTeam(text){
-        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-        for (const an of _teamIndex.order){
-          if (norm.includes(an)){
-            return _teamIndex.collapsed[an][0]; // original-cased team name
-          }
+      // Resolve arbitrary alias to canonical key (exact or space-tight)
+      function _resolveKeyAlias(raw){
+        if (!raw) return null;
+        const norm = String(raw).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+        if (statMap[norm]) return statMap[norm];
+        const tight = norm.replace(/\s+/g,'');
+        for (const alias of Object.keys(statMap)){
+          if (alias.replace(/\s+/g,'') === tight) return statMap[alias];
         }
         return null;
       }
 
-      function _extractPlayers(text){
-        // returns [{team, number}] possibly multiple, scanning tokens and team aliases
-        const tokens = _clean(text).split(' ');
-        const teamAliases = _teamIndex.order.map(an=>({an, orig:_teamIndex.collapsed[an][0]}));
-        const players = [];
+      // Check if a given stat (by any alias) is mentioned in text
+      function _mentionsStat(aliasLike, text){
+        const key = _resolveKeyAlias(aliasLike);
+        if (!key) return false;
+        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+        // any alias that resolves to this key
+        const aliases = Object.entries(statMap).filter(([a,k])=>k===key).map(([a])=>a);
+        return aliases.some(a => norm.includes(a.replace(/[^a-z0-9]/g,'')));
+      }
 
-        for (let i=0; i<tokens.length; i++){
-          for (const {an, orig} of teamAliases){
-            const window = tokens.slice(i, i+3).join('');
-            if (window.includes(an)){
-              const num = _extractNumberFromTokens(tokens, i+1);
-              if (num!=null){
-                players.push({ team: orig, number: String(num) });
-              }
+      // Extract up to two players — supports BOTH orders:
+      //   "Red 19 ..."  and  "19 Red ..."
+      function _extractPlayersFromText(text){
+        const words = String(text||'').split(/\s+/);
+        const L = words.length;
+
+        function findTeamAt(i){
+          for (const an of _teamIndex.order){
+            const pretty = _teamIndex.collapsed[an][0];
+            const parts = pretty.split(/\s+/);
+            const span = parts.length;
+            const slice = words.slice(i, i+span).join(' ').toLowerCase().replace(/[^a-z0-9 ]/g,'').trim();
+            if (slice === pretty.toLowerCase()){
+              return { name: pretty, span };
             }
           }
+          return null;
         }
-        // Unique by team+number order-preserving
-        const seen = new Set();
-        const uniq = [];
-        for (const p of players){
-          const k = p.team.toLowerCase()+'::'+p.number;
-          if (!seen.has(k)){ seen.add(k); uniq.push(p); }
+
+        function findNumberAt(i){
+          const s = words.slice(i, i+2).join(' ');
+          const n = _extractNumber(s);
+          return (n==null) ? null : { num: String(n), span: (/\b\d+\b/.test(words[i]) ? 1 : (words[i+1] ? 2 : 1)) };
         }
-        return uniq;
-      }
 
-      // Build row objects to record based on one utterance
-      function _expandUtterance(text){
-        const players = _extractPlayers(text); // [{team,number},...]
-        const statsInCmd = _findAllStatKeys(text); // ['completion','touchdown','1 point', ...]
-        const hasTD = statsInCmd.includes('touchdown');
-        const hasXP = statsInCmd.includes('1 point') || statsInCmd.includes('2 point') || statsInCmd.includes('3 point');
+        const out = [];
+        let i = 0;
+        while (i < L && out.length < 2){
+          // Try TEAM at i then NUMBER after
+          const tHit = findTeamAt(i);
+          if (tHit){
+            // search for next number within next 3 tokens
+            let j = i + tHit.span;
+            let nHit = null;
+            for (let k=j; k<Math.min(L, j+3); k++){
+              const maybe = findNumberAt(k);
+              if (maybe){ nHit = { idx:k, ...maybe }; break; }
+            }
+            if (nHit){
+              out.push({ team: tHit.name, number: nHit.num });
+              i = nHit.idx + nHit.span;
+              continue;
+            }
+          }
 
-        // Heuristic pairings
-        const A = players[0] || null;
-        const B = players[1] || null;
+          // Try NUMBER at i then TEAM after
+          const nHit0 = findNumberAt(i);
+          if (nHit0){
+            let j = i + nHit0.span;
+            let tHit2 = null;
+            for (let k=j; k<Math.min(L, j+3); k++){
+              const maybeT = findTeamAt(k);
+              if (maybeT){ tHit2 = { idx:k, ...maybeT }; break; }
+            }
+            if (tHit2){
+              out.push({ team: tHit2.name, number: nHit0.num });
+              i = tHit2.idx + tHit2.span;
+              continue;
+            }
+          }
 
-        const rows = [];
+          i++;
+        }
 
-        function pushStat(p, key){
-          if (!p) return;
+        // resolve ITS mapping; drop if unmapped
+        const resolved = [];
+        for (const p of out){
           const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
-          if (!its) return;
-          rows.push({ its, stat: key });
+          if (its) resolved.push({ ...p, its });
         }
-
-        const lc = _clean(text);
-
-        if (lc.includes('pass to') || lc.includes('throw to') || lc.includes('complete to')){
-          pushStat(A, 'completion');
-          pushStat(B, 'reception');
-        }
-
-        if (lc.includes('target to') || lc.includes('targeted to')){
-          pushStat(A, 'incomplete');
-          pushStat(B, 'target');
-        }
-
-        if (lc.includes('interception to') || lc.includes('intercepted by') || lc.includes('intercepted to') || statsInCmd.includes('interception') && B){
-          pushStat(A, 'interception');
-          pushStat(B, 'pick');
-        } else if (statsInCmd.includes('interception') && A){
-          pushStat(A, 'interception');
-        }
-
-        if (statsInCmd.includes('rush')){
-          pushStat(A, 'rush');
-        }
-
-        const baseSingles = ['completion','reception','incomplete','target','pick','pass defense','penalty'];
-        baseSingles.forEach(k=>{ if (statsInCmd.includes(k)) pushStat(A, k); });
-
-        if (statsInCmd.includes('3 point')) pushStat(players[players.length-1], '3 point');
-        else if (statsInCmd.includes('2 point')) pushStat(players[players.length-1], '2 point');
-        else if (statsInCmd.includes('1 point')) pushStat(players[players.length-1], '1 point');
-
-        if (hasTD && A) pushStat(A, 'touchdown');
-
-        // If TD OR XP in command → add touchdown for ALL mentioned players
-        if ((hasTD || hasXP) && players.length){
-          players.forEach(p => pushStat(p, 'touchdown'));
-        }
-
-        if (!rows.length){
-          const k = _findStatKey(text);
-          if (k) pushStat(A, k);
-        }
-
-        const seen = new Set();
-        return rows.filter(r=>{
-          const key = r.its+'|'+r.stat;
-          if (seen.has(key)) return false;
-          seen.add(key); return true;
-        });
+        return resolved;
       }
 
-      function _showPending(text, rows, when){
-        const box = $('#st_pending');
-        if (!box) return;
-        const game = String(state.tmp.stat_game||'');
-        const pretty = rows.map(r=>{
-          const m = itsToMeta[r.its] || {};
-          return `${esc(m.team||'')} ${esc(m.number||'')} - ${esc(m.name||'')} • ${esc(r.stat)}`;
-        }).join(' • ');
-        const t = when || _fmtTime(new Date());
-        box.innerHTML = rows.length
-          ? `Heard “${esc(text)}”. Game ${esc(game)} — <span class="tiny">${esc(t)}</span> — ${pretty}`
-          : `Heard “${esc(text)}”. <span class="tiny">Could not parse.</span>`;
+      // Build per-player actions for non-override rules (pairs)
+      function _expandPairwise(players, primaryKey, rawText){
+        const actions = [];
+        if (!players.length || !primaryKey) return actions;
+
+        const A = players[0], B = players[1];
+
+        // Canonical keys we might need to synthesize
+        const kCompletion = _resolveKeyAlias('completion') || 'completion';
+        const kReception  = _resolveKeyAlias('reception')  || 'reception';
+        const kInterc     = _resolveKeyAlias('interception') || 'interception';
+        const kPick       = _resolveKeyAlias('pick') || _resolveKeyAlias('pass defense') || 'pick';
+        const kTarget     = _resolveKeyAlias('target') || 'target';
+        const kIncomp     = _resolveKeyAlias('incomplete') || 'incomplete';
+        const kPass       = _resolveKeyAlias('pass');
+        const kComplete   = _resolveKeyAlias('complete') || _resolveKeyAlias('completion');
+        const kThrows     = _resolveKeyAlias('throws'); // may be null if not listed
+
+        const key = primaryKey;
+
+        // Special rule: “A incomplete to B drop” → B drop only
+        if (B && _mentionsStat('incomplete', rawText) && _mentionsStat('drop', rawText)) {
+          const kDrop = _resolveKeyAlias('drop') || 'drop';
+          actions.push({ its:B.its, stat:kDrop });
+          return actions;
+        }
+
+        if (B) {
+          // Two-player forms
+          if (key === kCompletion || key === kPass || key === kComplete || (kThrows && key === kThrows)) {
+            actions.push({ its:A.its, stat:kCompletion });
+            actions.push({ its:B.its, stat:kReception  });
+            return actions;
+          }
+          if (key === kInterc || _resolveKeyAlias('pick') === key) {
+            actions.push({ its:A.its, stat:kInterc });
+            actions.push({ its:B.its, stat:kPick  });
+            return actions;
+          }
+          if (key === kTarget || _mentionsStat('target', rawText)) {
+            actions.push({ its:A.its, stat:kIncomp });
+            actions.push({ its:B.its, stat:kTarget });
+            return actions;
+          }
+        }
+
+        // Fallback: single actor gets the key
+        actions.push({ its:A.its, stat:key });
+        return actions;
       }
 
-      async function _recordMany(rows, rawText, timeStr){
-        const game = String(state.tmp.stat_game||'1');
-        for (const r of rows){
+      // Detect global score intent (TD or XP variants)
+      function _detectScoreIntent(text){
+        const t = String(text||'').toLowerCase();
+        if (/\b(td|touchdown|t\.?d\.?)\b/.test(t)) return { mode:'TD' };
+
+        const xp2 = /\b(2\s*(pt|point|points|xp)|two\s*(point|points)|2\s*pointer)\b/.test(t);
+        const xp3 = /\b(3\s*(pt|point|points|xp)|three\s*(point|points)|3\s*pointer)\b/.test(t);
+        const xp1 = /\b(1\s*(pt|point|points|xp)|extra\s*point|xp|1\s*pointer)\b/.test(t);
+
+        if (xp3) return { mode:'XP', points:3 };
+        if (xp2) return { mode:'XP', points:2 };
+        if (xp1) return { mode:'XP', points:1 };
+        return null;
+      }
+
+      // Main parser → { players:[...], actions:[{its,stat}], override:'TD'|'XP'|null, xpPoints? }
+      function _parseCommand(text){
+        const players = _extractPlayersFromText(text);
+        if (!players.length) return null;
+
+        const override = _detectScoreIntent(text);
+        if (override && override.mode === 'TD') {
+          return { players, actions: [], override:'TD' };
+        }
+        if (override && override.mode === 'XP') {
+          return { players, actions: [], override:'XP', xpPoints: override.points };
+        }
+
+        const primaryKey = _findStatKey(text); // resolve via aliases (complete/pass/throws etc.)
+        if (!primaryKey) return null;
+
+        const pairActions = _expandPairwise(players, primaryKey, text);
+        return { players, actions: pairActions, override: null };
+      }
+
+      // ---------- Recorder (unchanged mic; quiet offline) ----------
+      async function _statkit_processCommand(text){
+        if (!state.tmp.stat_event_id){
+          if (navigator.onLine) alert('Pick an event first');
+          else {
+            const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first';
+          }
+          return;
+        }
+
+        const parsed = _parseCommand(text);
+
+        if (!parsed){
+          if (!navigator.onLine){
+            const s = document.getElementById('st_mic_status');
+            if (s) s.textContent = 'Could not parse (offline)';
+            return;
+          }
+          // Online helper: show canonical list only (no parentheses)
+          const keys = Object.keys((_aliasIndex && _aliasIndex.keyToAliases) || {});
+          alert(
+            'Could not parse.\n\n' +
+            'Try phrases like:\n' +
+            ' • "19 Red pass to 18 Red for touchdown"\n' +
+            ' • "Red 2 incomplete to Red 4"\n' +
+            ' • "Red 2 interception to Black 5 for 2 point"\n\n' +
+            'Recognized stats: ' + (keys.sort().join(' • ') || '—')
+          );
+          return;
+        }
+
+        // Build action set with overrides
+        let actions = parsed.actions || [];
+        const timeStr = _fmtTime(new Date());
+
+        if (parsed.override === 'TD'){
+          const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+          const uniqIts = Array.from(new Set(parsed.players.map(p=>p.its)));
+          actions = uniqIts.map(its => ({ its, stat: kTD }));
+        } else if (parsed.override === 'XP'){
+          const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
+          const key2 = _resolveKeyAlias('2 point') || '2 point';
+          const key3 = _resolveKeyAlias('3 point') || '3 point';
+          const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
+          const uniqIts = Array.from(new Set(parsed.players.map(p=>p.its)));
+          actions = uniqIts.map(its => ({ its, stat: key }));
+        }
+
+        // Record each action; de-dupe locally & queue if offline
+        for (const a of actions){
           const recObj = {
             adminIts: state.user.its,
             eventId:  state.tmp.stat_event_id,
-            its:      r.its,
-            stat:     r.stat,
-            raw:      rawText,
-            time:     timeStr,
-            game:     game
+            its:      a.its,
+            stat:     a.stat,
+            raw:      text,
+            time:     timeStr
           };
+
           const fp = _makeFP(recObj);
-          if (_seenFP(fp, 60000)) continue;
+          if (_seenFP(fp, 60000)){  // ignore repeats within 60s
+            const s = document.getElementById('st_mic_status');
+            if (s) s.textContent = 'Duplicate ignored';
+            continue;
+          }
           _markFP(fp);
 
           if (!navigator.onLine){
             let q = loadQ();
             if (!q.some(x => _makeFP(x) === fp)){
               q.push(recObj); saveQ(q);
-              _statkit_renderRowLocal({ its: r.its, stat: r.stat, time: timeStr, game });
+              _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr });
             }
-          } else {
-            try{
-              await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time, recObj.game);
-            }catch(e){
-              let q = loadQ();
-              if (!q.some(x => _makeFP(x) === fp)){
-                q.push(recObj); saveQ(q);
-                _statkit_renderRowLocal({ its: r.its, stat: r.stat, time: timeStr, game });
-              }
+            const hint = document.getElementById('st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
+            continue;
+          }
+
+          try{
+            await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time);
+            // reload list at the end
+          }catch(e){
+            let q = loadQ();
+            if (!q.some(x => _makeFP(x) === fp)){
+              q.push(recObj); saveQ(q);
+              _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr });
             }
           }
         }
-        await loadEventRows();
-      }
 
-      async function _statkit_processCommand(text){
-        if (!state.tmp.stat_event_id){
-          if (navigator.onLine) alert('Pick an event first');
-          else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first'; }
-          return;
+        if (navigator.onLine){
+          await loadEventRows();
         }
-
-        const timeStr = _fmtTime(new Date());
-        const rows = _expandUtterance(text);
-        _showPending(text, rows, timeStr);
-
-        if (!rows.length){
-          if (!navigator.onLine){
-            const s = document.getElementById('st_mic_status');
-            if (s) s.textContent = 'Could not parse (offline)';
-            return;
-          }
-          const parts = [];
-          Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
-            const arr = Array.from(set);
-            const shown = arr.filter(a => a !== k);
-            parts.push(shown.length ? `${k} (${shown.join(', ')})` : k);
-          });
-          const teams = Array.from(teamSet).join(' • ') || '—';
-          alert(
-            'Could not parse.\n\n' +
-            'Say things like “Red 12 pass to Red 3 for touchdown”, “Lions 7 1 point”.\n\n' +
-            'Recognized stats: ' + (parts.join(' • ') || '—') + '\n' +
-            'Teams: ' + teams
-          );
-          return;
-        }
-
-        await _recordMany(rows, text, timeStr);
-      }
-
-      // ===== Score Box (2-minute buckets per team; filtered by game) =====
-      function renderScore(list){
-        const teamsInRows = [];
-        const seenTeams = new Set();
-        (list||[]).forEach(r=>{
-          const meta = itsToMeta[String(r.its||'')] || {};
-          const t = meta.team || '';
-          if (t && !seenTeams.has(t)){ seenTeams.add(t); teamsInRows.push(t); }
-        });
-        const teamA = teamsInRows[0] || Array.from(_activeTeams)[0] || '';
-        const teamB = teamsInRows[1] || Array.from(_activeTeams)[1] || '';
-
-        $('#st_teamA').textContent = teamA || '—';
-        $('#st_teamB').textContent = teamB || '—';
-
-        const points = { [teamA]:0, [teamB]:0 };
-
-        const buckets = {}; // key -> { team, td:boolean, extra:number }
-        function ensure(team, bucket){
-          const key = team+'|'+bucket;
-          if (!buckets[key]) buckets[key] = { team, td:false, extra:0 };
-          return buckets[key];
-        }
-
-        (list||[]).forEach(r=>{
-          const meta = itsToMeta[String(r.its||'')] || {};
-          const team = meta.team || '';
-          if (!(team === teamA || team === teamB)) return;
-          const d = _parseTimeStr(r.time||''); if (!d) return;
-          const bucket = Math.floor(d.getTime() / (2*60*1000));
-          const entry = ensure(team, bucket);
-          const s = String(r.stat||'').toLowerCase();
-
-          if (s === 'touchdown'){
-            entry.td = true;
-          } else if (s === '1 point' || s === '1 points'){
-            entry.extra = Math.max(entry.extra, 1);
-          } else if (s === '2 point' || s === '2 points'){
-            entry.extra = Math.max(entry.extra, 2);
-          } else if (s === '3 point' || s === '3 points'){
-            entry.extra = Math.max(entry.extra, 3);
-          }
-        });
-
-        Object.values(buckets).forEach(b=>{
-          if (!(b.team in points)) return;
-          if (b.td) points[b.team] += 6;
-          if (b.extra > 0) points[b.team] += b.extra;
-        });
-
-        $('#st_scoreA').textContent = points[teamA] || 0;
-        $('#st_scoreB').textContent = points[teamB] || 0;
       }
 
       // Initial load & flush any queued
@@ -3318,11 +3268,7 @@ function actDropout(eventId, its, btn){
   }
 
 })(); // end IIFE
-//<!-- =================== /STATKIT (client) =================== -->//
-
-
-
-
+/* =================== /STATKIT (client) =================== */
 
 </script>
 
