@@ -2485,33 +2485,28 @@ function actDropout(eventId, its, btn){
 
 
   <script id="STATKIT">
-/* ===================== STATKIT (client) ===================== */
-/* MVP voice+manual event stat recording for admins — team-aware + composites
-   Commands like:
-     "Red 2 pass to Red 3 for touchdown"
-     "Red 2 interception to Black 5 for touchdown"
-     "Red 2 target to Red 4"
-   Recorded list shows:
-     04:19pm 02/07/2025
-     Red 6 - Player Name
-     touchdown
-
-   Jersey Map uses Jerseys tab columns: number, team, name → "<number> <team> - <name>"
-   Score Box shows two teams and computes points from recorded rows.
-*/
-
+<!-- ===================== STATKIT (client) ===================== -->
+<!-- Team/name aware stat tracker with Game selector (1–99).
+     Records "game" with each stat, filters UI & scoring by selected game. -->
 (function(){
 
   // ---- Local offline queue (simple, resilient) + client-side dedupe ----
   const QKEY = 'statkitQueue.v1';
   const DKEY = 'statkitDedup.v1';  // fingerprint cache to suppress dupes for a short window
+  const GKEY = 'statkit.lastGame'; // remember game selection
 
   function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
   function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
 
-  // Fingerprint helpers (eventId|its|stat|time)
+  // Fingerprint helpers (eventId|game|its|stat|time)
   function _makeFP(it){
-    return [String(it.eventId||''), String(it.its||''), String(it.stat||''), String(it.time||'')].join('|');
+    return [
+      String(it.eventId||''),
+      String(it.game||''),
+      String(it.its||''),
+      String(it.stat||''),
+      String(it.time||'')
+    ].join('|');
   }
   function _loadDedup(){ try{ return JSON.parse(localStorage.getItem(DKEY)||'{}'); }catch(_){ return {}; } }
   function _saveDedup(map){ localStorage.setItem(DKEY, JSON.stringify(map||{})); }
@@ -2543,8 +2538,7 @@ function actDropout(eventId, its, btn){
     const keep = [];
     for (const it of q){
       try{
-        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time);
-        // Do NOT re-preview items during flush; they were already shown when added offline.
+        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time, it.game);
       }catch(_){ keep.push(it); }
     }
     saveQ(keep);
@@ -2642,9 +2636,6 @@ function actDropout(eventId, its, btn){
       }
       const _teamIndex = _buildTeamIndex(teamSet);
 
-      // Track the two active teams (from recorded rows this session)
-      let _activeTeams = new Set();
-
       // ===== Events from the Events sheet (same as Receipts) =====
       const evOptions = (eventsPack && eventsPack.events) || [];
       if (!evOptions.length){
@@ -2660,41 +2651,39 @@ function actDropout(eventId, its, btn){
               '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
               '<div class="tiny muted">Voice: say “Red 6 touchdown”, or use the input</div>'+
             '</div>'+
-            '<div class="row">'+
+            '<div class="row" style="row-gap:10px">'+
               '<div class="col">'+
                 '<label class="label">Event (from Events sheet)</label>'+
                 '<select id="st_evt" class="input"></select>'+
               '</div>'+
-
-              // Score Box column
-              '<div class="col" style="min-width:260px">'+
-                '<label class="label">Score</label>'+
-                '<div id="st_score" class="row" style="gap:8px;align-items:center">'+
-                  '<div id="st_teamA" class="chip"></div>'+
-                  '<div id="st_scoreA" class="badge">0</div>'+
-                  '<div class="tiny muted">vs</div>'+
-                  '<div id="st_teamB" class="chip"></div>'+
-                  '<div id="st_scoreB" class="badge">0</div>'+
-                '</div>'+
+              '<div class="col" style="max-width:140px">'+
+                '<label class="label">Game</label>'+
+                '<select id="st_game" class="input"></select>'+
               '</div>'+
-
               '<div class="col">'+
-                '<label class="label">Stats you can record</label>'+
+                '<div id="st_scorewrap" class="stack" style="gap:6px;margin-top:4px">'+
+                  '<label class="label">Score</label>'+
+                  '<div class="row" style="gap:8px;align-items:center">'+
+                    '<div><strong id="st_teamA">—</strong> <span id="st_scoreA">0</span></div>'+
+                    '<div class="tiny muted">vs</div>'+
+                    '<div><strong id="st_teamB">—</strong> <span id="st_scoreB">0</span></div>'+
+                  '</div>'+
+                '</div>'+
+                '<label class="label" style="margin-top:8px">Stats you can record</label>'+
                 '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
                 '<label class="label">Manual Command</label>'+
                 '<div class="row">'+
                   '<input id="st_manual" class="input" placeholder="e.g., Red 21 touchdown">'+
                   '<button class="btn" id="st_add">Record</button>'+
                 '</div>'+
+                '<div id="st_pending" class="tiny muted" style="min-height:18px;margin-top:4px"></div>'+
               '</div>'+
-
-              '<div class="col" style="min-width:260px">'+
+              '<div class="col" style="min-width:220px">'+
                 '<label class="label">Voice</label>'+
-                '<div class="row" style="gap:8px;align-items:center">'+
+                '<div class="row">'+
                   '<button class="btn" id="st_mic">Start Listening</button>'+
                   '<div id="st_mic_status" class="tiny muted" style="align-self:center">Idle</div>'+
                 '</div>'+
-                '<div class="tiny muted" id="st_parse_status" style="margin-top:6px"></div>'+
               '</div>'+
             '</div>'+
           '</div>'+
@@ -2716,6 +2705,25 @@ function actDropout(eventId, its, btn){
         '</div>'
       );
       layout(node);
+
+      // Fill game select 1..99
+      const gameSel = $('#st_game');
+      (function fillGames(){
+        const lastGame = localStorage.getItem(GKEY);
+        for (let i=1; i<=99; i++){
+          const o = document.createElement('option');
+          o.value = String(i);
+          o.textContent = String(i);
+          gameSel.appendChild(o);
+        }
+        gameSel.value = lastGame && /^\d+$/.test(lastGame) ? lastGame : '1';
+        state.tmp.stat_game = gameSel.value;
+      })();
+      gameSel.addEventListener('change', ()=>{
+        state.tmp.stat_game = gameSel.value;
+        localStorage.setItem(GKEY, state.tmp.stat_game);
+        loadEventRows(); // refilter list & rescore
+      });
 
       // Fill event select: label for humans, value is the ID (important!)
       const sel = $('#st_evt');
@@ -2748,18 +2756,19 @@ function actDropout(eventId, its, btn){
       })();
 
       // ===== Jersey Map (uses Jerseys tab name) =====
-      function renderJersey(){
+      function renderJersey(filteredTeams){
         const box = $('#st_jersey');
-        // Filter to active teams if we’ve locked onto 2
-        const filter = (_activeTeams.size >= 2) ? new Set(_activeTeams) : null;
         const rows = [...jerseysArr]
-          .filter(j => !filter || filter.has(String(j.team||'')))
+          .filter(j=>{
+            if (!filteredTeams || filteredTeams.size===0) return true;
+            return filteredTeams.has(String(j.team||'').trim());
+          })
           .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
           .map(j=>{
             const team = String(j.team||'').trim();
             const num  = String(j.number||'').trim();
             const nm   = String(j.name||'').trim();
-            // requested format: "<number> <team> - <name>"
+            // "<number> <team> - <name>"
             return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:6px 0">'+
                      '<div>'+esc(num)+' '+esc(team||'')+' - '+esc(nm||'')+'</div>'+
                      '<div class="tiny"></div>'+
@@ -2769,94 +2778,43 @@ function actDropout(eventId, its, btn){
       }
       renderJersey();
 
-      // ===== Score Box =====
-      // ===== Score Box =====
-function renderScore(list){
-  // Determine the two teams seen in the event rows; else fall back to active or jersey teams
-  const teamsInRows = [];
-  const seenTeams = new Set();
-  (list||[]).forEach(r=>{
-    const meta = itsToMeta[String(r.its||'')] || {};
-    const t = meta.team || '';
-    if (t && !seenTeams.has(t)){ seenTeams.add(t); teamsInRows.push(t); }
-  });
-  const teamA = teamsInRows[0] || Array.from(_activeTeams)[0] || '';
-  const teamB = teamsInRows[1] || Array.from(_activeTeams)[1] || '';
-
-  $('#st_teamA').textContent = teamA || '—';
-  $('#st_teamB').textContent = teamB || '—';
-
-  const points = { [teamA]:0, [teamB]:0 };
-
-  // Scoring rules (per time group):
-  // - If any "touchdown" rows exist for a team, add +6 ONCE for that team.
-  // - If any extra-point rows (1/2/3) exist for a team, add the HIGHEST one ONCE for that team.
-  const byTime = {};
-  (list||[]).forEach(r=>{
-    const when = r.time || '';
-    (byTime[when] ||= []).push(r);
-  });
-
-  Object.keys(byTime).forEach(when=>{
-    const group = byTime[when];
-
-    // Track per-team flags for this group
-    const perTeam = {}; // team -> { td:boolean, extra:number }
-    function ensure(team){
-      if (!team) return null;
-      if (!perTeam[team]) perTeam[team] = { td:false, extra:0 };
-      return perTeam[team];
-    }
-
-    group.forEach(r=>{
-      const s = String(r.stat||'').toLowerCase();
-      const t = (itsToMeta[String(r.its||'')]||{}).team || '';
-      if (!t) return;
-      const entry = ensure(t);
-      if (!entry) return;
-
-      if (s === 'touchdown'){
-        entry.td = true; // only mark; we’ll add +6 once below
-      } else if (s === '1 point' || s === '1 points'){
-        entry.extra = Math.max(entry.extra, 1);
-      } else if (s === '2 point' || s === '2 points'){
-        entry.extra = Math.max(entry.extra, 2);
-      } else if (s === '3 point' || s === '3 points'){
-        entry.extra = Math.max(entry.extra, 3);
+      // After two teams have activity, keep only those in jersey map
+      const _activeTeams = new Set();
+      function _noteActiveTeam(t){
+        if (!t) return;
+        if (_activeTeams.has(t)) return;
+        _activeTeams.add(t);
+        if (_activeTeams.size >= 2){
+          renderJersey(_activeTeams);
+        }
       }
-    });
-
-    // Apply once per team for this time group
-    Object.keys(perTeam).forEach(team=>{
-      if (!(team in points)) return;
-      const { td, extra } = perTeam[team];
-      if (td) points[team] += 6;
-      if (extra > 0) points[team] += extra;
-    });
-  });
-
-  $('#st_scoreA').textContent = points[teamA] || 0;
-  $('#st_scoreB').textContent = points[teamB] || 0;
-}
-
 
       // ===== Recorded list (newest first) =====
+      let _lastFetchedList = []; // cache full list to re-filter by game quickly
       async function loadEventRows(){
         if (!state.tmp.stat_event_id){
           $('#st_list').innerHTML = '<div class="muted">Pick an event above.</div>';
           return;
         }
         const res  = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
-        const list = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
-        _renderList(list);
-        renderScore(list);
+        _lastFetchedList = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
+        _renderList(_filterByGame(_lastFetchedList));
+        renderScore(_filterByGame(_lastFetchedList));
+      }
+      function _filterByGame(list){
+        const g = String(state.tmp.stat_game||'');
+        return (list||[]).filter(r => String(r.game||'') === g || (g && r.game==null && g==='1')); // legacy rows (no game) -> visible in game 1
       }
 
       function _renderList(list){
         const box = $('#st_list');
         if (!list.length){
-          box.innerHTML = '<div class="muted">No stats yet.</div>';
+          box.innerHTML = '<div class="muted">No stats yet for this game.</div>';
           $('#st_hint').textContent = navigator.onLine ? '' : 'You are offline. New stats will be queued.';
+          $('#st_scoreA').textContent = '0';
+          $('#st_scoreB').textContent = '0';
+          $('#st_teamA').textContent = '—';
+          $('#st_teamB').textContent = '—';
           return;
         }
         box.innerHTML = list.map(r=>{
@@ -2866,10 +2824,11 @@ function renderScore(list){
           const num  = meta.number || '';
           const name = meta.name || '';
           const when = r.time || '';
+          _noteActiveTeam(team);
           return `
             <div class="row" style="align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0">
               <div class="col" style="min-width:260px">
-                <div class="tiny muted">${esc(when)}</div>
+                <div class="tiny muted">${esc(when)} · Game ${esc(String(r.game||state.tmp.stat_game||''))}</div>
                 <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
               </div>
               <div class="col">${esc(r.stat)}</div>
@@ -2897,6 +2856,9 @@ function renderScore(list){
         const num  = meta.number || '';
         const name = meta.name || '';
         const when = r.time || _fmtTime(new Date());
+        const game = String(r.game||state.tmp.stat_game||'');
+
+        _noteActiveTeam(team);
 
         const box = $('#st_list');
         const div = document.createElement('div');
@@ -2904,7 +2866,7 @@ function renderScore(list){
         div.style.cssText = 'align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0;opacity:.7';
         div.innerHTML = `
           <div class="col" style="min-width:260px">
-            <div class="tiny muted">${esc(when)}</div>
+            <div class="tiny muted">${esc(when)} · Game ${esc(game)}</div>
             <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
           </div>
           <div class="col">${esc(r.stat)} <span class="tiny muted">(queued)</span></div>
@@ -2923,22 +2885,17 @@ function renderScore(list){
         const inferredSport = (label.split(' - ')[0] || '').trim();
         if (inferredSport) state.sport = inferredSport;
 
-        // reset active teams on event change
-        _activeTeams = new Set();
-
         // Rebuild for (possibly) new sport
         statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
         _aliasIndex = _buildAliasIndex(statMap);
         renderStatsList();
 
-        renderJersey();
         loadEventRows();
       });
 
       // ===== Voice recognition =====
       const micBtn = $('#st_mic');
       const micStatus = $('#st_mic_status');
-      const parseStatus = $('#st_parse_status');
       const rec = _statkit_makeRecognizer();
 
       function startMic(){
@@ -2946,7 +2903,6 @@ function renderScore(list){
         rec.start();
         micBtn.textContent = 'Stop Listening';
         micStatus.textContent = 'Listening…';
-        parseStatus.textContent = '';
       }
       function stopMic(){
         if (rec) try{ rec.stop(); }catch(_){}
@@ -3019,6 +2975,18 @@ function renderScore(list){
         h = h%12; if (h===0) h=12;
         return `${pad(h)}:${pad(m)}${ampm} ${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()}`;
       }
+      function _parseTimeStr(s){
+        // "04:19pm 02/07/2025"
+        const m = String(s||'').match(/^(\d{2}):(\d{2})(am|pm)\s+(\d{2})\/(\d{2})\/(\d{4})$/i);
+        if (!m) return null;
+        let hh = parseInt(m[1],10), mm = parseInt(m[2],10);
+        const ampm = m[3].toLowerCase();
+        const mo = parseInt(m[4],10)-1, dd = parseInt(m[5],10), yyyy = parseInt(m[6],10);
+        if (ampm === 'pm' && hh < 12) hh += 12;
+        if (ampm === 'am' && hh === 12) hh = 0;
+        const d = new Date(yyyy, mo, dd, hh, mm, 0, 0);
+        return isNaN(d.getTime()) ? null : d;
+      }
 
       // Normalize text lightly (keep words)
       function _clean(s){
@@ -3029,11 +2997,7 @@ function renderScore(list){
           .trim();
       }
 
-      // Extract a jersey number from digits *or* number words (0..99)
-      function _extractNumber(text){
-        const digit = text.match(/\b(\d{1,3})\b/);
-        if (digit) return parseInt(digit[1], 10);
-
+      function _extractNumberFromTokens(tokens, startIdx){
         const ones = {
           zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
           ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
@@ -3041,12 +3005,12 @@ function renderScore(list){
         };
         const tens = { twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90 };
 
-        const toks = _clean(text).split(' ');
-        for (let i=0; i<toks.length; i++){
-          const t = toks[i];
+        for (let i=startIdx; i<tokens.length && i<startIdx+4; i++){
+          const t = tokens[i];
+          if (/^\d{1,3}$/.test(t)) return parseInt(t,10);
           if (t in tens){
             let v = tens[t];
-            if (i+1 < toks.length && toks[i+1] in ones) v += ones[toks[i+1]];
+            if (i+1<tokens.length && tokens[i+1] in ones) v += ones[tokens[i+1]];
             return v;
           }
           if (t in ones) return ones[t];
@@ -3054,9 +3018,8 @@ function renderScore(list){
         return null;
       }
 
-      // Find the canonical stat key anywhere in the utterance (order independent)
       function _findStatKey(text){
-        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,''); // collapse spaces/hyphens
+        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
         const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
         for (const an of aliasesCollapsed){
           if (norm.includes(an)){
@@ -3068,7 +3031,20 @@ function renderScore(list){
         return null;
       }
 
-      // Extract team by longest alias match
+      function _findAllStatKeys(text){
+        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+        const keys = new Set();
+        const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
+        for (const an of aliasesCollapsed){
+          if (norm.includes(an)){
+            const originalAlias = _aliasIndex.collapsed[an][0];
+            const key = statMap[originalAlias];
+            if (key) keys.add(key);
+          }
+        }
+        return Array.from(keys);
+      }
+
       function _extractTeam(text){
         const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
         for (const an of _teamIndex.order){
@@ -3079,162 +3055,171 @@ function renderScore(list){
         return null;
       }
 
-      // Parse helpers to extract a `<team num>` token
-      function _extractPlayerToken(text){
-        const team = _extractTeam(text);
-        const n    = _extractNumber(text);
-        if (!team || n==null) return null;
-        return { team, number:String(n) };
+      function _extractPlayers(text){
+        // returns [{team, number}] possibly multiple, scanning tokens and team aliases
+        const tokens = _clean(text).split(' ');
+        const teamAliases = _teamIndex.order.map(an=>({an, orig:_teamIndex.collapsed[an][0]}));
+        const players = [];
+
+        for (let i=0; i<tokens.length; i++){
+          for (const {an, orig} of teamAliases){
+            const window = tokens.slice(i, i+3).join('');
+            if (window.includes(an)){
+              const num = _extractNumberFromTokens(tokens, i+1);
+              if (num!=null){
+                players.push({ team: orig, number: String(num) });
+              }
+            }
+          }
+        }
+        // Unique by team+number order-preserving
+        const seen = new Set();
+        const uniq = [];
+        for (const p of players){
+          const k = p.team.toLowerCase()+'::'+p.number;
+          if (!seen.has(k)){ seen.add(k); uniq.push(p); }
+        }
+        return uniq;
       }
 
-      // Parse commands like:
-      // "Red 2 touchdown", "Lions 7 td", "Red 2 pass to Red 3 for touchdown",
-      // "Red 2 interception to Black 5 for touchdown", "Red 2 target to Red 4"
-      function _parseComposite(text){
-        const cleaned = _clean(text);
-        // tokens
-        const toIdx  = cleaned.indexOf(' to ') >= 0 ? cleaned.indexOf(' to ') : -1;
-        const forIdx = cleaned.indexOf(' for ') >= 0 ? cleaned.indexOf(' for ') : -1;
+      // Build row objects to record based on one utterance
+      function _expandUtterance(text){
+        const players = _extractPlayers(text); // [{team,number},...]
+        const statsInCmd = _findAllStatKeys(text); // ['completion','touchdown','1 point', ...]
+        const hasTD = statsInCmd.includes('touchdown');
+        const hasXP = statsInCmd.includes('1 point') || statsInCmd.includes('2 point') || statsInCmd.includes('3 point');
 
-        // Identify primary verb using alias map (completion, interception, target, touchdown, rush, etc.)
-        // But for composite we will map:
-        //  - pass/throw/complete => 'completion' (passer) + 'reception' (receiver if present)
-        //  - interception ... to X => 'interception' (first) + 'pick' (receiver) [+ 'touchdown' if mentioned]
-        //  - target to X => passer 'incomplete' + receiver 'target'
-        //  - "for touchdown" ⇒ add touchdown for receiver (on pass) or same player if not receiver
-        const verbs = {
-          completion: ['completion','complete','pass','throw'],
-          reception:  ['reception','catch'],
-          interception:['interception','pick'],
-          target:     ['target','targeted'],
-          touchdown:  ['touchdown','td'],
-          rush:       ['rush','run'],
-          // extras:
-          one:        ['1 point','1 pointer','xp','extra point'],
-          two:        ['2 point','2 points','2 pointer','2xp'],
-          three:      ['3 point','3 points','3 pointer','3xp']
-        };
+        // Heuristic pairings
+        const A = players[0] || null;
+        const B = players[1] || null;
 
-        function hasVerb(list){
-          return list.some(a=>{
-            const an = a.toLowerCase().replace(/[^a-z0-9]/g,'');
-            const norm = text.toLowerCase().replace(/[^a-z0-9]/g,'');
-            return norm.includes(an);
-          });
+        const rows = [];
+
+        function pushStat(p, key){
+          if (!p) return;
+          const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
+          if (!its) return;
+          rows.push({ its, stat: key });
         }
 
-        const primary = {
-          passLike: hasVerb(verbs.completion),
-          pickLike: hasVerb(verbs.interception),
-          targetLike: hasVerb(verbs.target),
-          td: hasVerb(verbs.touchdown),
-          rushLike: hasVerb(verbs.rush),
-          one: hasVerb(verbs.one),
-          two: hasVerb(verbs.two),
-          three: hasVerb(verbs.three)
-        };
+        const lc = _clean(text);
 
-        // players
-        // try to split "A ... to B ... for ..." pattern
-        let lhsText = text, rhsText = '';
-        if (toIdx >= 0){
-          lhsText = text.slice(0, toIdx);
-          rhsText = text.slice(toIdx + 4, (forIdx>=0?forIdx:text.length));
-        }
-        const A = _extractPlayerToken(lhsText);
-        const B = rhsText ? _extractPlayerToken(rhsText) : null;
-
-        // Build resulting atomic stats from composite intent
-        const out = []; // [{team, number, key}]
-        function add(team, number, key){
-          if (!team || !number || !key) return;
-          out.push({ team, number, key });
+        if (lc.includes('pass to') || lc.includes('throw to') || lc.includes('complete to')){
+          pushStat(A, 'completion');
+          pushStat(B, 'reception');
         }
 
-        // Map to canonical keys exactly as defined in sports tab
-        const K = {
-          completion: 'completion',
-          reception: 'reception',
-          target: 'target',
-          incomplete: 'incomplete',
-          interception: 'interception',
-          pick: 'pick',
-          touchdown: 'touchdown',
-          one: '1 point',
-          two: '2 point',
-          three: '3 point'
-        };
+        if (lc.includes('target to') || lc.includes('targeted to')){
+          pushStat(A, 'incomplete');
+          pushStat(B, 'target');
+        }
 
-        if (primary.passLike && A){
-          // passer completion
-          add(A.team, A.number, K.completion);
-          // receiver reception
-          if (B) add(B.team, B.number, K.reception);
-          // "for touchdown" ⇒ touchdown for receiver if present else passer
-          if (primary.td){
-            if (B) add(B.team, B.number, K.touchdown);
-            else   add(A.team, A.number, K.touchdown);
-          }
-        } else if (primary.pickLike && A){
-          // A did interception
-          add(A.team, A.number, K.interception);
-          if (B){
-            // receiver gets 'pick'
-            add(B.team, B.number, K.pick);
-            if (primary.td) add(B.team, B.number, K.touchdown);
-          } else if (primary.td){
-            // same player returns for TD
-            add(A.team, A.number, K.touchdown);
-          }
-        } else if (primary.targetLike && A){
-          // "target to B" ⇒ A incomplete + B target
-          if (B){
-            add(A.team, A.number, K.incomplete);
-            add(B.team, B.number, K.target);
+        if (lc.includes('interception to') || lc.includes('intercepted by') || lc.includes('intercepted to') || statsInCmd.includes('interception') && B){
+          pushStat(A, 'interception');
+          pushStat(B, 'pick');
+        } else if (statsInCmd.includes('interception') && A){
+          pushStat(A, 'interception');
+        }
+
+        if (statsInCmd.includes('rush')){
+          pushStat(A, 'rush');
+        }
+
+        const baseSingles = ['completion','reception','incomplete','target','pick','pass defense','penalty'];
+        baseSingles.forEach(k=>{ if (statsInCmd.includes(k)) pushStat(A, k); });
+
+        if (statsInCmd.includes('3 point')) pushStat(players[players.length-1], '3 point');
+        else if (statsInCmd.includes('2 point')) pushStat(players[players.length-1], '2 point');
+        else if (statsInCmd.includes('1 point')) pushStat(players[players.length-1], '1 point');
+
+        if (hasTD && A) pushStat(A, 'touchdown');
+
+        // If TD OR XP in command → add touchdown for ALL mentioned players
+        if ((hasTD || hasXP) && players.length){
+          players.forEach(p => pushStat(p, 'touchdown'));
+        }
+
+        if (!rows.length){
+          const k = _findStatKey(text);
+          if (k) pushStat(A, k);
+        }
+
+        const seen = new Set();
+        return rows.filter(r=>{
+          const key = r.its+'|'+r.stat;
+          if (seen.has(key)) return false;
+          seen.add(key); return true;
+        });
+      }
+
+      function _showPending(text, rows, when){
+        const box = $('#st_pending');
+        if (!box) return;
+        const game = String(state.tmp.stat_game||'');
+        const pretty = rows.map(r=>{
+          const m = itsToMeta[r.its] || {};
+          return `${esc(m.team||'')} ${esc(m.number||'')} - ${esc(m.name||'')} • ${esc(r.stat)}`;
+        }).join(' • ');
+        const t = when || _fmtTime(new Date());
+        box.innerHTML = rows.length
+          ? `Heard “${esc(text)}”. Game ${esc(game)} — <span class="tiny">${esc(t)}</span> — ${pretty}`
+          : `Heard “${esc(text)}”. <span class="tiny">Could not parse.</span>`;
+      }
+
+      async function _recordMany(rows, rawText, timeStr){
+        const game = String(state.tmp.stat_game||'1');
+        for (const r of rows){
+          const recObj = {
+            adminIts: state.user.its,
+            eventId:  state.tmp.stat_event_id,
+            its:      r.its,
+            stat:     r.stat,
+            raw:      rawText,
+            time:     timeStr,
+            game:     game
+          };
+          const fp = _makeFP(recObj);
+          if (_seenFP(fp, 60000)) continue;
+          _markFP(fp);
+
+          if (!navigator.onLine){
+            let q = loadQ();
+            if (!q.some(x => _makeFP(x) === fp)){
+              q.push(recObj); saveQ(q);
+              _statkit_renderRowLocal({ its: r.its, stat: r.stat, time: timeStr, game });
+            }
           } else {
-            add(A.team, A.number, K.incomplete);
+            try{
+              await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time, recObj.game);
+            }catch(e){
+              let q = loadQ();
+              if (!q.some(x => _makeFP(x) === fp)){
+                q.push(recObj); saveQ(q);
+                _statkit_renderRowLocal({ its: r.its, stat: r.stat, time: timeStr, game });
+              }
+            }
           }
-        } else if (primary.rushLike && A){
-          add(A.team, A.number, 'rush'); // not scored by itself; kept as a stat if present in your sheet
-          if (primary.td) add(A.team, A.number, K.touchdown);
-        } else if (primary.td && A){
-          add(A.team, A.number, K.touchdown);
-        } else if (primary.one && A){
-          add(A.team, A.number, K.one);
-        } else if (primary.two && A){
-          add(A.team, A.number, K.two);
-        } else if (primary.three && A){
-          add(A.team, A.number, K.three);
-        } else {
-          // Fall back: single-actor phrase like "Red 2 flag pull" (already supported by generic finder)
-          const key = _findStatKey(text);
-          if (A && key) add(A.team, A.number, key);
         }
-
-        // If nothing parsed, return null to trigger help (online only)
-        if (!out.length) return null;
-        return out;
+        await loadEventRows();
       }
 
       async function _statkit_processCommand(text){
-        const status = $('#st_parse_status');
-        if (status) status.textContent = '';
-
         if (!state.tmp.stat_event_id){
           if (navigator.onLine) alert('Pick an event first');
           else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first'; }
           return;
         }
 
-        const parsed = _parseComposite(text);
-        if (!parsed){
-          // No alerts while offline
+        const timeStr = _fmtTime(new Date());
+        const rows = _expandUtterance(text);
+        _showPending(text, rows, timeStr);
+
+        if (!rows.length){
           if (!navigator.onLine){
             const s = document.getElementById('st_mic_status');
             if (s) s.textContent = 'Could not parse (offline)';
             return;
           }
-          // Online: show helpful aliases/teams as before
           const parts = [];
           Object.entries(_aliasIndex.keyToAliases || {}).forEach(([k,set])=>{
             const arr = Array.from(set);
@@ -3244,91 +3229,68 @@ function renderScore(list){
           const teams = Array.from(teamSet).join(' • ') || '—';
           alert(
             'Could not parse.\n\n' +
-            'Say things like “Red 12 pass to Red 3 for touchdown”, “Red 2 target to Red 4”, “Red 2 interception to Black 5 for touchdown”.\n\n' +
+            'Say things like “Red 12 pass to Red 3 for touchdown”, “Lions 7 1 point”.\n\n' +
             'Recognized stats: ' + (parts.join(' • ') || '—') + '\n' +
             'Teams: ' + teams
           );
           return;
         }
 
-        // Resolve ITS for each parsed item; de-dupe within this composite by (team,number,key)
-        const uniq = new Set();
-        const items = [];
-        for (const it of parsed){
-          const key = statMap[it.key] || it.key; // if 'key' already canonical in sports tab, this is a no-op
-          const its = jerseysByTeamNum[`${it.team.toLowerCase()}::${it.number}`];
-          if (!its) continue; // quietly skip missing mapping; UX shows below
-          const fpLocal = `${it.team}|${it.number}|${key}`;
-          if (uniq.has(fpLocal)) continue;
-          uniq.add(fpLocal);
-          items.push({ team: it.team, number: it.number, stat: key, its });
-        }
+        await _recordMany(rows, text, timeStr);
+      }
 
-        if (!items.length){
-          const s = document.getElementById('st_mic_status');
-          if (s) s.textContent = 'No mapped players for that command';
-          return;
-        }
-
-        // Live preview of what will be posted
-        const preview = items.map(i=>`${i.team} ${i.number} – ${i.stat}`).join(' • ');
-        if (status) status.textContent = `Parsed: ${preview}  — posting…`;
-
-        // maintain active teams (cap at 2 and freeze)
-        items.forEach(i=>{
-          if (_activeTeams.size < 2) _activeTeams.add(i.team);
+      // ===== Score Box (2-minute buckets per team; filtered by game) =====
+      function renderScore(list){
+        const teamsInRows = [];
+        const seenTeams = new Set();
+        (list||[]).forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          const t = meta.team || '';
+          if (t && !seenTeams.has(t)){ seenTeams.add(t); teamsInRows.push(t); }
         });
-        renderJersey();
+        const teamA = teamsInRows[0] || Array.from(_activeTeams)[0] || '';
+        const teamB = teamsInRows[1] || Array.from(_activeTeams)[1] || '';
 
-        const timeStr = _fmtTime(new Date());
-        const base = { adminIts: state.user.its, eventId: state.tmp.stat_event_id, raw: text, time: timeStr };
+        $('#st_teamA').textContent = teamA || '—';
+        $('#st_teamB').textContent = teamB || '—';
 
-        // Client de-dupe per atomic item
-        const toSubmit = items.map(i => ({ ...base, its: i.its, stat: i.stat }));
+        const points = { [teamA]:0, [teamB]:0 };
 
-        // Offline path (queue all; render queued rows) — honor fingerprint de-dupe
-        if (!navigator.onLine){
-          let q = loadQ();
-          for (const recObj of toSubmit){
-            const fp = _makeFP(recObj);
-            if (_seenFP(fp, 60000)){
-              continue;
-            }
-            _markFP(fp);
-            if (!q.some(x => _makeFP(x) === fp)){
-              q.push(recObj);
-              _statkit_renderRowLocal({ its: recObj.its, stat: recObj.stat, time: timeStr });
-            }
-          }
-          saveQ(q);
-          const hint = document.getElementById('st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
-          if (status) status.textContent = `Queued: ${preview}`;
-          return;
+        const buckets = {}; // key -> { team, td:boolean, extra:number }
+        function ensure(team, bucket){
+          const key = team+'|'+bucket;
+          if (!buckets[key]) buckets[key] = { team, td:false, extra:0 };
+          return buckets[key];
         }
 
-        // Online path: post sequentially
-        try{
-          for (const recObj of toSubmit){
-            const fp = _makeFP(recObj);
-            if (_seenFP(fp, 60000)) continue;
-            _markFP(fp);
-            await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time);
+        (list||[]).forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          const team = meta.team || '';
+          if (!(team === teamA || team === teamB)) return;
+          const d = _parseTimeStr(r.time||''); if (!d) return;
+          const bucket = Math.floor(d.getTime() / (2*60*1000));
+          const entry = ensure(team, bucket);
+          const s = String(r.stat||'').toLowerCase();
+
+          if (s === 'touchdown'){
+            entry.td = true;
+          } else if (s === '1 point' || s === '1 points'){
+            entry.extra = Math.max(entry.extra, 1);
+          } else if (s === '2 point' || s === '2 points'){
+            entry.extra = Math.max(entry.extra, 2);
+          } else if (s === '3 point' || s === '3 points'){
+            entry.extra = Math.max(entry.extra, 3);
           }
-          if (status) status.textContent = `Posted: ${preview}`;
-          await loadEventRows();
-        }catch(e){
-          // If server call fails while online, fall back to queue, still de-duped
-          let q = loadQ();
-          for (const recObj of toSubmit){
-            const fp = _makeFP(recObj);
-            if (!q.some(x => _makeFP(x) === fp)){
-              q.push(recObj);
-              _statkit_renderRowLocal({ its: recObj.its, stat: recObj.stat, time: timeStr });
-            }
-          }
-          saveQ(q);
-          if (status) status.textContent = `Partially queued (network error): ${preview}`;
-        }
+        });
+
+        Object.values(buckets).forEach(b=>{
+          if (!(b.team in points)) return;
+          if (b.td) points[b.team] += 6;
+          if (b.extra > 0) points[b.team] += b.extra;
+        });
+
+        $('#st_scoreA').textContent = points[teamA] || 0;
+        $('#st_scoreB').textContent = points[teamB] || 0;
       }
 
       // Initial load & flush any queued
@@ -3357,7 +3319,8 @@ function renderScore(list){
   }
 
 })(); // end IIFE
-/* =================== /STATKIT (client) =================== */
+<!-- =================== /STATKIT (client) =================== -->
+
 
 
 
