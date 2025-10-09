@@ -3113,13 +3113,14 @@ micBtn.addEventListener('click', ()=>{
         return out.slice(0,2); // we only ever use A and B
       }
 
-      function _mentions(aliasLike, text){
-        const key = _resolveKeyAlias(aliasLike);
-        if (!key) return false;
-        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-        const aliases = Object.entries(statMap).filter(([a,k])=>k===key).map(([a])=>a);
-        return aliases.some(a => norm.includes(a.replace(/[^a-z0-9]/g,'')));
-      }
+      function _mentionsStat(aliasLike, text){
+  const key = _resolveKeyAlias(aliasLike);
+  if (!key) return false;
+  const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const aliases = Object.entries(statMap).filter(([a,k])=>k===key).map(([a])=>a);
+  return aliases.some(a => norm.includes(a.replace(/[^a-z0-9]/g,'')));
+}
+
 
       // Natural pair rules (single & two-player) — updated order & logic per spec
 function _expandPairwise(players, primaryKey, rawText){
