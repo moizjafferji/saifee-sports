@@ -2930,10 +2930,10 @@ function actDropout(eventId, its, btn){
         _refreshForGame();
       });
 
-      // ===== Voice recognition (dictate into Manual input; no auto-submit) =====
+// ===== Voice recognition (dictate into Manual input; no auto-submit) =====
 const micBtn      = $('#st_mic');
 const micStatus   = $('#st_mic_status');
-const micPosting  = $('#st_posting');
+const micPosting  = $('#st_posting');   // left intact; we simply don't use it here
 const inputManual = $('#st_manual');
 const rec         = _statkit_makeRecognizer();
 
@@ -2942,7 +2942,7 @@ let accFinal = '';
 
 function startMic(){
   if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
-  // Clear the Manual Command box at the start of a dictation session
+  // Start a fresh dictation session and clear the Manual Command input
   accFinal = '';
   if (inputManual) inputManual.value = '';
   rec.interimResults = true;
@@ -2950,7 +2950,7 @@ function startMic(){
   try { rec.start(); } catch(_) {}
   dictationActive = true;
   micBtn.textContent = 'Stop Listening';
-  micStatus.textContent = 'Listening… (fills Manual Command only)';
+  micStatus.textContent = 'Listening';   // no “Heard …” status
   if (micPosting) micPosting.textContent = '';
 }
 
@@ -2958,7 +2958,7 @@ function stopMic(){
   if (rec) { try { rec.stop(); } catch(_) {} }
   dictationActive = false;
   micBtn.textContent = 'Start Listening';
-  micStatus.textContent = accFinal ? `Heard: “${accFinal.trim()}”` : 'Idle';
+  micStatus.textContent = 'Idle';        // no “Heard …” status
 }
 
 if (rec){
@@ -2973,15 +2973,14 @@ if (rec){
       }
     }
     const combined = (accFinal + ' ' + interim).replace(/\s+/g,' ').trim();
-    if (inputManual) inputManual.value = combined;
-    micStatus.textContent = combined ? `Heard: “${combined}”` : 'Listening…';
+    if (inputManual) inputManual.value = combined; // just fill the textbox, don't submit
+    // Intentionally do not change micStatus to “Heard …”
   };
 
   rec.onend = ()=>{
     dictationActive = false;
     micBtn.textContent = 'Start Listening';
-    micStatus.textContent = accFinal ? `Heard: “${accFinal.trim()}”` : 'Idle';
-    // Text remains in #st_manual; user can press Record to submit
+    micStatus.textContent = 'Idle';
   };
 
   rec.onerror = ()=>{
@@ -2994,7 +2993,7 @@ if (rec){
 micBtn.addEventListener('click', ()=>{
   if (!dictationActive) startMic(); else stopMic();
 });
-
+// ===== /Voice recognition =====
 
       // ===== Manual entry =====
       (()=>{
@@ -3122,58 +3121,70 @@ micBtn.addEventListener('click', ()=>{
         return aliases.some(a => norm.includes(a.replace(/[^a-z0-9]/g,'')));
       }
 
-      function _expandPairwise(playersResolved, primaryKey, rawText){
-        const actions = [];
-        if (!playersResolved.length || !primaryKey) return actions;
-        const A = playersResolved[0], B = playersResolved[1];
+      // Natural pair rules (single & two-player) — updated order & logic per spec
+function _expandPairwise(players, primaryKey, rawText){
+  const actions = [];
+  if (!players.length || !primaryKey) return actions;
 
-        const kCompletion   = _resolveKeyAlias('completion')             || 'completion';
-        const kReception    = _resolveKeyAlias('reception')              || 'reception';
-        const kInterThrown  = _resolveKeyAlias('interception thrown')    || 'interception thrown';
-        const kDefPick      = _resolveKeyAlias('defensive pick')         || 'defensive pick';
-        const kTarget       = _resolveKeyAlias('target')                 || 'target';
-        const kIncomp       = _resolveKeyAlias('incomplete')             || 'incomplete';
-        const kPass         = _resolveKeyAlias('pass');
-        const kComplete     = _resolveKeyAlias('complete') || _resolveKeyAlias('completion');
-        const kThrows       = _resolveKeyAlias('throws');
-        const kRush         = _resolveKeyAlias('rush')                   || 'rush';
-        const kDrop         = _resolveKeyAlias('drop')                   || 'drop';
+  const A = players[0], B = players[1];
 
-        const key = primaryKey;
+  const kCompletion   = _resolveKeyAlias('completion')             || 'completion';
+  const kReception    = _resolveKeyAlias('reception')              || 'reception';
+  const kInterThrown  = _resolveKeyAlias('interception thrown')    || 'interception thrown';
+  const kDefPick      = _resolveKeyAlias('defensive pick')         || 'defensive pick';
+  const kTarget       = _resolveKeyAlias('target')                 || 'target';
+  const kIncomp       = _resolveKeyAlias('incomplete')             || 'incomplete';
+  const kPass         = _resolveKeyAlias('pass');
+  const kComplete     = _resolveKeyAlias('complete') || _resolveKeyAlias('completion');
+  const kThrows       = _resolveKeyAlias('throws');
+  const kRush         = _resolveKeyAlias('rush')                   || 'rush';
+  const kDrop         = _resolveKeyAlias('drop')                   || 'drop';
 
-        // “A incomplete to B drop” → B drop only
-        if (B && _mentions('incomplete', rawText) && _mentions('drop', rawText)) {
-          actions.push({ its:B.its, stat:kDrop }); return actions;
-        }
+  const key = primaryKey;
 
-        if (B) {
-          // Completion family
-          if (key === kCompletion || key === kPass || key === kComplete || (kThrows && key === kThrows)) {
-            actions.push({ its:A.its, stat:kCompletion });
-            actions.push({ its:B.its, stat:kReception  });
-            return actions;
-          }
-          // Interception: A interception thrown, B defensive pick
-          if (key === kInterThrown || key === kDefPick || _mentions('interception', rawText) || _mentions('pick', rawText)) {
-            actions.push({ its:A.its, stat:kInterThrown });
-            actions.push({ its:B.its, stat:kDefPick    });
-            return actions;
-          }
-          // Target / Incomplete pairing
-          if (key === kTarget || _mentions('target', rawText)) {
-            actions.push({ its:A.its, stat:kIncomp });
-            actions.push({ its:B.its, stat:kTarget });
-            return actions;
-          }
-        }
+  // 1) DROP OVERRIDE: “A pass/complete/anything to B drop” → ONLY B drop
+  //    (covers “A incomplete to B drop” and “A pass to B drop” etc.)
+  if (B && _mentionsStat('drop', rawText)) {
+    actions.push({ its:B.its, stat:kDrop });
+    return actions;
+  }
 
-        // Single-actor rush
-        if (!B && key === kRush) { actions.push({ its:A.its, stat:kRush }); return actions; }
+  // 2) INTERCEPTION/PICK must beat completion:
+  //    “A throws interception/pick to B” → A interception thrown, B defensive pick
+  //    (A should NOT get completion)
+  if (B && (key === kInterThrown || key === kDefPick ||
+            _mentionsStat('interception', rawText) || _mentionsStat('pick', rawText))) {
+    actions.push({ its:A.its, stat:kInterThrown });
+    actions.push({ its:B.its, stat:kDefPick    });
+    return actions;
+  }
 
-        // Fallback: single actor gets the key
-        actions.push({ its:A.its, stat:key });
-        return actions;
-      }
+  // 3) INCOMPLETE TO B → A incomplete, B target
+  //    (works even if only “incomplete … to B” is said without the word “target”)
+  if (B && (key === kIncomp || _mentionsStat('incomplete', rawText))) {
+    actions.push({ its:A.its, stat:kIncomp });
+    actions.push({ its:B.its, stat:kTarget });
+    return actions;
+  }
+
+  // 4) Completion/pass/throws → A completion, B reception
+  if (B && (key === kCompletion || key === kPass || key === kComplete || (kThrows && key === kThrows))) {
+    actions.push({ its:A.its, stat:kCompletion });
+    actions.push({ its:B.its, stat:kReception  });
+    return actions;
+  }
+
+  // 5) Single-actor rush
+  if (!B && key === kRush) {
+    actions.push({ its:A.its, stat:kRush });
+    return actions;
+  }
+
+  // Fallback: single actor gets the key
+  actions.push({ its:A.its, stat:key });
+  return actions;
+}
+
 
       function _detectScoreIntent(text){
         const t = String(text||'').toLowerCase();
