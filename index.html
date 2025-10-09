@@ -2505,9 +2505,15 @@ function actDropout(eventId, its, btn){
   function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
   function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
 
-  // Fingerprint helpers (eventId|its|stat|time)
+  // Fingerprint helpers (eventId|game|its|stat|time)
   function _makeFP(it){
-    return [String(it.eventId||''), String(it.its||''), String(it.stat||''), String(it.time||'')].join('|');
+    return [
+      String(it.eventId||''),
+      String(it.game||''),
+      String(it.its||''),
+      String(it.stat||''),
+      String(it.time||'')
+    ].join('|');
   }
   function _loadDedup(){ try{ return JSON.parse(localStorage.getItem(DKEY)||'{}'); }catch(_){ return {}; } }
   function _saveDedup(map){ localStorage.setItem(DKEY, JSON.stringify(map||{})); }
@@ -2539,7 +2545,8 @@ function actDropout(eventId, its, btn){
     const keep = [];
     for (const it of q){
       try{
-        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time);
+        // server expected to accept (..., raw, time, game)
+        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time, it.game);
         // No duplicate preview during flush
       }catch(_){ keep.push(it); }
     }
@@ -2656,6 +2663,28 @@ function actDropout(eventId, its, btn){
                 '<label class="label">Event</label>'+
                 '<select id="st_evt" class="input"></select>'+
               '</div>'+
+
+              // GAME SELECT
+              '<div class="col" style="min-width:120px">'+
+                '<label class="label">Game</label>'+
+                '<select id="st_game" class="input"></select>'+
+              '</div>'+
+
+              // SCOREBOX
+              '<div class="col" style="min-width:260px">'+
+                '<label class="label">Score</label>'+
+                '<div id="st_score" class="stack" style="gap:6px">'+
+                  '<div class="row" style="align-items:center;gap:8px">'+
+                    '<div id="st_score_teamA" class="tiny muted" style="min-width:120px">Team A</div>'+
+                    '<div id="st_score_valA" class="badge" style="font-size:22px">0</div>'+
+                  '</div>'+
+                  '<div class="row" style="align-items:center;gap:8px">'+
+                    '<div id="st_score_teamB" class="tiny muted" style="min-width:120px">Team B</div>'+
+                    '<div id="st_score_valB" class="badge" style="font-size:22px">0</div>'+
+                  '</div>'+
+                '</div>'+
+              '</div>'+
+
               '<div class="col">'+
                 '<label class="label">Stats you can record</label>'+
                 '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
@@ -2665,11 +2694,14 @@ function actDropout(eventId, its, btn){
                   '<button class="btn" id="st_add">Record</button>'+
                 '</div>'+
               '</div>'+
-              '<div class="col" style="min-width:220px">'+
+              '<div class="col" style="min-width:240px">'+
                 '<label class="label">Voice</label>'+
-                '<div class="row">'+
+                '<div class="row" style="align-items:center;gap:10px">'+
                   '<button class="btn" id="st_mic">Start Listening</button>'+
-                  '<div id="st_mic_status" class="tiny muted" style="align-self:center">Idle</div>'+
+                  '<div class="stack" style="gap:2px">'+
+                    '<div id="st_mic_status" class="tiny muted">Idle</div>'+
+                    '<div id="st_posting" class="tiny muted"></div>'+
+                  '</div>'+
                 '</div>'+
               '</div>'+
             '</div>'+
@@ -2680,7 +2712,7 @@ function actDropout(eventId, its, btn){
                 '<div class="label">Recorded (this event)</div>'+
                 '<div id="st_list"></div>'+
                 '<div class="tiny muted" id="st_hint"></div>'+
-              '</div>'+
+              </div>'+
             '</div>'+
             '<div class="col">'+
               '<div class="card stack">'+
@@ -2693,15 +2725,27 @@ function actDropout(eventId, its, btn){
       );
       layout(node);
 
-      // Fill event select: label for humans, value is the ID (important!)
+      // Fill event select
       const sel = $('#st_evt');
+      const selGame = $('#st_game');
       const LAST_KEY = 'statkit.lastEventId';
-      const lastId = localStorage.getItem(LAST_KEY);
 
+      // Build Game dropdown 1..99
+      (function buildGameSelect(){
+        selGame.innerHTML = '';
+        for (let i=1;i<=99;i++){
+          const o = document.createElement('option');
+          o.value = String(i);
+          o.textContent = String(i);
+          selGame.appendChild(o);
+        }
+      })();
+
+      const lastId = localStorage.getItem(LAST_KEY);
       evOptions.forEach(e=>{
         const o = document.createElement('option');
-        o.value = e.id;                   // value = ID
-        o.textContent = e.label || e.id;  // show same label as Receipts
+        o.value = e.id;
+        o.textContent = e.label || e.id;
         sel.appendChild(o);
       });
 
@@ -2710,7 +2754,19 @@ function actDropout(eventId, its, btn){
       }
       if (!sel.value && evOptions[0]) sel.value = evOptions[0].id;
 
+      // Pick default game for this event (remember per-event)
+      function _gameKeyForEvent(eid){ return `statkit.lastGame.${eid}`; }
+      function _loadGameForEvent(eid){
+        const v = localStorage.getItem(_gameKeyForEvent(eid));
+        return (v && /^\d+$/.test(v)) ? v : '1';
+      }
+      function _saveGameForEvent(eid, v){
+        localStorage.setItem(_gameKeyForEvent(eid), String(v||'1'));
+      }
+
       state.tmp.stat_event_id = sel.value || '';
+      selGame.value = _loadGameForEvent(state.tmp.stat_event_id);
+      state.tmp.stat_game = selGame.value;
 
       // One-time initial sport sync from current option label
       (()=>{
@@ -2724,15 +2780,18 @@ function actDropout(eventId, its, btn){
       })();
 
       // ===== Jersey Map (uses Jerseys tab name) =====
-      function renderJersey(){
+      function renderJersey(onlyTeams){
         const box = $('#st_jersey');
-        const rows = [...jerseysArr]
+        const filtered = Array.isArray(onlyTeams) && onlyTeams.length
+          ? jerseysArr.filter(j => onlyTeams.includes(String(j.team||'').trim()))
+          : jerseysArr;
+
+        const rows = [...filtered]
           .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
           .map(j=>{
             const team = String(j.team||'').trim();
             const num  = String(j.number||'').trim();
             const nm   = String(j.name||'').trim();
-            // requested format: "<number> <team> - <name>"
             return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:6px 0">'+
                      '<div>'+esc(num)+' '+esc(team||'')+' - '+esc(nm||'')+'</div>'+
                      '<div class="tiny"></div>'+
@@ -2741,6 +2800,93 @@ function actDropout(eventId, its, btn){
         box.innerHTML = rows;
       }
       renderJersey();
+
+      // ===== Scorebox helpers =====
+      function _parseTimeStr(s){
+        if (!s) return null;
+        const m = String(s).match(/^(\d{2}):(\d{2})(am|pm)\s+(\d{2})\/(\d{2})\/(\d{4})$/i);
+        if (!m) return null;
+        let h = parseInt(m[1],10), mi = parseInt(m[2],10);
+        const ampm = m[3].toLowerCase();
+        const month = parseInt(m[4],10)-1, day=parseInt(m[5],10), year=parseInt(m[6],10);
+        if (ampm === 'pm' && h !== 12) h += 12;
+        if (ampm === 'am' && h === 12) h = 0;
+        return new Date(year, month, day, h, mi, 0, 0);
+      }
+
+      function _renderScorebox(list){
+        // Determine which two teams to display
+        const seenTeams = [];
+        list.forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          const t = meta.team || '';
+          if (t && !seenTeams.includes(t)) seenTeams.push(t);
+        });
+        let teams = seenTeams.slice(0,2);
+        if (teams.length < 2){
+          for (const j of jerseysArr){
+            const t = String(j.team||'').trim();
+            if (t && !teams.includes(t)) teams.push(t);
+            if (teams.length >= 2) break;
+          }
+        }
+        const [teamA, teamB] = [teams[0]||'Team A', teams[1]||'Team B'];
+
+        // Update labels
+        $('#st_score_teamA').textContent = teamA;
+        $('#st_score_teamB').textContent = teamB;
+
+        // Canonical keys
+        const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+        const k1  = _resolveKeyAlias('1 point')   || '1 point';
+        const k2  = _resolveKeyAlias('2 point')   || '2 point';
+        const k3  = _resolveKeyAlias('3 point')   || '3 point';
+
+        // Collect events per team with timestamps
+        const evByTeam = {};
+        list.forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          const team = meta.team || '';
+          if (!team) return;
+          const d = _parseTimeStr(r.time || '');
+          if (!d) return;
+          (evByTeam[team] ||= []).push({ t:d.getTime(), stat:String(r.stat||'') });
+        });
+        Object.values(evByTeam).forEach(arr=>arr.sort((a,b)=>a.t-b.t));
+
+        // 2-min window accumulators (per team; independent TD/XP windows)
+        function calcScore(team){
+          const arr = evByTeam[team] || [];
+          let score = 0;
+          let lastTdStart = -Infinity;
+          let lastXpStart = -Infinity;
+          const WIN = 2*60*1000;
+
+          for (const e of arr){
+            if (e.stat === kTD){
+              if (e.t - lastTdStart > WIN){
+                score += 6;
+                lastTdStart = e.t;
+              }
+            }else if (e.stat === k1 || e.stat === k2 || e.stat === k3){
+              const pts = (e.stat === k3) ? 3 : (e.stat === k2 ? 2 : 1);
+              if (e.t - lastXpStart > WIN){
+                score += pts;
+                lastXpStart = e.t;
+              }
+            }
+          }
+          return score;
+        }
+
+        const sA = calcScore(teamA);
+        const sB = calcScore(teamB);
+        $('#st_score_valA').textContent = String(sA);
+        $('#st_score_valB').textContent = String(sB);
+
+        // Filter jersey map to these two teams once we have two distinct teams recorded
+        renderJersey(teams.length === 2 ? teams : null);
+      }
 
       // ===== Recorded list (newest first) =====
       async function loadEventRows(){
@@ -2751,6 +2897,7 @@ function actDropout(eventId, its, btn){
         const res  = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
         const list = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
         _renderList(list);
+        _renderScorebox(list);
       }
 
       function _renderList(list){
@@ -2814,10 +2961,16 @@ function actDropout(eventId, its, btn){
       }
       window._statkit_renderRowLocal = renderRowLocal;
 
-      // Change event → remember selection + reload (+ infer sport + rebuild aliases)
+      // Event change
       sel.addEventListener('change', ()=>{
         state.tmp.stat_event_id = sel.value || '';
         localStorage.setItem(LAST_KEY, state.tmp.stat_event_id || '');
+
+        // load saved game for this event
+        const gv = _loadGameForEvent(state.tmp.stat_event_id);
+        selGame.value = gv;
+        state.tmp.stat_game = gv;
+
         // Infer sport from "Sport - Name - Date"
         const opt = sel.options[sel.selectedIndex];
         const label = opt ? (opt.textContent || '') : '';
@@ -2832,9 +2985,16 @@ function actDropout(eventId, its, btn){
         loadEventRows();
       });
 
+      // Game change (remember per event)
+      selGame.addEventListener('change', ()=>{
+        state.tmp.stat_game = selGame.value || '1';
+        _saveGameForEvent(state.tmp.stat_event_id, state.tmp.stat_game);
+      });
+
       // ===== Voice recognition =====
       const micBtn = $('#st_mic');
       const micStatus = $('#st_mic_status');
+      const micPosting = $('#st_posting');
       const rec = _statkit_makeRecognizer();
 
       function startMic(){
@@ -2843,6 +3003,7 @@ function actDropout(eventId, its, btn){
         rec.start();
         micBtn.textContent = 'Stop Listening';
         micStatus.textContent = 'Listening…';
+        micPosting.textContent = '';
       }
       function stopMic(){
         if (rec) try{ rec.stop(); }catch(_){}
@@ -2853,7 +3014,6 @@ function actDropout(eventId, its, btn){
         if (micBtn.textContent.startsWith('Start')) startMic(); else stopMic();
       });
 
-      // (kept your current behavior; no changes here)
       let _lastHeard = { text:'', ts:0 };
       if (rec){
         rec.onresult = async (ev)=>{
@@ -2873,7 +3033,13 @@ function actDropout(eventId, its, btn){
 
           const s = document.getElementById('st_mic_status');
           if (s) s.textContent = 'Heard: “'+esc(t)+'”';
+
+          // Live preview of what will be posted
+          const preview = _buildPostingPreview(t);
+          micPosting.textContent = preview ? ('Posting: '+preview) : '';
+
           await _statkit_processCommand(t);
+          setTimeout(()=>{ micPosting.textContent = ''; }, 1500);
         };
         rec.onend   = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
         rec.onerror = ()=>{ micBtn.textContent = 'Start Listening'; micStatus.textContent = 'Idle'; };
@@ -2892,6 +3058,10 @@ function actDropout(eventId, its, btn){
           btn.setAttribute('aria-busy','1');
           btn.disabled = true;
           btn.textContent = 'Recording…';
+
+          const preview = _buildPostingPreview(v);
+          if (micPosting) micPosting.textContent = preview ? ('Posting: '+preview) : '';
+
           try{
             await _statkit_processCommand(v);
             input.value = '';
@@ -2900,6 +3070,7 @@ function actDropout(eventId, its, btn){
             btn.removeAttribute('aria-busy');
             btn.textContent = orig;
             input.focus();
+            setTimeout(()=>{ if (micPosting) micPosting.textContent=''; }, 1500);
           }
         }
 
@@ -2917,28 +3088,22 @@ function actDropout(eventId, its, btn){
         return `${pad(h)}:${pad(m)}${ampm} ${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()}`;
       }
 
-      // Normalize text lightly (keep words)
       function _clean(s){
         return String(s||'')
           .toLowerCase()
-          .replace(/[^\w\s]/g,' ')  // punctuation -> space
+          .replace(/[^\w\s]/g,' ')
           .replace(/\s+/g,' ')
           .trim();
       }
 
-      // Extract a jersey number from digits *or* number words (0..99)
       function _extractNumber(text){
         // Prefer immediate digits if present
         const digit = String(text||'').match(/\b(\d{1,3})\b/);
         if (digit) return parseInt(digit[1], 10);
-
-        const ones = {
-          zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
+        const ones = {zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
           ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
-          sixteen:16, seventeen:17, eighteen:18, nineteen:19
-        };
+          sixteen:16, seventeen:17, eighteen:18, nineteen:19};
         const tens = { twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90 };
-
         const toks = _clean(text).split(' ');
         for (let i=0; i<toks.length; i++){
           const t = toks[i];
@@ -2952,7 +3117,30 @@ function actDropout(eventId, its, btn){
         return null;
       }
 
-      // Resolve arbitrary alias to canonical key (exact or space-tight)
+      // --- prefer non-scoring base action even if scoring words present ---
+      function _isScoringKey(key){
+        if (!key) return false;
+        const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+        const k1  = _resolveKeyAlias('1 point')   || '1 point';
+        const k2  = _resolveKeyAlias('2 point')   || '2 point';
+        const k3  = _resolveKeyAlias('3 point')   || '3 point';
+        return key === kTD || key === k1 || key === k2 || key === k3;
+      }
+      function _findPrimaryActionKey(text){
+        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+        const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
+        const seen = new Set(); const matches = [];
+        for (const an of aliasesCollapsed){
+          if (norm.includes(an)){
+            const originalAlias = _aliasIndex.collapsed[an][0];
+            const key = statMap[originalAlias];
+            if (key && !seen.has(key)){ seen.add(key); matches.push(key); }
+          }
+        }
+        const nonScoring = matches.find(k => !_isScoringKey(k));
+        return nonScoring || matches[0] || null;
+      }
+
       function _resolveKeyAlias(raw){
         if (!raw) return null;
         const norm = String(raw).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
@@ -2964,48 +3152,12 @@ function actDropout(eventId, its, btn){
         return null;
       }
 
-      // Check if a given stat (by any alias) is mentioned in text
       function _mentionsStat(aliasLike, text){
         const key = _resolveKeyAlias(aliasLike);
         if (!key) return false;
         const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-        // any alias that resolves to this key
         const aliases = Object.entries(statMap).filter(([a,k])=>k===key).map(([a])=>a);
         return aliases.some(a => norm.includes(a.replace(/[^a-z0-9]/g,'')));
-      }
-
-      // Is this a scoring stat (TD or 1/2/3 point)?
-      function _isScoringKey(key){
-        if (!key) return false;
-        const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
-        const k1  = _resolveKeyAlias('1 point')   || '1 point';
-        const k2  = _resolveKeyAlias('2 point')   || '2 point';
-        const k3  = _resolveKeyAlias('3 point')   || '3 point';
-        return key === kTD || key === k1 || key === k2 || key === k3;
-      }
-
-      // Prefer a non-scoring primary action if scoring + action both appear
-      function _findPrimaryActionKey(text){
-        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,''); // collapse spaces/hyphens
-        const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
-
-        const seen = new Set();
-        const matches = [];
-
-        for (const an of aliasesCollapsed){
-          if (norm.includes(an)){
-            const originalAlias = _aliasIndex.collapsed[an][0];
-            const key = statMap[originalAlias];
-            if (key && !seen.has(key)){
-              seen.add(key);
-              matches.push(key);
-            }
-          }
-        }
-
-        // pick first non-scoring if available, else first match
-        const nonScoring = matches.find(k => !_isScoringKey(k));
-        return nonScoring || matches[0] || null;
       }
 
       // Extract up to two players — supports BOTH orders:
@@ -3036,10 +3188,8 @@ function actDropout(eventId, its, btn){
         const out = [];
         let i = 0;
         while (i < L && out.length < 2){
-          // Try TEAM at i then NUMBER after
           const tHit = findTeamAt(i);
           if (tHit){
-            // search for next number within next 3 tokens
             let j = i + tHit.span;
             let nHit = null;
             for (let k=j; k<Math.min(L, j+3); k++){
@@ -3053,7 +3203,6 @@ function actDropout(eventId, its, btn){
             }
           }
 
-          // Try NUMBER at i then TEAM after
           const nHit0 = findNumberAt(i);
           if (nHit0){
             let j = i + nHit0.span;
@@ -3072,7 +3221,6 @@ function actDropout(eventId, its, btn){
           i++;
         }
 
-        // resolve ITS mapping; drop if unmapped
         const resolved = [];
         for (const p of out){
           const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
@@ -3081,50 +3229,60 @@ function actDropout(eventId, its, btn){
         return resolved;
       }
 
-      // Build per-player actions for non-override rules (pairs)
+      // Natural pair rules (single & two-player)
       function _expandPairwise(players, primaryKey, rawText){
         const actions = [];
         if (!players.length || !primaryKey) return actions;
 
         const A = players[0], B = players[1];
 
-        // Canonical keys we might need to synthesize
-        const kCompletion = _resolveKeyAlias('completion') || 'completion';
-        const kReception  = _resolveKeyAlias('reception')  || 'reception';
-        const kInterc     = _resolveKeyAlias('interception thrown') || 'interception thrown';
-        const kPick       = _resolveKeyAlias('defensive pick') || 'defensive pick';
-        const kTarget     = _resolveKeyAlias('target') || 'target';
-        const kIncomp     = _resolveKeyAlias('incomplete') || 'incomplete';
-        const kPass       = _resolveKeyAlias('pass');
-        const kComplete   = _resolveKeyAlias('complete') || _resolveKeyAlias('completion');
-        const kThrows     = _resolveKeyAlias('throws'); // may be null if not listed
+        const kCompletion   = _resolveKeyAlias('completion')             || 'completion';
+        const kReception    = _resolveKeyAlias('reception')              || 'reception';
+        const kInterThrown  = _resolveKeyAlias('interception thrown')    || 'interception thrown';
+        const kDefPick      = _resolveKeyAlias('defensive pick')         || 'defensive pick';
+        const kTarget       = _resolveKeyAlias('target')                 || 'target';
+        const kIncomp       = _resolveKeyAlias('incomplete')             || 'incomplete';
+        const kPass         = _resolveKeyAlias('pass');
+        const kComplete     = _resolveKeyAlias('complete') || _resolveKeyAlias('completion');
+        const kThrows       = _resolveKeyAlias('throws');
+        const kRush         = _resolveKeyAlias('rush')                   || 'rush';
+        const kDrop         = _resolveKeyAlias('drop')                   || 'drop';
 
         const key = primaryKey;
 
-        // Special rule: “A incomplete to B drop” → B drop only
+        // “A incomplete to B drop” → B drop only
         if (B && _mentionsStat('incomplete', rawText) && _mentionsStat('drop', rawText)) {
-          const kDrop = _resolveKeyAlias('drop') || 'drop';
           actions.push({ its:B.its, stat:kDrop });
           return actions;
         }
 
         if (B) {
-          // Two-player forms
+          // Completion family
           if (key === kCompletion || key === kPass || key === kComplete || (kThrows && key === kThrows)) {
             actions.push({ its:A.its, stat:kCompletion });
             actions.push({ its:B.its, stat:kReception  });
             return actions;
           }
-          if (key === kInterc || key === kPick) {
-            actions.push({ its:A.its, stat:kInterc });
-            actions.push({ its:B.its, stat:kPick  });
+          // Interception: A interception thrown, B defensive pick
+          // (aliases “interception” / “pick” in your sheet should resolve to these canonicals)
+          if (key === kInterThrown || key === kDefPick ||
+              _mentionsStat('interception', rawText) || _mentionsStat('pick', rawText)) {
+            actions.push({ its:A.its, stat:kInterThrown });
+            actions.push({ its:B.its, stat:kDefPick    });
             return actions;
           }
+          // Target / Incomplete pairing
           if (key === kTarget || _mentionsStat('target', rawText)) {
             actions.push({ its:A.its, stat:kIncomp });
             actions.push({ its:B.its, stat:kTarget });
             return actions;
           }
+        }
+
+        // Single-actor rush
+        if (!B && key === kRush) {
+          actions.push({ its:A.its, stat:kRush });
+          return actions;
         }
 
         // Fallback: single actor gets the key
@@ -3147,85 +3305,130 @@ function actDropout(eventId, its, btn){
         return null;
       }
 
-      // Main parser → { players:[...], actions:[{its,stat}], override:'TD'|'XP'|null, xpPoints? }
+      // Main parse → players + baseActions + possible overrides
       function _parseCommand(text){
         const players = _extractPlayersFromText(text);
         if (!players.length) return null;
 
         const override = _detectScoreIntent(text);
-        // Choose primary non-scoring action (so base pair actions still happen)
+
+        // Prefer non-scoring action as the primary when both appear
         const primaryKey = _findPrimaryActionKey(text);
+        const base = primaryKey ? _expandPairwise(players, primaryKey, text) : [];
 
-        if (override && override.mode === 'TD') {
-          return { players, actions: [], override:'TD', primaryKey };
-        }
-        if (override && override.mode === 'XP') {
-          return { players, actions: [], override:'XP', xpPoints: override.points, primaryKey };
-        }
+        if (override && override.mode === 'TD')  return { players, baseActions: base, override:'TD', raw:text };
+        if (override && override.mode === 'XP')  return { players, baseActions: base, override:'XP', xpPoints: override.points, raw:text };
 
-        if (!primaryKey) return null;
-
-        const pairActions = _expandPairwise(players, primaryKey, text);
-        return { players, actions: pairActions, override: null, primaryKey };
+        if (!base.length) return null; // no meaningful stat found
+        return { players, baseActions: base, override: null, raw:text };
       }
 
-      // ---------- Recorder (unchanged mic; quiet offline) ----------
+      // Determine if this parsed command is an interception context (has A thrown + B pick)
+      function _isInterceptionContext(parsed){
+        const kInterThrown  = _resolveKeyAlias('interception thrown') || 'interception thrown';
+        const kDefPick      = _resolveKeyAlias('defensive pick')     || 'defensive pick';
+        const stats = new Set((parsed.baseActions||[]).map(a=>a.stat));
+        return stats.has(kInterThrown) && stats.has(kDefPick);
+      }
+
+      // Build preview string from a raw command
+      function _buildPostingPreview(text){
+        const p = _parseCommand(text);
+        if (!p) return '';
+        const actions = _combineBaseAndOverrides(p);
+        const gameNum = state.tmp.stat_game || '1';
+        const labels = actions.map(a=>{
+          const meta = itsToMeta[a.its] || {};
+          const person = `${meta.team||''} ${meta.number||''} - ${meta.name||''}`.trim();
+          return `${person} — ${a.stat} (G${gameNum})`;
+        });
+        return labels.join('; ');
+      }
+
+      // Combine base pairwise actions + global overrides (TD/XP) and de-dupe
+      function _combineBaseAndOverrides(parsed){
+        let actions = [...(parsed.baseActions || [])];
+
+        // Add override stats with interception exception:
+        // - For completion/reception, TD/XP → both players
+        // - For interception/pick, TD/XP → ONLY defender (B) i.e., whoever got defensive pick
+        if (parsed.override === 'TD' || parsed.override === 'XP'){
+          const interceptionCtx = _isInterceptionContext(parsed);
+
+          // who gets the override?
+          let targetsIts;
+          if (interceptionCtx){
+            const kDefPick = _resolveKeyAlias('defensive pick') || 'defensive pick';
+            targetsIts = Array.from(new Set((parsed.baseActions||[])
+              .filter(a => a.stat === kDefPick)
+              .map(a => a.its)));
+          }else{
+            targetsIts = Array.from(new Set(parsed.players.map(p=>p.its)));
+          }
+
+          if (parsed.override === 'TD'){
+            const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+            actions.push(...targetsIts.map(its => ({ its, stat:kTD })));
+          }else if (parsed.override === 'XP'){
+            const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
+            const key2 = _resolveKeyAlias('2 point') || '2 point';
+            const key3 = _resolveKeyAlias('3 point') || '3 point';
+            const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
+            actions.push(...targetsIts.map(its => ({ its, stat:key })));
+          }
+        }
+
+        // De-dupe same (its, stat)
+        const seen = new Set();
+        actions = actions.filter(a=>{
+          const k = `${a.its}::${a.stat}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        return actions;
+      }
+
+      // ---------- Recorder ----------
       async function _statkit_processCommand(text){
         if (!state.tmp.stat_event_id){
           if (navigator.onLine) alert('Pick an event first');
-          else {
-            const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first';
-          }
+          else { const s = document.getElementById('st_mic_status'); if (s) s.textContent = 'Pick an event first'; }
           return;
         }
 
         const parsed = _parseCommand(text);
-
         if (!parsed){
           if (!navigator.onLine){
             const s = document.getElementById('st_mic_status');
             if (s) s.textContent = 'Could not parse (offline)';
             return;
           }
-          // Online helper: show canonical list only (no parentheses)
           const keys = Object.keys((_aliasIndex && _aliasIndex.keyToAliases) || {});
           alert(
             'Could not parse.\n\n' +
             'Try phrases like:\n' +
             ' • "19 Red pass to 18 Red for touchdown"\n' +
             ' • "7 White incomplete to White 10"\n' +
-            ' • "Lime 4 interception to Red 19"\n\n' +
+            ' • "Blue 4 interception to Red 19 for touchdown"\n\n' +
             'Recognized stats: ' + (keys.sort().join(' • ') || '—')
           );
           return;
         }
 
-        // Build action set with overrides
-        let actions = parsed.actions || [];
+        // Combine base + overrides per your rule (with interception exception)
+        const actions = _combineBaseAndOverrides(parsed);
         const timeStr = _fmtTime(new Date());
+        const gameNum = state.tmp.stat_game || '1';
 
-        // Add scoring overrides on top of any base actions (pairwise), with interception special-case
-        if (parsed.override === 'TD'){
-          const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
-          if (parsed.primaryKey && (parsed.primaryKey === _resolveKeyAlias('interception thrown') || parsed.primaryKey === _resolveKeyAlias('defensive pick'))) {
-            // Interception case: only last player gets TD
-            const last = parsed.players[parsed.players.length-1];
-            if (last) actions.push({ its:last.its, stat:kTD });
-          } else {
-            // Otherwise, all mentioned players get TD
-            const uniqIts = Array.from(new Set(parsed.players.map(p=>p.its)));
-            uniqIts.forEach(its => actions.push({ its, stat: kTD }));
-          }
-        } else if (parsed.override === 'XP'){
-          const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
-          const key2 = _resolveKeyAlias('2 point') || '2 point';
-          const key3 = _resolveKeyAlias('3 point') || '3 point';
-          const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
-          const uniqIts = Array.from(new Set(parsed.players.map(p=>p.its)));
-          uniqIts.forEach(its => actions.push({ its, stat: key }));
+        const micPosting = $('#st_posting');
+        if (micPosting){
+          micPosting.textContent = 'Posting: ' + actions.map(a=>{
+            const m = itsToMeta[a.its] || {};
+            return `${m.team||''} ${m.number||''} - ${m.name||''} — ${a.stat} (G${gameNum})`;
+          }).join('; ');
         }
 
-        // Record each action; de-dupe locally & queue if offline
         for (const a of actions){
           const recObj = {
             adminIts: state.user.its,
@@ -3233,11 +3436,12 @@ function actDropout(eventId, its, btn){
             its:      a.its,
             stat:     a.stat,
             raw:      text,
-            time:     timeStr
+            time:     timeStr,
+            game:     gameNum
           };
 
           const fp = _makeFP(recObj);
-          if (_seenFP(fp, 60000)){  // ignore repeats within 60s
+          if (_seenFP(fp, 60000)){
             const s = document.getElementById('st_mic_status');
             if (s) s.textContent = 'Duplicate ignored';
             continue;
@@ -3255,8 +3459,7 @@ function actDropout(eventId, its, btn){
           }
 
           try{
-            await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time);
-            // reload list at the end
+            await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time, recObj.game);
           }catch(e){
             let q = loadQ();
             if (!q.some(x => _makeFP(x) === fp)){
@@ -3269,6 +3472,7 @@ function actDropout(eventId, its, btn){
         if (navigator.onLine){
           await loadEventRows();
         }
+        setTimeout(()=>{ const p = $('#st_posting'); if (p) p.textContent = ''; }, 1500);
       }
 
       // Initial load & flush any queued
@@ -3283,7 +3487,7 @@ function actDropout(eventId, its, btn){
   // Expose page
   window.pageStat = pageStat;
 
-  // Utilities (use your existing helpers if present)
+  // Utilities
   function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
   function _statkit_makeRecognizer(){
@@ -3298,6 +3502,11 @@ function actDropout(eventId, its, btn){
 
 })(); // end IIFE
 /* =================== /STATKIT (client) =================== */
+
+
+
+
+
 
 </script>
 
