@@ -2616,74 +2616,123 @@ function actDropout(eventId, its, btn){
         return;
       }
 
+// --- STATKIT layout CSS (insert once) ---
+if (!document.getElementById('statkit-layout-css')) {
+  document.head.insertAdjacentHTML('beforeend', `
+  <style id="statkit-layout-css">
+    /* form layout */
+    .st-form { display:grid; grid-template-columns: 1fr; gap:12px; }
+    .st-field { display:flex; flex-direction:column; gap:6px; }
+    .st-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .st-manual-row { display:flex; gap:8px; align-items:center; }
+    .st-manual-row input { flex:1; }
+    .st-voice { display:flex; align-items:center; gap:10px; }
+
+    /* desktop: chips on next line; voice under manual */
+    @media (min-width: 900px) {
+      .st-form {
+        grid-template-columns: 1.2fr 0.6fr;
+        grid-template-areas:
+          "event game"
+          "chips chips"
+          "manual manual"
+          "voice voice";
+      }
+      .st-field.event  { grid-area:event; }
+      .st-field.game   { grid-area:game; }
+      .st-field.chips  { grid-area:chips; }
+      .st-field.manual { grid-area:manual; }
+      .st-field.voice  { grid-area:voice; }
+    }
+
+    /* Scoreboard */
+    .st-score-card { padding:14px; border:1px solid var(--border); border-radius:12px; }
+    .st-score-row {
+      display:grid;
+      grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+      align-items:center; gap:10px;
+    }
+    .st-team-wrap { display:flex; align-items:center; gap:12px; }
+    .st-team-right { justify-content:flex-end; }
+    .st-team {
+      font-weight:700; text-transform:uppercase;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      font-size: clamp(12px, 2.8vw, 14px);
+    }
+    .st-score { font-size: clamp(28px, 8vw, 46px); font-weight:800; line-height:1; }
+    .st-vs { font-size: clamp(12px, 2.5vw, 14px); opacity:.65; white-space:nowrap; padding:0 8px; }
+  </style>`);
+}
+
+
       // ===== UI =====
 const node = el(
   '<div class="stack">'+
 
-    // ── Card: Controls (Event/Game + stats list + manual + voice) ─────────────
+    // Main controls card
     '<div class="card stack">'+
-      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'+
-        '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
-      '</div>'+
-      '<div class="row">'+
-        '<div class="col">'+
+      '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
+      '<div class="st-form">'+
+
+        // Event
+        '<div class="st-field event">'+
           '<label class="label">Event</label>'+
           '<select id="st_evt" class="input"></select>'+
         '</div>'+
-        '<div class="col" style="min-width:120px">'+
+
+        // Game
+        '<div class="st-field game">'+
           '<label class="label">Game</label>'+
           '<select id="st_game" class="input"></select>'+
         '</div>'+
 
-        '<div class="col">'+
+        // Chips (full-width row on desktop)
+        '<div class="st-field chips">'+
           '<label class="label">Stats you can record</label>'+
-          '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
+          '<div id="st_statslist" class="st-chips tiny"></div>'+
+        '</div>'+
+
+        // Manual command (full-width row)
+        '<div class="st-field manual">'+
           '<label class="label">Manual Command</label>'+
-          '<div class="row">'+
+          '<div class="st-manual-row">'+
             '<input id="st_manual" class="input" placeholder="19 Red pass to 18 Red for touchdown">'+
             '<button class="btn" id="st_add">Record</button>'+
           '</div>'+
-          '<div id="st_posting" class="tiny muted" style="margin-top:4px; white-space: pre-line"></div>'+
+          '<div id="st_posting" class="tiny muted" style="margin-top:4px;white-space:pre-line"></div>'+
         '</div>'+
 
-        '<div class="col" style="min-width:240px">'+
+        // Voice (placed under Manual on desktop)
+        '<div class="st-field voice">'+
           '<label class="label">Voice</label>'+
-          '<div class="row" style="align-items:center;gap:10px">'+
+          '<div class="st-voice">'+
             '<button class="btn" id="st_mic">Start Listening</button>'+
-            '<div class="stack" style="gap:2px">'+
-              '<div id="st_mic_status" class="tiny muted">Idle</div>'+
-            '</div>'+
+            '<div id="st_mic_status" class="tiny muted">Idle</div>'+
           '</div>'+
         '</div>'+
-      '</div>'+
-    '</div>'+
 
-    // ── Card: Scoreboard (moved out, nicer styling) ───────────────────────────
+      '</div>'+ // /.st-form
+    '</div>'+   // /.card
+
+    // Scoreboard card (nice, always one line; sits BEFORE Recorded)
     '<div class="card stack">'+
       '<div class="label">Scoreboard</div>'+
-      '<div id="st_score" class="stack" style="gap:10px">'+
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid var(--border);border-radius:14px;padding:12px 16px;flex-wrap:wrap">'+
-
-          // Left team
-          '<div style="display:flex;align-items:center;gap:10px;min-width:200px;flex:1 1 240px">'+
-            '<div id="st_score_teamA" style="font-weight:700;letter-spacing:.3px;text-transform:uppercase;opacity:.85;min-width:120px">Team A</div>'+
-            '<div id="st_score_valA" class="badge" style="font-size:36px;line-height:1;padding:6px 14px">0</div>'+
+      '<div class="st-score-card">'+
+        '<div class="st-score-row">'+
+          '<div class="st-team-wrap">'+
+            '<div id="st_score_teamA" class="st-team">—</div>'+
+            '<div id="st_score_valA" class="st-score">0</div>'+
           '</div>'+
-
-          // VS
-          '<div class="tiny muted" style="flex:0 0 auto">vs</div>'+
-
-          // Right team
-          '<div style="display:flex;align-items:center;gap:10px;min-width:200px;justify-content:flex-end;flex:1 1 240px">'+
-            '<div id="st_score_valB" class="badge" style="font-size:36px;line-height:1;padding:6px 14px">0</div>'+
-            '<div id="st_score_teamB" style="font-weight:700;letter-spacing:.3px;text-transform:uppercase;opacity:.85;min-width:120px;text-align:right">Team B</div>'+
+          '<div class="st-vs">vs</div>'+
+          '<div class="st-team-wrap st-team-right">'+
+            '<div id="st_score_valB" class="st-score">0</div>'+
+            '<div id="st_score_teamB" class="st-team">—</div>'+
           '</div>'+
-
         '</div>'+
       '</div>'+
     '</div>'+
 
-    // ── Row: Recorded + Jersey Map ────────────────────────────────────────────
+    // Recorded + Jersey map
     '<div class="row">'+
       '<div class="col">'+
         '<div class="card stack">'+
@@ -2703,6 +2752,7 @@ const node = el(
   '</div>'
 );
 layout(node);
+
 
       // Selects
       const sel = $('#st_evt');
