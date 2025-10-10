@@ -2653,7 +2653,7 @@ function actDropout(eventId, its, btn){
                   '<input id="st_manual" class="input" placeholder="19 Red pass to 18 Red for touchdown">'+
                   '<button class="btn" id="st_add">Record</button>'+
                 '</div>'+
-                '<div id="st_posting" class="tiny muted" style="margin-top:4px"></div>'+
+                '<div id="st_posting" class="tiny muted" style="margin-top:4px; white-space: pre-line"></div>'+
               '</div>'+
               '<div class="col" style="min-width:240px">'+
                 '<label class="label">Voice</label>'+
@@ -2995,26 +2995,37 @@ micBtn.addEventListener('click', ()=>{
 });
 // ===== /Voice recognition =====
 
-      // ===== Manual entry =====
-      (()=>{
-        const input = $('#st_manual');
-        const btn   = $('#st_add');
+      // ===== Manual entry (queue-first, non-blocking) =====
+(()=>{
+  const input = $('#st_manual');
+  const btn   = $('#st_add');
 
-        async function submit(){
-          const v = (input.value || '').trim();
-          if (!v || btn.getAttribute('aria-busy') === '1') return;
-          const orig = btn.textContent;
-          btn.setAttribute('aria-busy','1'); btn.disabled = true; btn.textContent = 'Recording…';
-          try{
-            await _statkit_processCommand(v, /*fromVoice*/false);
-            input.value = '';
-          } finally {
-            btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = orig; input.focus();
-          }
-        }
-        btn.addEventListener('click', submit);
-        input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { e.preventDefault(); submit(); }});
-      })();
+  function submit(){
+    const v = (input.value || '').trim();
+    if (!v) return;
+
+    const orig = btn.textContent;
+    btn.setAttribute('aria-busy','1');
+    btn.disabled = true;
+    btn.textContent = 'Recording…';
+
+    // Queue fast and re-enable UI immediately; flush in background
+    _statkit_processCommand(v, /*fromVoice*/false, /*queueOnly*/true)
+      .finally(()=>{
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        btn.textContent = orig;
+        input.value = '';
+        input.focus();
+        // try to send queued rows without blocking the UI
+        setTimeout(()=>{ try{ flushQueue(); }catch(_){ } }, 0);
+      });
+  }
+
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { e.preventDefault(); submit(); }});
+})();
+
 
       // ===== Parse & record helpers =====
       function _fmtTime(d){
@@ -3235,19 +3246,6 @@ function _expandPairwise(players, primaryKey, rawText){
         return actions;
       }
 
-      function _buildPostingPreview(text){
-        const p = _parseCommand(text);
-        if (!p) return '';
-        const actions = _combineBaseAndOverrides(p);
-        const gameNum = state.tmp.stat_game || '1';
-        const labels = actions.map(a=>{
-          const meta = itsToMeta[a.its] || {};
-          const person = `${meta.team||''} ${meta.number||''} - ${meta.name||''}`.trim();
-          return `${person} — ${a.stat} (G${gameNum})`;
-        });
-        return labels.join('; ');
-      }
-
       // ---- Parser entry (tolerant) ----
       function _parseCommand(text){
         const rawText = String(text||'');
@@ -3281,7 +3279,7 @@ function _expandPairwise(players, primaryKey, rawText){
       }
 
       // ---------- Recorder ----------
-      async function _statkit_processCommand(text, fromVoice){
+      async function _statkit_processCommand(text, fromVoice, queueOnly){
         if (!state.tmp.stat_event_id){
           if (navigator.onLine && !fromVoice) alert('Pick an event first');
           else { $('#st_mic_status').textContent = 'Pick an event first'; }
@@ -3303,49 +3301,58 @@ function _expandPairwise(players, primaryKey, rawText){
         const timeStr = _fmtTime(new Date());
         const gameNum = state.tmp.stat_game || '1';
 
-        const posting = actions.map(a=>{
-          const m = itsToMeta[a.its] || {};
-          return `${m.team||''} ${m.number||''} - ${m.name||''} — ${a.stat} (G${gameNum})`;
-        }).join('; ');
-        $('#st_posting').textContent = posting;
+        const lines = actions.map(a=>{
+        const m = itsToMeta[a.its] || {};
+        return `${m.team||''} ${m.number||''} - ${m.name||''} — ${a.stat} (G${gameNum})`;
+        });
+        const postEl = $('#st_posting');
+        if (postEl) postEl.innerHTML = lines.map(esc).join('<br>');
+
 
         for (const a of actions){
-          const recObj = {
-            adminIts: state.user.its,
-            eventId:  state.tmp.stat_event_id,
-            its:      a.its,
-            stat:     a.stat,
-            raw:      text,
-            time:     timeStr,
-            game:     gameNum
-          };
-          const fp = _makeFP(recObj);
-          if (_seenFP(fp, 60000)){ $('#st_mic_status').textContent = 'Duplicate ignored'; continue; }
-          _markFP(fp);
+  const recObj = {
+    adminIts: state.user.its,
+    eventId:  state.tmp.stat_event_id,
+    its:      a.its,
+    stat:     a.stat,
+    raw:      text,
+    time:     timeStr,
+    game:     gameNum
+  };
 
-          if (!navigator.onLine){
-            let q = loadQ();
-            if (!q.some(x => _makeFP(x) === fp)){
-              q.push(recObj); saveQ(q);
-              _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr, game: gameNum });
-            }
-            $('#st_hint').textContent = 'Offline: queued. Will upload when online.';
-            continue;
-          }
-          try{
-            await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time, recObj.game);
-          }catch(e){
-            let q = loadQ();
-            if (!q.some(x => _makeFP(x) === fp)){
-              q.push(recObj); saveQ(q);
-              _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr, game: gameNum });
-            }
-          }
-        }
+  const fp = _makeFP(recObj);
+  if (_seenFP(fp, 60000)){ $('#st_mic_status').textContent = 'Duplicate ignored'; continue; }
+  _markFP(fp);
 
-        if (navigator.onLine){ await loadEventRows(); }
-        setTimeout(()=>{ const p = $('#st_posting'); if (p) p.textContent = ''; }, 1500);
-      }
+  // --- Queue-first path or offline ---
+  if (queueOnly || !navigator.onLine){
+    let q = loadQ();
+    if (!q.some(x => _makeFP(x) === fp)){
+      q.push(recObj); saveQ(q);
+      _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr, game: gameNum });
+    }
+    if (!navigator.onLine){
+      const hint = $('#st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
+    }
+    continue;
+  }
+
+  // --- Online immediate try; fall back to queue on error ---
+  try{
+    await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time, recObj.game);
+  }catch(e){
+    let q = loadQ();
+    if (!q.some(x => _makeFP(x) === fp)){
+      q.push(recObj); saveQ(q);
+      _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr, game: gameNum });
+    }
+  }
+}
+
+// Refresh list (non-blocking if we queued)
+if (!queueOnly && navigator.onLine){ await loadEventRows(); }
+else { setTimeout(()=>{ loadEventRows(); }, 0); }
+}
 
       // Initial load & flush any queued
       await loadEventRows();
