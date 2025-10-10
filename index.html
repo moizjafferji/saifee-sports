@@ -2624,8 +2624,16 @@ if (!document.getElementById('statkit-layout-css')) {
     .st-form { display:grid; grid-template-columns: 1fr; gap:12px; }
     .st-field { display:flex; flex-direction:column; gap:6px; }
     .st-chips { display:flex; flex-wrap:wrap; gap:6px; }
-    .st-manual-row { display:flex; gap:8px; align-items:center; }
-    .st-manual-row input { flex:1; }
+    /* Stack the Record button on the next line */
+.st-manual-row {
+  display:flex;
+  flex-direction: column;
+  gap:8px;
+  align-items: flex-start;
+}
+.st-manual-row input {
+  width:100%;
+}
     .st-voice { display:flex; align-items:center; gap:10px; }
 
     /* desktop: chips on next line; voice under manual */
