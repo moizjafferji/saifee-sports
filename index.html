@@ -2617,73 +2617,92 @@ function actDropout(eventId, its, btn){
       }
 
       // ===== UI =====
-      const node = el(
-        '<div class="stack">'+
-          '<div class="card stack">'+
-            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'+
-              '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
-            '</div>'+
-            '<div class="row">'+
-              '<div class="col">'+
-                '<label class="label">Event</label>'+
-                '<select id="st_evt" class="input"></select>'+
-              '</div>'+
-              '<div class="col" style="min-width:120px">'+
-                '<label class="label">Game</label>'+
-                '<select id="st_game" class="input"></select>'+
-              '</div>'+
-              '<div class="col" style="min-width:260px">'+
-                '<label class="label">Score</label>'+
-                '<div id="st_score" class="stack" style="gap:6px">'+
-                  '<div class="row" style="align-items:center;gap:8px">'+
-                    '<div id="st_score_teamA" class="tiny muted" style="min-width:120px">Team A</div>'+
-                    '<div id="st_score_valA" class="badge" style="font-size:22px">0</div>'+
-                  '</div>'+
-                  '<div class="row" style="align-items:center;gap:8px">'+
-                    '<div id="st_score_teamB" class="tiny muted" style="min-width:120px">Team B</div>'+
-                    '<div id="st_score_valB" class="badge" style="font-size:22px">0</div>'+
-                  '</div>'+
-                '</div>'+
-              '</div>'+
-              '<div class="col">'+
-                '<label class="label">Stats you can record</label>'+
-                '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
-                '<label class="label">Manual Command</label>'+
-                '<div class="row">'+
-                  '<input id="st_manual" class="input" placeholder="19 Red pass to 18 Red for touchdown">'+
-                  '<button class="btn" id="st_add">Record</button>'+
-                '</div>'+
-                '<div id="st_posting" class="tiny muted" style="margin-top:4px; white-space: pre-line"></div>'+
-              '</div>'+
-              '<div class="col" style="min-width:240px">'+
-                '<label class="label">Voice</label>'+
-                '<div class="row" style="align-items:center;gap:10px">'+
-                  '<button class="btn" id="st_mic">Start Listening</button>'+
-                  '<div class="stack" style="gap:2px">'+
-                    '<div id="st_mic_status" class="tiny muted">Idle</div>'+
-                  '</div>'+
-                '</div>'+
-              '</div>'+
-            '</div>'+
-          '</div>'+
+const node = el(
+  '<div class="stack">'+
+
+    // ── Card: Controls (Event/Game + stats list + manual + voice) ─────────────
+    '<div class="card stack">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'+
+        '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
+      '</div>'+
+      '<div class="row">'+
+        '<div class="col">'+
+          '<label class="label">Event</label>'+
+          '<select id="st_evt" class="input"></select>'+
+        '</div>'+
+        '<div class="col" style="min-width:120px">'+
+          '<label class="label">Game</label>'+
+          '<select id="st_game" class="input"></select>'+
+        '</div>'+
+
+        '<div class="col">'+
+          '<label class="label">Stats you can record</label>'+
+          '<div id="st_statslist" class="tiny" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>'+
+          '<label class="label">Manual Command</label>'+
           '<div class="row">'+
-            '<div class="col">'+
-              '<div class="card stack">'+
-                '<div class="label">Recorded (this event)</div>'+
-                '<div id="st_list"></div>'+
-                '<div class="tiny muted" id="st_hint"></div>'+
-              '</div>'+
-            '</div>'+
-            '<div class="col">'+
-              '<div class="card stack">'+
-                '<div class="label">Jersey Map</div>'+
-                '<div id="st_jersey"></div>'+
-              '</div>'+
+            '<input id="st_manual" class="input" placeholder="19 Red pass to 18 Red for touchdown">'+
+            '<button class="btn" id="st_add">Record</button>'+
+          '</div>'+
+          '<div id="st_posting" class="tiny muted" style="margin-top:4px; white-space: pre-line"></div>'+
+        '</div>'+
+
+        '<div class="col" style="min-width:240px">'+
+          '<label class="label">Voice</label>'+
+          '<div class="row" style="align-items:center;gap:10px">'+
+            '<button class="btn" id="st_mic">Start Listening</button>'+
+            '<div class="stack" style="gap:2px">'+
+              '<div id="st_mic_status" class="tiny muted">Idle</div>'+
             '</div>'+
           '</div>'+
-        '</div>'
-      );
-      layout(node);
+        '</div>'+
+      '</div>'+
+    '</div>'+
+
+    // ── Card: Scoreboard (moved out, nicer styling) ───────────────────────────
+    '<div class="card stack">'+
+      '<div class="label">Scoreboard</div>'+
+      '<div id="st_score" class="stack" style="gap:10px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid var(--border);border-radius:14px;padding:12px 16px;flex-wrap:wrap">'+
+
+          // Left team
+          '<div style="display:flex;align-items:center;gap:10px;min-width:200px;flex:1 1 240px">'+
+            '<div id="st_score_teamA" style="font-weight:700;letter-spacing:.3px;text-transform:uppercase;opacity:.85;min-width:120px">Team A</div>'+
+            '<div id="st_score_valA" class="badge" style="font-size:36px;line-height:1;padding:6px 14px">0</div>'+
+          '</div>'+
+
+          // VS
+          '<div class="tiny muted" style="flex:0 0 auto">vs</div>'+
+
+          // Right team
+          '<div style="display:flex;align-items:center;gap:10px;min-width:200px;justify-content:flex-end;flex:1 1 240px">'+
+            '<div id="st_score_valB" class="badge" style="font-size:36px;line-height:1;padding:6px 14px">0</div>'+
+            '<div id="st_score_teamB" style="font-weight:700;letter-spacing:.3px;text-transform:uppercase;opacity:.85;min-width:120px;text-align:right">Team B</div>'+
+          '</div>'+
+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+
+    // ── Row: Recorded + Jersey Map ────────────────────────────────────────────
+    '<div class="row">'+
+      '<div class="col">'+
+        '<div class="card stack">'+
+          '<div class="label">Recorded (this game)</div>'+
+          '<div id="st_list"></div>'+
+          '<div class="tiny muted" id="st_hint"></div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="col">'+
+        '<div class="card stack">'+
+          '<div class="label">Jersey Map</div>'+
+          '<div id="st_jersey"></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+
+  '</div>'
+);
+layout(node);
 
       // Selects
       const sel = $('#st_evt');
