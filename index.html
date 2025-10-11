@@ -315,7 +315,7 @@ if ('serviceWorker' in navigator) {
       const token = await messaging.getToken({
         vapidKey: 'BDdjFhb2rJiZ5SIzkaFFDliF3dGFrVcmR6ug2EUvk9TaVDZlM-2tz6p5Lwl9ZR4HIcqNZ0IF6q_Ove5-vl8Sob0 '
       });
-      await gs('api_savePushToken', state.user.its, token);
+      await gs('api_savePushToken', state.user.its, token, navigator.userAgent);
       console.log('FCM token:', token);
       // Save this token to your backend (Apps Script) associated with the user
     } catch (e) {
@@ -3559,7 +3559,6 @@ else { setTimeout(()=>{ loadEventRows(); }, 0); }
   }
 
 })(); // end IIFE
-    
 /* =================== /STATKIT (client) =================== */
 
 </script>
