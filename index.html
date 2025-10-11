@@ -288,6 +288,44 @@
 </style>
 
 <script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/firebase-messaging-sw.js') // or '/app/firebase-messaging-sw.js'
+      .catch(console.error);
+  });
+}
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID",
+  });
+
+  const messaging = firebase.messaging();
+
+  async function enablePush() {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Permission not granted');
+      const token = await messaging.getToken({
+        vapidKey: 'YOUR_WEB_PUSH_CERTIFICATE_KEY_PAIR_VAPID_KEY'
+      });
+      console.log('FCM token:', token);
+      // Save this token to your backend (Apps Script) associated with the user
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  // Call enablePush() from a user gesture (button)
+</script>
+
+
+<script>
 /* google.script.run polyfill for Cloudflare Pages */
 (function () {
   if (window.google && google.script && google.script.run) return;
@@ -996,6 +1034,14 @@ async function pageHome(){
           '<div class="label">Balance</div>'+
           '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
         '</div>'+
+        // --- Notifications card (between Balance and Your Events) ---
+'<div class="card stack" id="home_push_card">'+
+  '<div class="row" style="align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">'+
+    '<div class="label">Notifications</div>'+
+    '<button class="btn" id="home_push_btn">Enable Notifications</button>'+
+  '</div>'+
+  '<div id="home_push_hint" class="tiny muted"></div>'+
+'</div>'+
         '<div class="card stack">'+
           '<div class="label">Your Events</div>'+
           '<div id="home_self"></div>'+
