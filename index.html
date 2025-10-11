@@ -81,6 +81,7 @@
     padding: 10px var(--pad);
     border-bottom:1px solid var(--border);
   }
+
   .hamburger{
     min-width:88px;
     min-height:44px;
@@ -304,25 +305,48 @@ if ('serviceWorker' in navigator) {
     messagingSenderId: "279758160799",
     appId: "1:279758160799:web:5731135ef7b1acd2ceb3aa",
   });
-
   const messaging = firebase.messaging();
+
+  // Foreground messages (when tab is focused) won't show an OS toast,
+  // so show something in-app to prove delivery:
+  messaging.onMessage((payload) => {
+    console.log('onMessage:', payload);
+    try {
+      const t = (payload.notification && payload.notification.title) || 'Notification';
+      const b = (payload.notification && payload.notification.body) || '';
+      alert(t + '\n\n' + b); // replace with your own in-app toast
+    } catch (_) {}
+  });
 
   async function enablePush() {
     try {
+      // 1) Ensure SW is registered and controlled
+      if (!('serviceWorker' in navigator)) throw new Error('SW unsupported');
+      const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+      await navigator.serviceWorker.ready;
+
+      // 2) Ask permission
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') throw new Error('Permission not granted');
+
+      // 3) Get token with VAPID + SW registration
       const token = await messaging.getToken({
-        vapidKey: 'BDdjFhb2rJiZ5SIzkaFFDliF3dGFrVcmR6ug2EUvk9TaVDZlM-2tz6p5Lwl9ZR4HIcqNZ0IF6q_Ove5-vl8Sob0'
+        vapidKey: 'BDdjFhb2rJiZ5SIzkaFFDliF3dGFrVcmR6ug2EUvk9TaVDZlM-2tz6p5Lwl9ZR4HIcqNZ0IF6q_Ove5-vl8Sob0',
+        serviceWorkerRegistration: reg,
       });
-      await gs('api_push_saveToken', state.user.its, token, navigator.userAgent);
+
+      if (!token) throw new Error('No token returned');
       console.log('FCM token:', token);
-      // Save this token to your backend (Apps Script) associated with the user
+
+      // 4) Save token to Apps Script
+      await gs('api_push_saveToken', state.user.its, token, navigator.userAgent);
     } catch (e) {
-      console.error(e);
+      console.error('enablePush failed:', e);
+      alert('Notifications setup failed: ' + (e && e.message ? e.message : e));
     }
   }
-  // Call enablePush() from a user gesture (button)
 </script>
+
 
 
 <script>
