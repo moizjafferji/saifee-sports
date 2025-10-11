@@ -1,34 +1,35 @@
 // firebase-messaging-sw.js
 /* global importScripts, firebase */
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-compat.js');
 
-// --- paste your Firebase config here ---
 firebase.initializeApp({
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyBf2IarBF2qPQzlly6G3RUcBCj-QRqdQc4",
+  authDomain: "mfl-app-1d2e9.firebaseapp.com",
+  databaseURL: "https://mfl-app-1d2e9.firebaseio.com",
+  projectId: "mfl-app-1d2e9",
+  storageBucket: "mfl-app-1d2e9.firebasestorage.app",
+  messagingSenderId: "279758160799",
+  appId: "1:279758160799:web:5731135ef7b1acd2ceb3aa",
+  measurementId: "G-4YV7LY1M8M"
 });
 
-// Retrieve messaging
 const messaging = firebase.messaging();
 
-// Optional: handle data-only or custom notifications in the background
+// Show notifications when the page is in the background
 messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title || 'Update';
-  const body  = payload.notification?.body  || '';
-  const link  = payload.fcmOptions?.link || payload.data?.link || '/';
-  self.registration.showNotification(title, {
-    body,
-    data: { link },
-  });
+  const title = (payload?.notification?.title) || 'Saifee Sports';
+  const options = {
+    body: (payload?.notification?.body) || '',
+    icon: (payload?.notification?.icon) || '/icon-192.png',
+    data: (payload?.fcmOptions?.link) ? { url: payload.fcmOptions.link } : undefined
+  };
+  self.registration.showNotification(title, options);
 });
 
-// Make notification clicks open your link
+// Optional: click to focus/open
 self.addEventListener('notificationclick', (event) => {
-  const url = event.notification?.data?.link || '/';
   event.notification.close();
+  const url = event.notification?.data?.url || '/';
   event.waitUntil(clients.openWindow(url));
 });
