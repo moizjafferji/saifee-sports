@@ -401,14 +401,6 @@
   </div>
 </div>
 
-// Safe fallback if your real enablePush() isn't loaded on this page
-if (typeof window.enablePush !== 'function') {
-  window.enablePush = async function(){
-    if (!('Notification' in window)) return;
-    const perm = await Notification.requestPermission();
-    // If you also have Firebase Messaging set up elsewhere, that'll pick up post-permission.
-  };
-}
 
 <!-- Notifications enable banner -->
 <div id="notifyBanner" class="notify-banner">
@@ -427,6 +419,14 @@ if (typeof window.enablePush !== 'function') {
   </div>
 
   <script>
+// Safe fallback if your real enablePush() isn't loaded on this page
+if (typeof window.enablePush !== 'function') {
+  window.enablePush = async function(){
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    // If you also have Firebase Messaging set up elsewhere, that'll pick up post-permission.
+  };
+}
 
 // ===== Simple deep-link router (hash-based) =====
 var router = {
