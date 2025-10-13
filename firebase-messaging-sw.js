@@ -24,8 +24,8 @@ messaging.onBackgroundMessage((payload) => {
   const title = d.title || 'Saifee Sports';
   const body  = d.body  || '';
   const link  = d.link  || '/';
-  const icon  = d.icon  || '/icons/icon-192.png';   // change to '/favicon.ico' if that’s what you host
-  const badge = d.badge || '/icons/badge.png';
+  const icon  = d.icon  || '/favicon.ico';     // or '/favicon.svg' (Chrome shows PNG/SVG best)
+  const badge = d.badge || '/icons/icon-192.png';
   const tag   = d.tag   || undefined;               // collapse by event id if provided
 
   self.registration.showNotification(title, {
