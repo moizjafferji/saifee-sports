@@ -401,6 +401,15 @@
   </div>
 </div>
 
+// Safe fallback if your real enablePush() isn't loaded on this page
+if (typeof window.enablePush !== 'function') {
+  window.enablePush = async function(){
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    // If you also have Firebase Messaging set up elsewhere, that'll pick up post-permission.
+  };
+}
+
 <!-- Notifications enable banner -->
 <div id="notifyBanner" class="notify-banner">
   <div class="inner">
@@ -418,14 +427,7 @@
   </div>
 
   <script>
-// Safe fallback if your real enablePush() isn't loaded on this page
-if (typeof window.enablePush !== 'function') {
-  window.enablePush = async function(){
-    if (!('Notification' in window)) return;
-    const perm = await Notification.requestPermission();
-    // If you also have Firebase Messaging set up elsewhere, that'll pick up post-permission.
-  };
-}
+
 // ===== Simple deep-link router (hash-based) =====
 var router = {
   normalize(page, opts){
@@ -2440,18 +2442,36 @@ function actDropout(eventId, its, btn){
       }
 
       $('#ae_save_new').onclick = ()=>{
-        const payload = getPayload(false); if(!requireEventFields(payload)) return; delete payload.id;
-        AdminAPI.eventSave(state.user.its, payload, ()=>{ alert('Event created.'); state.tmp = state.tmp || {}; state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); refreshAdmin(); }, e=> showErr('#ae_err', e));
-      };
+  const payload = getPayload(false); if(!requireEventFields(payload)) return; delete payload.id;
+  AdminAPI.eventSave(state.user.its, payload, ()=>{ 
+    alert('Event created.');
+    // NEW: re-schedule the next registration-open trigger
+    google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+
+    state.tmp = state.tmp || {}; state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); 
+    refreshAdmin();
+  }, e=> showErr('#ae_err', e));
+};
+
       $('#ae_update').onclick = ()=>{
         if(!(state.tmp && state.tmp.editId)){ showErr('#ae_err','Choose an event to update.'); return; }
         const payload = getPayload(true); if(!requireEventFields(payload)) return;
-        AdminAPI.eventSave(state.user.its, payload, ()=>{ alert('Event updated.'); refreshAdmin(); }, e=> showErr('#ae_err', e));
+        AdminAPI.eventSave(state.user.its, payload, ()=>{ 
+  alert('Event updated.');
+  google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+  refreshAdmin(); 
+}, e=> showErr('#ae_err', e));
       };
       $('#ae_delete').onclick = ()=>{
         if(!(state.tmp && state.tmp.editId)){ showErr('#ae_err','Choose an event to delete.'); return; }
         if(!confirm('Delete this event? This will also remove it from Google Calendar.')) return;
-        AdminAPI.eventDelete(state.user.its, state.tmp.editId, ()=>{ alert('Event deleted.'); state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); refreshAdmin(); }, e=> showErr('#ae_err', e));
+        AdminAPI.eventDelete(state.user.its, state.tmp.editId, ()=>{ 
+  alert('Event deleted.');
+  google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+
+  state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); 
+  refreshAdmin(); 
+}, e=> showErr('#ae_err', e));
       };
     }
 
