@@ -12,17 +12,21 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Optional: ensure new SW versions take over immediately
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(clients.claim()));
+
 // ✅ Data-only handler (single toast). If a 'notification' sneaks in, ignore to avoid doubles.
 messaging.onBackgroundMessage((payload) => {
-  if (payload.notification) return; // safety: prevents duplicate toasts
+  if (payload.notification) return; // safety: lets FCM's own toast show, avoids double
 
   const d = payload.data || {};
   const title = d.title || 'Saifee Sports';
   const body  = d.body  || '';
   const link  = d.link  || '/';
-  const icon  = d.icon  || '/icons/icon-192.png';
+  const icon  = d.icon  || '/icons/icon-192.png';   // change to '/favicon.ico' if that’s what you host
   const badge = d.badge || '/icons/badge.png';
-  const tag   = d.tag   || undefined; // optional: collapse by tag
+  const tag   = d.tag   || undefined;               // collapse by event id if provided
 
   self.registration.showNotification(title, {
     body,
