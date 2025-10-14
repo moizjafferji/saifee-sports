@@ -1,39 +1,37 @@
-// /firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-compat.js');
 
 firebase.initializeApp({
   apiKey: "AIzaSyBf2IarBF2qPQzlly6G3RUcBCj-QRqdQc4",
   authDomain: "mfl-app-1d2e9.firebaseapp.com",
-  databaseURL: "https://mfl-app-1d2e9.firebaseio.com",
   projectId: "mfl-app-1d2e9",
-  storageBucket: "mfl-app-1d2e9.firebasestorage.app",
   messagingSenderId: "279758160799",
   appId: "1:279758160799:web:5731135ef7b1acd2ceb3aa",
-  measurementId: "G-4YV7LY1M8M"
 });
 
 const messaging = firebase.messaging();
 
-// Show a notification for data-only messages
-messaging.onBackgroundMessage(({ data }) => {
-  const title = data?.title || 'Saifee Sports';
-  const body  = data?.body  || '';
-  const icon  = data?.icon  || '/favicon.ico';
-  const badge = data?.badge || '/favicon.ico';
-  const tag   = data?.tag   || '';
-  const link  = data?.link  || '/';
-  self.registration.showNotification(title, { body, icon, badge, tag, data: { link } });
+// Optional: show a custom notification for *data* messages in background.
+// (FCM will auto-show for "notification" messages; this won’t double-fire.)
+messaging.onBackgroundMessage((payload) => {
+  const title = (payload.notification && payload.notification.title) || (payload.data && payload.data.title) || 'Notification';
+  const body  = (payload.notification && payload.notification.body)  || (payload.data && payload.data.body)  || '';
+  const link  = (payload.data && payload.data.link) || '/';
+  self.registration.showNotification(title, {
+    body,
+    icon: '/favicon.ico',
+    data: { link }
+  });
 });
 
-// Ensure clicks open/focus the app at the intended URL
+// Ensure clicks open your link
 self.addEventListener('notificationclick', (event) => {
+  const url = (event.notification && event.notification.data && event.notification.data.link) || '/';
   event.notification.close();
-  const url = event.notification?.data?.link || '/';
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clis => {
-      for (const c of clis) {
-        if (c.url.startsWith(self.location.origin)) { c.navigate(url); c.focus(); return; }
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(wins => {
+      for (const w of wins) {
+        if ('focus' in w) return w.focus();
       }
       return clients.openWindow(url);
     })
