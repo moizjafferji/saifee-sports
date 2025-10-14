@@ -1133,11 +1133,12 @@ async function pageHome(){
 
   try{
     // Parallel core calls
-    const [balanceRes, listsRes, upcomingRes] = await Promise.all([
-      gs('api_balance', state.user.its),
-      gs('api_homeListsForUser', state.user.its),
-      gs('api_upcomingEvents', 5)
-    ]);
+    const [balanceRes, listsRes, upcomingRes, penRes] = await Promise.all([
+  gs('api_balance', state.user.its),
+  gs('api_homeListsForUser', state.user.its),
+  gs('api_upcomingEvents', 5),
+  gs('api_penalties', state.user.its)   // <-- NEW
+]);
 
     // Normalize lists
     const selfList   = (listsRes && listsRes.self)   || [];
@@ -1171,9 +1172,26 @@ async function pageHome(){
           '</div>'+
         '</div>'+
         '<div class="card stack">'+
-          '<div class="label">Balance</div>'+
-          '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
-        '</div>'+
+  '<div class="label">Balance</div>'+
+  '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
+    '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
+  '</div>'+
+  '<div class="row" style="margin-top:6px">'+
+    '<div class="col">'+
+      '<div class="tiny muted">Dropout</div>'+
+      '<div id="home_pen_dropout">0</div>'+
+    '</div>'+
+    '<div class="col">'+
+      '<div class="tiny muted">Late</div>'+
+      '<div id="home_pen_late">0</div>'+
+    '</div>'+
+    '<div class="col">'+
+      '<div class="tiny muted">No Show</div>'+
+      '<div id="home_pen_noshow">0</div>'+
+    '</div>'+
+  '</div>'+
+'</div>'+
+
         '<div class="card stack">'+
           '<div class="label">Your Events</div>'+
           '<div id="home_self"></div>'+
@@ -1192,6 +1210,10 @@ async function pageHome(){
 
     // ----- Balance -----
     $('#home_balance').textContent = money(balanceRes && balanceRes.balance || 0);
+    const pens = (penRes && penRes.data) || {};
+$('#home_pen_dropout').textContent = Number(pens.dropout || 0);
+$('#home_pen_late').textContent    = Number(pens.late || 0);
+$('#home_pen_noshow').textContent  = Number(pens.no_show || 0);
 
     // Helpers
     function isFutureOngoingOrToday(e){
