@@ -1,5 +1,6 @@
 /index.html
   Cache-Control: no-store
+
 /firebase-messaging-sw.js
   Cache-Control: public, max-age=0, s-maxage=300, stale-while-revalidate=60
   Service-Worker-Allowed: /
