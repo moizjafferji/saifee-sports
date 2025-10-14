@@ -4,7 +4,6 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Saifee Sports</title>
-  
   <!-- Favicons -->
 <link rel="icon" href="/favicon.ico" sizes="any"><!-- classic .ico fallback -->
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"><!-- crisp modern -->
@@ -14,7 +13,6 @@
 <link rel="manifest" href="/site.webmanifest">
 <link rel="mask-icon" href="/icons/safari-pinned-tab.svg" color="#0b1220">
 <meta name="theme-color" content="#0b1220">
-  
 <style>
   :root{
     /* Colors */
@@ -92,6 +90,7 @@
     padding: 10px var(--pad);
     border-bottom:1px solid var(--border);
   }
+
   .hamburger{
     min-width:88px;
     min-height:44px;
@@ -419,15 +418,60 @@
     </main>
   </div>
 
-  <script>
-// Safe fallback if your real enablePush() isn't loaded on this page
-if (typeof window.enablePush !== 'function') {
-  window.enablePush = async function(){
-    if (!('Notification' in window)) return;
-    const perm = await Notification.requestPermission();
-    // If you also have Firebase Messaging set up elsewhere, that'll pick up post-permission.
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+  import { getMessaging, getToken, isSupported, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging.js';
+
+  // TODO: paste your Firebase web config + VAPID key
+  const firebaseConfig = {
+    apiKey: "AIzaSyBf2IarBF2qPQzlly6G3RUcBCj-QRqdQc4",
+    authDomain: "mfl-app-1d2e9.firebaseapp.com",
+    projectId: "mfl-app-1d2e9",
+    messagingSenderId: "279758160799",
+    appId: "1:279758160799:web:5731135ef7b1acd2ceb3aa",
   };
-}
+  const vapidKey = "BDdjFhb2rJiZ5SIzkaFFDliF3dGFrVcmR6ug2EUvk9TaVDZlM-2tz6p5Lwl9ZR4HIcqNZ0IF6q_Ove5-vl8Sob0";
+
+  const app = initializeApp(firebaseConfig);
+
+  async function realEnablePush(){
+    // 0) Check support (Firefox Private windows disable SW)
+    if (!(await isSupported())) {
+      alert('Push not supported in this browser/session.');
+      return;
+    }
+
+    // 1) Ask permission
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+
+    // 2) Register the SW at root
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready; // ensure active
+
+    // 3) Mint an FCM token
+    const messaging = getMessaging(app);
+    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: reg });
+    if (!token) { console.warn('No token from FCM'); return; }
+
+    // 4) Save it to Apps Script (PushTokens sheet)
+    const its = (window.state && state.user && state.user.its) || '';
+    google.script.run.api_push_saveToken(its, token, navigator.userAgent);
+
+    console.log('Push token saved:', token);
+
+    // Optional: foreground messages
+    onMessage(messaging, (payload) => {
+      console.log('Foreground push:', payload);
+      // You can show an in-page toast if you want
+    });
+  }
+
+  // Expose for your banner button
+  window.enablePush = realEnablePush;
+</script>
+
+<script>
 
 // ===== Simple deep-link router (hash-based) =====
 var router = {
