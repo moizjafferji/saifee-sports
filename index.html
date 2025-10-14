@@ -554,13 +554,16 @@ var router = {
       const route = router.parse();
 
       // Gate protected pages if signed out
-      const publicPages = new Set(['landing','create','edit','']); // 'stat' is intentionally NOT public
-      if (!state.user && !publicPages.has(route.page)) {
-        state.tmp = state.tmp || {};
-        state.tmp.returnTo = location.hash; // remember where they wanted to go (e.g., #/stat)
-        setPage('landing', {updateHash:false});
-        return;
-      }
+const publicPages = new Set(['landing','create','edit','']); // keep only public pages here
+if (!state.user && !publicPages.has(route.page)) {
+  // remember intended destination both in-memory and across reloads
+  const desired = location.hash || router.normalize(route.page, route) || '#/landing';
+  state.tmp = state.tmp || {};
+  state.tmp.returnTo = desired;
+  try { sessionStorage.setItem('return_to', desired); } catch(_) {}
+  setPage('landing', { updateHash:false });
+  return;
+}
 
       // Route → page
       if (route.page === 'sport'){
@@ -598,15 +601,30 @@ window.addEventListener('hashchange', router.sync);
     var homeTimers = { cd:null, uiRefresh:null };
 
     /* ===================== BOOT ===================== */
-    google.script.run.withSuccessHandler(function(res){
+    // AFTER — route immediately if already signed in
+restoreSession();
+router.sync();  // let the hash pick the page right away
+
+google.script.run.withSuccessHandler(function(res){
   state.boot = res || {};
   if (state.boot && state.boot.logoUrl) {
     document.getElementById('logo').src = state.boot.logoUrl;
     document.getElementById('logoTop').src = state.boot.logoUrl;
   }
-  restoreSession();
-  router.sync();   // <— let the URL pick the page
+  // optional: refresh nav/logo once boot lands
+  buildNav();
 }).api_bootstrap();
+
+/* Persist intended destination across login/reload */
+(function rememberIntendedHash(){
+  try{
+    const h = location.hash || '';
+    const publicHashes = new Set(['#/landing', '#/create', '#/edit', '#']);
+    if (h && !publicHashes.has(h)) {
+      sessionStorage.setItem('return_to', h);
+    }
+  }catch(_){}
+})();
 
 
     /* ===================== UTILS ===================== */
@@ -675,6 +693,10 @@ function setSport(sp){
         var saved = JSON.parse(localStorage.getItem('saifee_user') || 'null');
         if (saved && saved.its){
           state.user = saved;
+          try{
+  const rt = sessionStorage.getItem('return_to');
+  if (rt) location.hash = rt;
+}catch(_){}
           if (!state.page || state.page === 'landing') state.page = 'home';
           AdminAPI.bootstrap(saved.its, function(b){
             state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b||{});
@@ -1023,17 +1045,20 @@ window.addEventListener('load', initNotifyBanner);
       layout(el('<div class="card stack" style="align-items:center;text-align:center">Welcome, ' + (state.user.first_name || 'Athlete') + '!</div>'));
 
       setTimeout(function(){
-      // Require profile completion takes precedence
-      if (res.requireValidation) { location.hash = '#/edit'; return; }
+if (res.requireValidation) { location.hash = '#/edit'; return; }
 
-      // Return to where they were headed (e.g., #/stat) if we saved it in router.sync()
-      if (state.tmp && state.tmp.returnTo){
-        const dest = state.tmp.returnTo;
-        delete state.tmp.returnTo;
-        location.hash = dest;
-      } else {
-        location.hash = '#/home';
-      }
+const sessReturn = (()=>{ try{ return sessionStorage.getItem('return_to') || ''; }catch(_){ return ''; }})();
+if (state.tmp && state.tmp.returnTo){
+  const dest = state.tmp.returnTo;
+  delete state.tmp.returnTo;
+  try{ sessionStorage.removeItem('return_to'); }catch(_){}
+  location.hash = dest;
+} else if (sessReturn){
+  try{ sessionStorage.removeItem('return_to'); }catch(_){}
+  location.hash = sessReturn;
+} else {
+  location.hash = '#/home';
+}
     }, 600);
     })
     .withFailureHandler(function(e){
@@ -2723,6 +2748,12 @@ function actDropout(eventId, its, btn){
 /* ===================== ADMIN: Check in ===================== */
 async function pageAdminCI(){
   if (!guard()) return;
+  // Only admins see this page
+const isAdmin = (state.admin && Array.isArray(state.admin.adminSports) && state.admin.adminSports.length) || false;
+if (!isAdmin){
+  layout(el("<div class='card'>You don’t have access to the Check-in Desk.</div>"));
+  return;
+}
 
   // Ensure admin bootstrap is present (for adminEvents list)
   const hasBoot = state && state.admin && Array.isArray(state.admin.adminEvents);
