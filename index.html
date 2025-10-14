@@ -2214,7 +2214,9 @@ ${evt.address || ''}`;
       if(u.height_in) h.value=u.height_in;
       var jamaats=["Dallas","Plano","Atlanta","Austin","Bakersfield","Boston","Calgary","Charlotte","Chicago","Chicago North","Columbia","Columbus","Connecticut","Detroit","Edmonton","Houston","Los Angeles","Miami","Minneapolis","Mississauga","Montreal","New Jersey","New York","Orange County","Ottawa","Philadelphia","Poconos","Portland","Raleigh","San Antonio","San Diego","San Francisco","San Jose","Seattle","South Jersey","Spartanburg","Tampa","Toronto","Vancouver","Virginia","Washington, DC","Woodlands"];
       var jSel=$('#f_jamaat'); jamaats.forEach(function(j){ var o=document.createElement('option'); o.value=j; o.text=j; jSel.appendChild(o); }); if(u.jamaat) jSel.value=u.jamaat;
-      $('#f_save').onclick=function(){ saveProfile(!!edit); };
+      const saveBtn = $('#f_save');
+if (saveBtn) saveBtn.onclick = (ev)=> saveProfile(!!edit, ev.currentTarget);
+
     }
     function waiverText(){ return "I HEREBY ASSUME ALL OF THE RISKS OF PARTICIPATING IN ANY/ALL ACTIVITIES ASSOCIATED WITH EVENTS BY SAIFEE SPORTS ... (same text as before)"; }
     function validateProfile(d, requireWaiver){
@@ -2228,26 +2230,88 @@ ${evt.address || ''}`;
       if(requireWaiver){ if(!$('#f_waiver').checked) return 'You must accept the waiver'; if(!$('#f_pic').files[0]) return 'Profile picture is required'; }
       return '';
     }
-    function saveProfile(edit){
-      function setErr(m){ $('#f_err').textContent=m; }
-      var data={ whatsapp:$('#f_whatsapp').value.trim(), its:$('#f_its').value.trim(), email:$('#f_email').value.trim(), first_name:$('#f_first').value.trim(), last_name:$('#f_last').value.trim(),
-        height_in:$('#f_height').value, weight_lb:$('#f_weight').value.trim(), dob:$('#f_dob').value,
-        emer_name:$('#f_emer_name').value.trim(), emer_phone:$('#f_emer_phone').value.trim(), jamaat:$('#f_jamaat').value };
-      var err=validateProfile(data,!edit); if(err){setErr(err);return;}
-      var file=$('#f_pic').files[0];
-      function finish(pic){
-        if(!edit){
-          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Create failed'); state.user=Object.assign({},data,{profile_pic_url:pic}); setPage('home'); }).api_createProfile(Object.assign({},data,{profile_pic_url:pic}));
-        } else {
-          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Save failed'); if(pic) state.user.profile_pic_url=pic; state.user=Object.assign({},state.user,data); setPage('home'); }).api_updateProfile(state.user.its, pic?Object.assign({},data,{profile_pic_url:pic}):data);
-        }
+    function saveProfile(edit, btn){
+  function setErr(m){ $('#f_err').textContent = m || ''; }
+
+  // Gather & validate
+  const data = {
+    whatsapp:  $('#f_whatsapp').value.trim(),
+    its:       $('#f_its').value.trim(),
+    email:     $('#f_email').value.trim(),
+    first_name:$('#f_first').value.trim(),
+    last_name: $('#f_last').value.trim(),
+    height_in: $('#f_height').value,
+    weight_lb: $('#f_weight').value.trim(),
+    dob:       $('#f_dob').value,
+    emer_name: $('#f_emer_name').value.trim(),
+    emer_phone:$('#f_emer_phone').value.trim(),
+    jamaat:    $('#f_jamaat').value
+  };
+
+  const err = validateProfile(data, !edit);
+  if (err) { setErr(err); return; }
+
+  const file = $('#f_pic').files[0];
+  const key  = edit
+    ? `profile:update:${(state.user && state.user.its) || data.its}`
+    : `profile:create:${data.its}`;
+
+  withClickLock(key, btn, edit ? 'Saving…' : 'Creating…', (done)=>{
+    // Finalize after optional upload
+    const finalize = (picUrl)=>{
+      const payload = picUrl ? Object.assign({}, data, { profile_pic_url: picUrl }) : data;
+
+      if (!edit){
+        google.script.run
+          .withSuccessHandler(function(r){
+            done();
+            if (!r || !r.ok){ setErr((r && r.error) || 'Create failed'); return; }
+            state.user = Object.assign({}, data, { profile_pic_url: picUrl });
+            setPage('home');
+          })
+          .withFailureHandler(function(e){
+            done();
+            setErr((e && e.message) || 'Create failed');
+          })
+          .api_createProfile(payload);
+      } else {
+        google.script.run
+          .withSuccessHandler(function(r){
+            done();
+            if (!r || !r.ok){ setErr((r && r.error) || 'Save failed'); return; }
+            if (picUrl) state.user.profile_pic_url = picUrl;
+            state.user = Object.assign({}, state.user, data);
+            setPage('home');
+          })
+          .withFailureHandler(function(e){
+            done();
+            setErr((e && e.message) || 'Save failed');
+          })
+          .api_updateProfile(state.user.its, payload);
       }
-      if(file){
-        var fr=new FileReader();
-        fr.onload=function(){ google.script.run.withSuccessHandler(function(u){ finish(u.url); }).api_uploadProfilePic(fr.result,file.name,edit?state.user.its:data.its); };
+    };
+
+    // Optional image upload step
+    if (file){
+      try{
+        const fr = new FileReader();
+        fr.onload = function(){
+          google.script.run
+            .withSuccessHandler(function(u){ finalize(u && u.url); })
+            .withFailureHandler(function(e){ done(); setErr((e && e.message) || 'Upload failed'); })
+            .api_uploadProfilePic(fr.result, file.name, edit ? state.user.its : data.its);
+        };
+        fr.onerror = function(){ done(); setErr('Could not read image.'); };
         fr.readAsDataURL(file);
-      } else finish(null);
+      } catch(_){
+        done(); setErr('Could not read image.');
+      }
+    } else {
+      finalize(null);
     }
+  });
+}
+
 
 /* ===================== REGISTRATION ACTIONS ===================== */
 /* ---- global click-lock helper ---- */
@@ -3650,5 +3714,6 @@ else { setTimeout(()=>{ loadEventRows(); }, 0); }
 /* =================== /STATKIT (client) =================== */
 
 </script>
+
 </body>
 </html>
