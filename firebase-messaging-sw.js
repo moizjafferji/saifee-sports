@@ -2,6 +2,11 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-compat.js');
 
+// v9 – bump this string when you deploy
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+
+
 firebase.initializeApp({
   apiKey: "AIzaSyBf2IarBF2qPQzlly6G3RUcBCj-QRqdQc4",
   projectId: "mfl-app-1d2e9",
@@ -56,4 +61,12 @@ self.addEventListener('notificationclick', event => {
       return clients.openWindow(url);
     })
   );
+});
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'TEST_SHOW') {
+    event.waitUntil(self.registration.showNotification(
+      event.data.title || 'SW OK',
+      { body: event.data.body || 'This came from the service worker.' }
+    ));
+  }
 });
