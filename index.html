@@ -456,7 +456,11 @@
 
     // 4) Save it to Apps Script (PushTokens sheet)
     const its = (window.state && state.user && state.user.its) || '';
-    google.script.run.api_push_saveToken(its, token, navigator.userAgent);
+    google.script.run
+  .withSuccessHandler(d => console.log('saveToken result:', d))
+  .withFailureHandler(e => console.error('saveToken failed:', e?.message || e))
+  .api_push_saveToken(its, token, navigator.userAgent);
+
 
     console.log('Push token saved:', token);
 
