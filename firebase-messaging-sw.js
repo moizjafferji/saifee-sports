@@ -49,24 +49,41 @@ self.addEventListener('push', event => {
   }
 });
 
-// Ensure clicks open/focus the intended route
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  const url = event.notification?.data?.link || '/';
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clis => {
-      for (const c of clis) {
-        if (c.url.startsWith(self.location.origin)) { c.navigate(url); c.focus(); return; }
-      }
-      return clients.openWindow(url);
-    })
-  );
-});
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'TEST_SHOW') {
-    event.waitUntil(self.registration.showNotification(
-      event.data.title || 'SW OK',
-      { body: event.data.body || 'This came from the service worker.' }
-    ));
+  const data = event.data || {};
+  // Echo back to any open pages so we can see in-page logs
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    clients.forEach(c => c.postMessage({ type: 'SW_ECHO', seen: true, data }));
+  })());
+
+  if (data.type === 'TEST_SHOW') {
+    event.waitUntil((async () => {
+      try {
+        await self.registration.showNotification(data.title || 'SW OK', {
+          body: data.body || 'This came from the service worker.',
+          tag:  'sw-test',
+          icon: '/favicon.ico',
+        });
+        // Tell page we displayed it
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        clients.forEach(c => c.postMessage({ type: 'SW_SHOWN', ok: true }));
+      } catch (err) {
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        clients.forEach(c => c.postMessage({ type: 'SW_SHOW_ERR', message: String(err) }));
+      }
+    })());
   }
+});
+
+// Optional: make notification clicks open the link if present
+self.addEventListener('notificationclick', event => {
+  const link = (event.notification && event.notification.data && event.notification.data.link) || '/';
+  event.notification.close();
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type:'window', includeUncontrolled:true });
+    const hit = all.find(c => new URL(c.url).pathname === new URL(link, self.location.origin).pathname);
+    if (hit) return hit.focus();
+    return self.clients.openWindow(link);
+  })());
 });
