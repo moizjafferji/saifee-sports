@@ -4,9 +4,13 @@ importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-com
 
 firebase.initializeApp({
   apiKey: "AIzaSyBf2IarBF2qPQzlly6G3RUcBCj-QRqdQc4",
+  authDomain: "mfl-app-1d2e9.firebaseapp.com",
+  databaseURL: "https://mfl-app-1d2e9.firebaseio.com",
   projectId: "mfl-app-1d2e9",
+  storageBucket: "mfl-app-1d2e9.firebasestorage.app",
   messagingSenderId: "279758160799",
   appId: "1:279758160799:web:5731135ef7b1acd2ceb3aa",
+  measurementId: "G-4YV7LY1M8M"
 });
 
 const messaging = firebase.messaging();
