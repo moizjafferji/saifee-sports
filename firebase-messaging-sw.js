@@ -1,58 +1,3651 @@
-// firebase-messaging-sw.js
-importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-compat.js');
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Saifee Sports</title>
+  <!-- Favicons -->
+<link rel="icon" href="/favicon.ico" sizes="any"><!-- classic .ico fallback -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"><!-- crisp modern -->
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/icons/safari-pinned-tab.svg" color="#0b1220">
+<meta name="theme-color" content="#0b1220">
+<style>
+  :root{
+    /* Colors */
+    --bg:#0b1220; --surface:#0f172a; --card:#0e1626; --muted:#9fb3c8; --text:#e6eef8;
+    --accent:#3b82f6; --ok:#16a34a; --warn:#f59e0b; --err:#ef4444; --border:#223;
 
-firebase.initializeApp({
-  apiKey: "AIzaSyBf2IarBF2qPQzlly6G3RUcBCj-QRqdQc4",
-  authDomain: "mfl-app-1d2e9.firebaseapp.com",
-  projectId: "mfl-app-1d2e9",
-  messagingSenderId: "279758160799",
-  appId: "1:279758160799:web:5731135ef7b1acd2ceb3aa"
-});
+    /* Fluid type scale (desktop/tablet) — calm, utilitarian */
+    --fs-xxxs: clamp(12px, 0.72vw, 14px);
+    --fs-xxs:  clamp(13px, 0.80vw, 15px);
+    --fs-xs:   clamp(14px, 0.90vw, 16px);
+    --fs-sm:   clamp(15px, 1.00vw, 18px);
+    --fs-md:   clamp(16px, 1.05vw, 20px);  /* base body */
+    --fs-lg:   clamp(18px, 1.25vw, 22px);
+    --fs-xl:   clamp(20px, 1.60vw, 26px);
 
-const messaging = firebase.messaging();
+    /* Layout — narrower sidebar */
+    --sidebar-w: clamp(200px, 16vw, 240px);
+    --radius: 14px;
+    --pad: 16px;
+    --gap: 12px;
+    --elev: 0 10px 28px rgba(0,0,0,.35);
+    --topbar-h: 64px;
+  }
 
-// Optional: ensure new SW versions take over immediately
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(clients.claim()));
+  *{ box-sizing:border-box }
+  html, body{ height:100% }
+  body{
+    margin:0;
+    font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;
+    background:var(--bg); color:var(--text);
+    font-size:var(--fs-md); line-height:1.45;
+  }
 
-// ✅ Data-only handler (single toast). If a 'notification' sneaks in, ignore to avoid doubles.
-messaging.onBackgroundMessage((payload) => {
-  if (payload.notification) return; // safety: lets FCM's own toast show, avoids double
+  /* Loading illustration (Home only) */
+  .loading-illustration{
+    display:block;
+    width:100%;
+    max-width:520px;
+    margin:12px auto 0;
+    border-radius:12px;
+    border:1px solid var(--border);
+    box-shadow: var(--elev);
+    height:auto;
+    object-fit:cover;
+  }
 
-  const d = payload.data || {};
-  const title = d.title || 'Saifee Sports';
-  const body  = d.body  || '';
-  const link  = d.link  || '/';
-  const icon  = d.icon  || '/favicon.ico';     // or '/favicon.svg' (Chrome shows PNG/SVG best)
-  const badge = d.badge || '/icons/icon-192.png';
-  const tag   = d.tag   || undefined;               // collapse by event id if provided
+  /* ===== App layout ===== */
+  .app{ display:flex; min-height:100dvh; width:100%; position:relative; }
+  .sidebar{
+    width:var(--sidebar-w);
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    padding: calc(var(--pad) + 6px) var(--pad);
+    position:sticky; top:0; align-self:flex-start; height:100dvh; overflow:auto;
+    will-change: transform;
+    transition: transform .25s ease;
+  }
+  .content{ flex:1; min-width:0; padding: var(--pad); }
+  .container{ max-width:1200px; margin:0 auto; padding: var(--pad); }
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--elev);
+    padding: calc(var(--pad) + 6px);
+  }
 
-  self.registration.showNotification(title, {
-    body,
-    icon,
-    badge,
-    tag,
-    data: { link },
-    renotify: false
-  });
-});
+  /* ===== Mobile top bar + slide-in sidebar ===== */
+  .topbar{
+    min-height: var(--topbar-h);
+    display:flex;
+    position:sticky; top:0; z-index:200;
+    background:linear-gradient(180deg, rgba(12,16,29,.95), rgba(12,16,29,.70));
+    backdrop-filter: blur(6px);
+    padding: 10px var(--pad);
+    border-bottom:1px solid var(--border);
+  }
 
-// Open/focus a tab to the deep link
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const rel = (event.notification && event.notification.data && event.notification.data.link) || '/';
-  const url = new URL(rel, self.location.origin).href;
+  .hamburger{
+    min-width:88px;
+    min-height:44px;
+    line-height:1;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color: transparent;
+    background:transparent; color:var(--text);
+    border:1px solid var(--border); border-radius:10px;
+    padding:8px 12px; font-weight:700; cursor:pointer;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; font-size:var(--fs-lg); font-weight:800; letter-spacing:.3px }
+  .brand .logo{ width:28px; height:28px; object-fit:contain; border-radius:8px; border:1px solid var(--border); background:#0d1423 }
+  /* Sidebar logo only: triple the size */
+  #sidebar .logo{ width:96px; height:96px; }
 
-  event.waitUntil((async () => {
-    const clientsList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const client of clientsList) {
-      try {
-        await client.focus();
-        if (client.url !== url && 'navigate' in client) await client.navigate(url);
-      } catch (_) {}
+  #sidebar .nav,
+  #sidebar .nav .group,
+  #sidebar .nav .submenu{ align-items: stretch; }
+  #sidebar .nav .nav-item{ justify-content:flex-start; text-align:left; }
+  #sidebar .submenu .nav-item.subitem{ justify-content:flex-start; text-align:left; }
+
+  @media (max-width: 1200px){
+    .sidebar{
+      position: fixed;
+      left: 0;
+      top: var(--topbar-h);
+      height: calc(100dvh - var(--topbar-h));
+      z-index: 180;
+      transform: translateX(-100%);
+    }
+    .sidebar.open{ transform: translateX(0); }
+    .content{ padding-top: 0; }
+
+    .backdrop{
+      position: fixed;
+      left: 0; right: 0;
+      top: var(--topbar-h);
+      bottom: 0;
+      background: rgba(0,0,0,.45);
+      display: none;
+      z-index: 160;
+    }
+    .backdrop.show{ display: block; }
+  }
+
+  /* ===== Desktop collapse (triggered by .sidebar.collapsed) ===== */
+  @media (min-width: 601px){
+    .sidebar.collapsed{
+      position:fixed; left:0; top:0; height:100dvh; z-index:180;
+      transform: translateX(-100%);
+    }
+  }
+
+  /* ===== Nav ===== */
+  .nav-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
+  .brand-left{ display:flex; align-items:center; gap:10px; }
+  .logo{ width:42px; height:42px; object-fit:contain; border-radius:10px; border:1px solid var(--border); background:#0d1423; }
+  .nav{ display:flex; flex-direction:column; gap:6px; }
+  .nav a, .nav button.nav-item{
+    display:flex; align-items:center; gap:10px;
+    width:100%; padding:8px 10px;
+    border-radius: 12px; border:1px solid transparent;
+    background:transparent; color:#d7e5fb; text-decoration:none; cursor:pointer;
+    font-size:var(--fs-xs);
+  }
+  .nav a.active, .nav button.nav-item.active{ background:#1d283a; border-color:#2a364c; color:#fff; }
+  .nav-sep{ margin:8px 0; height:1px; background:var(--border) }
+  .nav .group{ display:flex; flex-direction:column; gap:6px; }
+  .submenu{ margin-left:8px; display:none; }
+  .submenu.open{ display:flex; flex-direction:column; gap:6px; }
+  .subitem{ padding-left:10px; font-size:var(--fs-xs) }
+
+  /* ===== Shared UI ===== */
+  .stack{ display:flex; flex-direction:column; gap: var(--gap); }
+  .row{ display:flex; gap: var(--gap); flex-wrap: wrap; }
+  .col{ flex:1 1 320px; min-width:280px; }
+  .label{ font-size:var(--fs-xs); color:#BF0A30; }
+  .tiny{ font-size:var(--fs-xxs); color:var(--muted); }
+  .muted{ color:var(--muted) }
+  .btn.sm{ padding:6px 10px; font-size:var(--fs-xxs); }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding: 11px 14px; border-radius:12px; border:1px solid #224;
+    background:var(--accent); color:#fff; font-weight:700; cursor:pointer;
+    font-size:var(--fs-sm);
+  }
+  .btn.secondary{ background:#1f2937; color:#dbeafe }
+  .btn.danger{ background:#dc2626 }
+  .btn:disabled{ opacity:.6; cursor:not-allowed }
+
+  .input, select, input[type="date"], input[type="datetime-local"], input[type="number"], input[type="file"]{
+    width:100%; padding:12px 14px; border-radius:10px; border:1px solid #293247;
+    background:#0e1626; color:var(--text); font-size:var(--fs-sm);
+  }
+
+  .table{ width:100%; border-collapse:collapse }
+  .table th,.table td{
+    padding:10px;
+    border-bottom:1px solid var(--border);
+    text-align:left;
+    vertical-align: top;
+  }
+  .table--compact td { font-size: var(--fs-xxxs); }
+  .table--compact th { font-size: var(--fs-xs); }
+
+  .right{ text-align:right }
+
+  .badge{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:var(--fs-xxs); border:1px solid transparent }
+  .badge.ok{ background:rgba(22,163,74,.15); color:#8ee5a3; border-color:rgba(22,163,74,.35) }
+  .badge.warn{ background:rgba(245,158,11,.15); color:#ffd089; border-color:rgba(245,158,11,.35) }
+
+  .event-card{ padding:12px; border:1px solid var(--border); border-radius:12px; background:#0e1626 }
+  .event-actions{ display:flex; gap:8px; flex-wrap:wrap }
+  .countdown{ font-size:var(--fs-lg); font-weight:800; font-variant-numeric: tabular-nums; }
+
+  .amt-credit{ color:#16a34a; font-weight:700 }
+  .amt-debit{ color:#ef4444; font-weight:700 }
+
+  /* Forms are one-column by design */
+  .form-grid{ display:grid; grid-template-columns: 1fr; gap: var(--gap); }
+
+  /* Utilities */
+  .hide{ display:none !important }
+  .w-full{ width:100% }
+
+  /* Make text scale reliably on iOS/Android and bump sizes on small screens */
+  html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+
+  /* Hide the hamburger that shows inside the sidebar header (desktop) */
+  #sidebar .hamburger,
+  #btnNavCollapse{ display: none !important; }
+
+  /* Hide the topbar hamburger when we're above the mobile breakpoint */
+  @media (min-width: 1201px){
+    .topbar .hamburger { display: none !important; }
+  }
+
+  /* ===== Mobile sizing & spacing (phones / small tablets) ===== */
+  @media (max-width: 600px){
+    :root{
+      /* Tighter spacing + corners */
+      --pad: 10px;
+      --gap: 10px;
+      --radius: 12px;
+      --topbar-h: 64px;
+
+      /* Smaller, sane fluid type scale for small screens */
+      --fs-xxxs: clamp(16px, 3.8vw, 18px);
+      --fs-xxs:  clamp(16px, 4.1vw, 19px);
+      --fs-xs:   clamp(17px, 4.4vw, 20px);
+      --fs-sm:   clamp(18px, 4.8vw, 21px);
+      --fs-md:   clamp(18px, 5.2vw, 22px);
+      --fs-lg:   clamp(19px, 5.8vw, 24px);
+      --fs-xl:   clamp(20px, 6.4vw, 26px);
+    }
+
+    /* Layout + cards */
+    .content{ padding: var(--pad); }
+    .container{ padding: var(--pad); }
+    .card{ padding: calc(var(--pad) + 2px); }
+
+    /* Brand / logos shrink a bit */
+    .brand{ font-size: var(--fs-sm); }
+    .brand .logo{ width:24px; height:24px; }
+    #sidebar .logo{ width:96px; height:96px; }
+
+    /* Buttons + inputs remain finger-friendly but not bulky */
+    .btn{ padding:10px 12px; border-radius:10px; font-size: var(--fs-xxs); }
+    .btn.sm{ padding:6px 10px; }
+    .input, select,
+    input[type="date"], input[type="datetime-local"], input[type="number"], input[type="file"]{
+      padding:10px 12px; font-size: var(--fs-xxs);
+    }
+
+    /* Countdown stays bold but not gigantic */
+    .countdown{ font-size: clamp(18px, 6vw, 22px); }
+
+    /* Labels/text helpers */
+    .label{ font-size: var(--fs-xxs); }
+    .tiny{ font-size: var(--fs-xxxs); }
+
+    /* Action clusters and grid spacing */
+    .event-actions{ gap:6px; }
+    .row{ gap:8px; }
+    .col{ min-width:240px; }
+
+    /* Tables: make them usable on narrow screens without markup changes */
+    .table{
+      display:block;               /* allow horizontal scrolling */
+      overflow-x:auto;
+      -webkit-overflow-scrolling: touch;
+      white-space: nowrap;         /* prevent wraps on numbers */
+      font-size: var(--fs-xxxs);
+    }
+    .table th, .table td{ padding:8px; }
+  }
+
+  /* Extra-small phones (optional fine-tune) */
+  @media (max-width: 360px){
+    .btn{ padding:9px 10px; }
+    .countdown{ font-size: clamp(17px, 6.6vw, 21px); }
+  }
+
+  /* ===== Notifications banner ===== */
+.notify-banner{
+  position: sticky;            /* sits just under the sticky topbar */
+  top: 1;                      /* because it's inside <main> under .topbar */
+  z-index: 190;                /* below .topbar (200), above content */
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: none;
+}
+.notify-banner.show{ display:block; }
+.notify-banner .inner{
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px var(--pad);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.notify-banner .msg{ font-size: var(--fs-xxs); color: var(--text); }
+.notify-banner .actions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+</style>
+
+<script>
+/* google.script.run polyfill for Cloudflare Pages */
+(function () {
+  if (window.google && google.script && google.script.run) return;
+
+  const CACHEABLE_READS = new Set([
+    'api_listEvents', 'api_upcomingEvents', 'api_eventDetails'
+  ]);
+
+  function runner(base, ctx = { ok: null, fail: null }) {
+    return new Proxy(function () {}, {
+      get(_t, prop) {
+        if (prop === 'withSuccessHandler') {
+          return (fn) => runner(base, { ...ctx, ok: fn });
+        }
+        if (prop === 'withFailureHandler') {
+          return (fn) => runner(base, { ...ctx, fail: fn });
+        }
+        return function (...args) {
+          const method = String(prop);
+          (async () => {
+            try {
+              let res;
+              if (CACHEABLE_READS.has(method)) {
+                const url = base + '?method=' + encodeURIComponent(method) +
+                            '&args=' + encodeURIComponent(JSON.stringify(args || []));
+                res = await fetch(url, { method: 'GET' });
+              } else {
+                res = await fetch(base, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ method, args })
+                });
+              }
+              if (!res.ok) throw new Error('HTTP ' + res.status);
+              const data = await res.json();
+              (ctx.ok || function(){})(data);
+            } catch (e) {
+              (ctx.fail || console.error)(e);
+            }
+          })();
+          return runner(base, {});
+        };
+      }
+    });
+  }
+
+  window.google = window.google || {};
+  google.script = google.script || {};
+  google.script.run = runner('/gas');
+})();
+</script>
+
+<link rel="preload" as="image" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEipkSiLA8T6LZrbDw590cJw_ooRuoCnb0pPKdeD_3yJVc3EsrgAmCQnxnmv2A76dWQGyhvQiZsWi7jmXTcFnqRptoZwlfcrmn9QUqDFHh23nkmkL7haUiweej-qetfQeliR3x_kqY29GkeKGOlsF8ZIK_vmY44-JEheGeM-9YP1JjDWOxSu89nu1M15gyHp/s2380/AQMS%20Bayan.jpg">
+  
+</head>
+<body>
+  <div class="app" id="appShell">
+    <div class="backdrop" id="backdrop"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="nav-head">
+        <div class="brand-left">
+          <img id="logo" class="logo" src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhGDd41RRLflpCpnJ6zrk8tZIWQ4rgNQS54N0CNUu4JSitj1pEsk4Ziu1emW06ph8I4Oqz80EiUGzh8fGk3aix-ARa7kqozocI7KpxG_ll1U5xkbl_ekUY7UTdw5W9KkRLlcPFlLYEptUtnHGcussYaRnVAUbBZYTCogDHMEAWr4kNGXQAvxYSxfzbQizCU/s16000/Saifee%20Sports%20Logo.png" alt="logo" onerror="this.style.display='none'"/>
+          <div class="brand" style="font-size:var(--fs-xl)"></div>
+        </div>
+        <button class="hamburger" id="btnCollapse" title="Hide menu">☰</button>
+      </div>
+      <nav class="nav" id="nav"></nav>
+    </aside>
+
+    <!-- Main content -->
+    <main class="content">
+      <div class="topbar">
+  <button class="hamburger" id="btnMenu">☰ Menu</button>
+  <div class="brand">
+    <img id="logoTop" class="logo" src="" alt="logo" onerror="this.style.display='none'"/>
+    <div>   Saifee Sports</div>
+  </div>
+</div>
+
+
+<!-- Notifications enable banner -->
+<div id="notifyBanner" class="notify-banner">
+  <div class="inner">
+    <div class="msg" data-msg>Get alerts when registration opens and other updates.</div>
+    <div class="actions">
+      <button class="btn" data-enable>Enable notifications</button>
+      <button class="btn secondary" data-close>Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<div class="container"><div id="root"></div></div>
+
+    </main>
+  </div>
+
+  <script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getMessaging, getToken, isSupported, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
+
+  // TODO: paste your Firebase web config + VAPID key
+  const firebaseConfig = {
+    apiKey: "…",
+    authDomain: "…",
+    projectId: "…",
+    messagingSenderId: "…",
+    appId: "…"
+  };
+  const vapidKey = "YOUR_PUBLIC_VAPID_KEY_FROM_FIREBASE_CONSOLE";
+
+  const app = initializeApp(firebaseConfig);
+
+  async function realEnablePush(){
+    // 0) Check support (Firefox Private windows disable SW)
+    if (!(await isSupported())) {
+      alert('Push not supported in this browser/session.');
       return;
     }
-    await clients.openWindow(url);
-  })());
+
+    // 1) Ask permission
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+
+    // 2) Register the SW at root
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready; // ensure active
+
+    // 3) Mint an FCM token
+    const messaging = getMessaging(app);
+    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: reg });
+    if (!token) { console.warn('No token from FCM'); return; }
+
+    // 4) Save it to Apps Script (PushTokens sheet)
+    const its = (window.state && state.user && state.user.its) || '';
+    google.script.run.api_push_saveToken(its, token, navigator.userAgent);
+
+    console.log('Push token saved:', token);
+
+    // Optional: foreground messages
+    onMessage(messaging, (payload) => {
+      console.log('Foreground push:', payload);
+      // You can show an in-page toast if you want
+    });
+  }
+
+  // Expose for your banner button
+  window.enablePush = realEnablePush;
+</script>
+
+
+// ===== Simple deep-link router (hash-based) =====
+var router = {
+  normalize(page, opts){
+    switch(page){
+      case 'home':            return '#/home';
+      case 'profile':         return '#/profile';
+      case 'balance':         return '#/balance';
+      case 'calendar':        return '#/calendar';
+      case 'guests':          return '#/guests';
+      case 'sport':           return '#/sport/' + encodeURIComponent((opts && opts.sport) || state.sport || 'Soccer');
+      case 'admin_events':    return '#/admin/events';
+      case 'admin_receipts':  return '#/admin/receipts';
+      case 'captain':         return '#/captain/' + encodeURIComponent((opts && opts.sport) || '');
+      case 'event':           return '#/event/' + encodeURIComponent((opts && opts.id) || '');
+      case 'create':          return '#/create';
+      case 'edit':            return '#/edit';
+      case 'qrcheck':         return '#/checkin' + (opts && (opts.id || opts.token)
+      ? ('?' + new URLSearchParams({ e: (opts.id || ''), k: (opts.token || '') }).toString()): '');
+
+      case 'stat':            return '#/stat';                      // <-- NEW
+      case 'landing':
+      default:                return '#/landing';
+    }
+  },
+
+  // Query-aware parsing:
+  parse(){
+    const raw = (location.hash || '').replace(/^#\/?/, '');
+    if (!raw) return { page: '' };
+
+    const [path, qs] = raw.split('?');
+    const parts = path.split('/');
+    const seg = (parts[0]||'').toLowerCase();
+
+    // ⬇ add 'stat' to the simple pages list
+    if (['home','profile','balance','calendar','guests','landing','create','edit','stat'].includes(seg))
+      return { page: seg };
+
+    if (seg === 'sport')   return { page:'sport',   sport: decodeURIComponent(parts[1]||'Soccer') };
+    if (seg === 'captain') return { page:'captain', sport: decodeURIComponent(parts[1]||'') };
+    if (seg === 'admin' && parts[1]==='events')   return { page:'admin_events' };
+    if (seg === 'admin' && parts[1]==='receipts') return { page:'admin_receipts' };
+    if (seg === 'event')   return { page:'event',   id: decodeURIComponent(parts[1]||'') };
+
+    // QR check-in landing (already in your app)
+    if (seg === 'checkin'){
+      const p = new URLSearchParams(qs||'');
+      return { page:'qrcheck', id: p.get('e')||'', token: p.get('k')||'' };
+    }
+    return { page:'landing' };
+  },
+
+  navigate(page, opts){
+    const target = router.normalize(page, opts);
+    if (location.hash !== target) {
+      location.hash = target;     // triggers hashchange -> router.sync()
+    } else {
+      router.sync();              // allow "navigate to same route" to re-render
+    }
+  },
+
+  syncing: false,
+  sync(){
+    if (router.syncing) return;
+    router.syncing = true;
+    try {
+      // Default route when no hash yet
+      if (!location.hash || location.hash === '#') {
+        router.navigate(state.user ? 'home' : 'landing');
+        return;
+      }
+
+      const route = router.parse();
+
+      // Gate protected pages if signed out
+      const publicPages = new Set(['landing','create','edit','']); // 'stat' is intentionally NOT public
+      if (!state.user && !publicPages.has(route.page)) {
+        state.tmp = state.tmp || {};
+        state.tmp.returnTo = location.hash; // remember where they wanted to go (e.g., #/stat)
+        setPage('landing', {updateHash:false});
+        return;
+      }
+
+      // Route → page
+      if (route.page === 'sport'){
+        state.sport = route.sport || state.sport || 'Soccer';
+        setPage('sport', {updateHash:false});
+        return;
+      }
+      if (route.page === 'captain'){
+        setPage('captain_' + (route.sport||''), {updateHash:false});
+        return;
+      }
+      if (route.page === 'event'){
+        openEvent(route.id); // render event detail directly
+        return;
+      }
+
+      // Simple pages (includes 'stat' now)
+      setPage(route.page || 'landing', {updateHash:false});
+    } finally {
+      router.syncing = false;
+    }
+  }
+};
+
+window.addEventListener('hashchange', router.sync);
+
+
+    /* ===================== GLOBAL STATE ===================== */
+    var state = {
+      boot:null, user:null, page:'landing', sport:'Soccer', error:'', tmp:{},
+      admin:{ adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} },
+      ui:{ menuOpen:false, sportsOpen:false }
+    };
+    var sportCountdownTimer = null;
+    var homeTimers = { cd:null, uiRefresh:null };
+
+    /* ===================== BOOT ===================== */
+    google.script.run.withSuccessHandler(function(res){
+  state.boot = res || {};
+  if (state.boot && state.boot.logoUrl) {
+    document.getElementById('logo').src = state.boot.logoUrl;
+    document.getElementById('logoTop').src = state.boot.logoUrl;
+  }
+  restoreSession();
+  router.sync();   // <— let the URL pick the page
+}).api_bootstrap();
+
+
+    /* ===================== UTILS ===================== */
+    function $(sel, root){ return (root||document).querySelector(sel); }
+    function el(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
+    function layout(n){ var root=document.getElementById('root'); root.innerHTML=''; root.appendChild(n); }
+    function setPage(p, opts){
+  state.page = p; state.error=''; closeMenu();
+
+  // When called by router.sync(), skip updating the hash
+  if (opts && opts.updateHash === false){
+    render();
+    return;
+  }
+
+  // Normal app navigation → update hash (which calls router.sync → render)
+  if (p === 'sport') {
+    router.navigate('sport', { sport: state.sport });
+  } else if (p && p.startsWith('captain_')) {
+    router.navigate('captain', { sport: p.replace('captain_','') });
+  } else {
+    router.navigate(p);
+  }
+}
+
+function setSport(sp){
+  state.sport = sp;
+  // This will update the hash to #/sport/<sp> and re-render
+  setPage('sport');
+}
+
+    function money(n){ return '$'+(Number(n||0)).toFixed(2); }
+    function ftIn(inches){ var v=Number(inches||0); var ft=Math.floor(v/12); var i=v%12; return v? (ft+'ft '+i+'in') : ''; }
+    function fmtDate(s){ if(!s) return ''; var d=new Date(s); if(isNaN(d)) return ''; var mm=('0'+(d.getMonth()+1)).slice(-2); var dd=('0'+d.getDate()).slice(-2); var yy=d.getFullYear(); return mm+'/'+dd+'/'+yy; }
+    function fmtDT(s){ try{ return new Date(s).toLocaleString(); }catch(_){return String(s||'');} }
+    function parseDT(s){ var d=new Date(s); return isNaN(d)?null:d; }
+    function now(){ return new Date(); }
+    function guard(){ if(!state.user){ setPage('landing'); return false; } return true; }
+    function showErr(sel, err){ var node=$(sel); if (node) node.textContent = (err && (err.message || err)) || 'Unexpected error'; }
+    function humanCountdown(ms){
+    var total = Math.max(0, Math.floor(ms / 1000));
+    var d = Math.floor(total / 86400);
+    var h = Math.floor((total % 86400) / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+
+    function pad2(n){ return String(n).padStart(2, '0'); }
+
+    // If there are days, show "Xd HH:MM:SS"; otherwise "HH:MM:SS"
+    return (d > 0 ? (d + 'd ') : '') + pad2(h) + ':' + pad2(m) + ':' + pad2(s);
+    }
+    function addrHtml(addr){
+      return addr
+        ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener">'+addr+'</a>')
+        : '';
+    }
+
+    function setDocTitle(suffix){
+    document.title = suffix ? `Saifee Sports — ${suffix}` : 'Saifee Sports';
+}
+
+    // Session keep-alive
+    function saveSession(){ try { localStorage.setItem('saifee_user', JSON.stringify(state.user||null)); } catch(e){} }
+    function restoreSession(){
+      try {
+        var saved = JSON.parse(localStorage.getItem('saifee_user') || 'null');
+        if (saved && saved.its){
+          state.user = saved;
+          if (!state.page || state.page === 'landing') state.page = 'home';
+          AdminAPI.bootstrap(saved.its, function(b){
+            state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b||{});
+            render();
+          }, console.warn);
+        }
+      } catch(e){}
+    }
+    function signOut(){
+      try { localStorage.removeItem('saifee_user'); } catch(e){}
+      state.user = null;
+      state.admin = { adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} };
+      setPage('landing');
+    }
+
+// Promise-style wrapper
+function gs(method, ...args){
+  return new Promise((resolve, reject)=>{
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)[method].apply(google.script.run, args || []);
+  });
+}
+
+// Simple full-width loading view
+function showLoading(text){
+  layout(el(
+    '<div class="card" style="text-align:center;padding:28px">'+
+      '<div class="tiny muted">'+(text || 'Loading…')+'</div>'+
+    '</div>'
+  ));
+}
+// Home-only loading view with image
+    function showHomeLoading(){
+      layout(el(
+        '<div class="card stack" style="align-items:center; text-align:center">' +
+          '<div class="tiny muted" style="font-size:var(--fs-sm)">Loading your dashboard…</div>' +
+          '<img class="loading-illustration" ' +
+              'src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEipkSiLA8T6LZrbDw590cJw_ooRuoCnb0pPKdeD_3yJVc3EsrgAmCQnxnmv2A76dWQGyhvQiZsWi7jmXTcFnqRptoZwlfcrmn9QUqDFHh23nkmkL7haUiweej-qetfQeliR3x_kqY29GkeKGOlsF8ZIK_vmY44-JEheGeM-9YP1JjDWOxSu89nu1M15gyHp/s2380/AQMS%20Bayan.jpg" ' +
+              'alt="Loading illustration" decoding="async" fetchpriority="high" ' +
+              'onerror="this.style.display=\'none\'" />' +
+        '</div>'
+      ));
+    }
+
+    /* ===================== SERVER CALL WRAPPER ===================== */
+    function callServer(primary, args, ok, err, fallback){
+      try{
+        google.script.run.withSuccessHandler(ok).withFailureHandler(function(e){
+          if (fallback){
+            google.script.run.withSuccessHandler(ok).withFailureHandler(err||console.error)[fallback].apply(google.script.run, args||[]);
+          } else (err||console.error)(e);
+        })[primary].apply(google.script.run, args||[]);
+      }catch(e){
+        if (fallback){
+          try{
+            google.script.run.withSuccessHandler(ok).withFailureHandler(err||console.error)[fallback].apply(google.script.run, args||[]);
+          }catch(e2){ (err||console.error)(e2); }
+        } else (err||console.error)(e);
+      }
+    }
+
+    /* ===================== ADMIN API WRAPPERS ===================== */
+    var AdminAPI = {
+      bootstrap:function(its, cb, eb){ callServer('Events_adminBootstrap', [its], cb, eb, 'api_admin_bootstrap'); },
+      eventsList:function(its, cb, eb){ callServer('Events_listForAdmin', [its], cb, eb, 'api_events_listForAdmin'); },
+      eventSave:function(its, payload, cb, eb){ callServer('Events_save', [its, payload], cb, eb, 'api_events_save'); },
+      eventDelete:function(its, id, cb, eb){ callServer('Events_delete', [its, id], cb, eb, 'api_events_delete'); },
+      eventCopy:function(its, id, cb, eb){ callServer('Events_copy', [its, id], cb, eb, 'api_events_copy'); },
+      receiptsList:function(its, cb, eb){ callServer('Receipts_listForAdmin', [its], cb, eb, 'api_receipts_listForAdmin'); },
+      receiptSave:function(its, payload, cb, eb){ callServer('Receipts_save', [its, payload], cb, eb, 'api_receipts_save'); },
+      receiptsFinalizeNow:function(its, eventId, cb, eb){ callServer('Receipts_finalizeNow', [its, eventId], cb, eb, 'api_receipts_finalizeNow'); }
+    };
+
+    /* ===================== LEFT NAV ===================== */
+    function buildNav(){
+      var nav = $('#nav'); if (!nav) return;
+      nav.innerHTML = '';
+
+      function navItem(label, page, opts){
+  var btn = el('<button class="nav-item">'+label+'</button>');
+  if (state.page===page) btn.classList.add('active');
+  if (opts && opts.test && !opts.test()) return null;
+
+  btn.onclick = function(){
+    if (page === 'sport') router.navigate('sport', { sport: state.sport });
+    else if (page && page.startsWith('captain_')) router.navigate('captain', { sport: page.replace('captain_','') });
+    else router.navigate(page);
+  };
+  nav.appendChild(btn);
+  return btn;
+}
+
+      function navLink(label, onClick, isActive){
+        var btn = el('<button class="nav-item">'+label+'</button>');
+        if (isActive) btn.classList.add('active');
+        btn.onclick = onClick;
+        nav.appendChild(btn);
+        return btn;
+      }
+
+      // Primary tabs
+      navItem('Home','home', { test: ()=> !!state.user });
+      navItem('Profile','profile', { test: ()=> !!state.user });
+      navItem('Balance','balance', { test: ()=> !!state.user });
+      navItem('Calendar','calendar', { test: ()=> !!state.user });
+      navItem('Guests','guests', { test: ()=> !!state.user });
+
+      // Sports group with submenu
+      if (state.user){
+        var group = el('<div class="group"></div>');
+        var trigger = el('<button class="nav-item">Sports ▾</button>');
+        trigger.onclick = function(){
+          state.ui.sportsOpen = !state.ui.sportsOpen;
+          submenu.classList.toggle('open', state.ui.sportsOpen);
+        };
+        group.appendChild(trigger);
+
+        var submenu = el('<div class="submenu '+(state.ui.sportsOpen?'open':'')+'"></div>');
+        var sports = (state.boot && state.boot.sports) ? state.boot.sports : [];
+        if (!sports.length) sports = ['Soccer','Basketball','Volleyball','Tennis'];
+        sports.forEach(function(sp){
+          var sbtn = el('<button class="nav-item subitem">'+sp+'</button>');
+          if (state.page==='sport' && state.sport===sp) sbtn.classList.add('active');
+          sbtn.onclick = function(){ setSport(sp); };
+          submenu.appendChild(sbtn);
+        });
+        group.appendChild(submenu);
+        nav.appendChild(group);
+      }
+
+      // Admin items (Events/Receipts/Stat Tracker)
+var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
+if (state.user && hasAdminSports){
+  nav.appendChild(el('<div class="nav-sep"></div>'));
+  navItem('Events','admin_events');
+  navItem('Receipts','admin_receipts');
+
+  // >>> STATKIT-NAV-START
+  // Visible to admins; routes to #/stat (Stat Tracker)
+  navItem('Stat Tracker','stat');
+  // >>> STATKIT-NAV-END
+}
+
+// Captain tabs from bootstrap (independent of normal admin)
+if (state.user){
+  var caps = (state.admin && state.admin.captainLinks) || {};
+  var capSports = Object.keys(caps);
+  if (capSports.length){
+    nav.appendChild(el('<div class="nav-sep"></div>'));
+    capSports.forEach(function(sp){
+      navItem(sp+' Autodraft', 'captain_'+sp);
+    });
+  }
+}
+
+      // Auth
+      nav.appendChild(el('<div class="nav-sep"></div>'));
+      if (state.user){
+        navLink('Sign Out', function(){ if (confirm('Sign out?')) signOut(); }, false);
+      } else {
+        navLink('Sign In / Sign Up', function(){ setPage('landing'); }, state.page==='landing');
+      }
+    }
+
+    /* ===================== MENU TOGGLING ===================== */
+    const MOBILE_MAX = 1200;
+
+    function isMobileBP(){ return window.matchMedia(`(max-width: ${MOBILE_MAX}px)`).matches; }
+
+    function toggleMenu(){
+      const sb = document.getElementById('sidebar');
+      const bd = document.getElementById('backdrop');
+      if (isMobileBP()){
+        const willOpen = !sb.classList.contains('open');
+        sb.classList.toggle('open', willOpen);
+        if (bd) bd.classList.toggle('show', willOpen);
+      } else {
+        sb.classList.toggle('collapsed');
+      }
+    }
+    
+    function updateMenuButtonVisibility(){
+    const btn = document.getElementById('btnMenu');
+    if (!btn) return;
+    // Show the button only when we're in the mobile breakpoint (drawer mode)
+    btn.style.display = isMobileBP() ? '' : 'none';
+  }
+
+
+    function closeMenu(){
+      const sb = document.getElementById('sidebar');
+      const bd = document.getElementById('backdrop');
+      sb.classList.remove('open');
+      sb.classList.remove('collapsed');
+      if (bd) bd.classList.remove('show');
+    }
+
+    function wireMenuButtons(){
+      const btn = document.getElementById('btnMenu');
+      if (btn) btn.onclick = (e)=>{ e.stopPropagation(); toggleMenu(); };
+      const bd = document.getElementById('backdrop');
+      if (bd) bd.onclick = closeMenu;
+    }
+
+    window.addEventListener('resize', ()=>{
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('backdrop');
+  if (isMobileBP()){
+    sb.classList.remove('collapsed');
+  } else {
+    sb.classList.remove('open');
+    if (bd) bd.classList.remove('show');
+  }
+  updateMenuButtonVisibility(); // keep the hamburger in sync with layout
 });
+
+
+    wireMenuButtons();
+    updateMenuButtonVisibility();
+
+/* ===== Notifications enable banner ===== */
+function initNotifyBanner(){
+  const bar = document.getElementById('notifyBanner');
+  if (!bar) return;
+
+  const btnEnable = bar.querySelector('[data-enable]');
+  const btnClose  = bar.querySelector('[data-close]');
+  const msgEl     = bar.querySelector('[data-msg]');
+
+  function refresh(){
+  // Only prompt signed-in users (optional)
+  if (!window.state || !state.user) { 
+    bar.classList.remove('show'); 
+    return; 
+  }
+
+  if (!('Notification' in window)) {
+    bar.classList.remove('show');
+    return;
+  }
+    const perm = Notification.permission;   // 'default' | 'granted' | 'denied'
+    if (perm === 'granted') {
+      bar.classList.remove('show');         // hide if already enabled
+      return;
+    }
+    if (perm === 'default'){
+      msgEl.textContent = 'Get alerts when registration opens and other updates.';
+      btnEnable.classList.remove('hide');
+      btnEnable.disabled = false;
+    } else { // denied
+      msgEl.textContent = 'Notifications are blocked. Enable them in your browser’s site settings for this site to receive alerts.';
+      btnEnable.classList.add('hide');      // don’t re-prompt
+    }
+    bar.classList.add('show');              // show the banner
+  }
+
+  btnEnable && (btnEnable.onclick = async ()=>{
+    btnEnable.disabled = true;
+    try { 
+      if (typeof enablePush === 'function') await enablePush();
+    } catch(_) {}
+    refresh();  // will hide if permission became 'granted'
+  });
+
+  btnClose && (btnClose.onclick = ()=>{
+    // Dismiss for this session only; banner will reappear on next load if still not granted
+    bar.classList.remove('show');
+  });
+
+  // React to permission changes (where supported)
+  if (navigator.permissions && navigator.permissions.query){
+    try {
+      navigator.permissions.query({ name: 'notifications' }).then(p => {
+        p.onchange = refresh;
+      });
+    } catch(_) {}
+  }
+
+  refresh();
+}
+
+// Run it once on page load (ensure DOM is ready)
+window.addEventListener('load', initNotifyBanner);
+
+    /* ===================== AUTH VIEWS ===================== */
+    function pageLanding(){
+      var hasLogo = (state.boot && state.boot.logoUrl);
+      var node = el(
+        '<div class="card stack">'+
+          '<div style="display:flex;align-items:center;gap:12px">'+
+            (hasLogo?('<img class="logo" src="'+state.boot.logoUrl+'" alt="logo"/>'):'')+
+            '<div style="font-size:var(--fs-xl);font-weight:800">Welcome to Saifee Sports</div>'+
+          '</div>'+
+          '<div class="stack">'+
+            '<div class="label">Sign In</div>'+
+            '<form id="si_form" class="stack">'+
+              '<input id="si_its" class="input" placeholder="ITS (8 digits)" maxlength="8" inputmode="numeric" pattern="[0-9]*">'+
+              '<input id="si_whatsapp" class="input" placeholder="Whatsapp Number (10 digits)" type="password" maxlength="10" inputmode="numeric" pattern="[0-9]*">'+
+              '<button class="btn" id="btnSignIn" type="submit">Sign In</button>'+
+            '</form>'+
+            '<div class="label">New here?</div>'+
+            '<button class="btn secondary" id="btnSignUp">Create Profile</button>'+
+            '<div class="tiny" id="si_err" style="color:var(--err)"></div>'+
+          '</div>'+
+        '</div>'
+      );
+      layout(node);
+      $('#btnSignUp').onclick = function(){ setPage('create'); };
+
+      function onlyDigits(id, max){
+        var el2 = document.getElementById(id);
+        if(!el2) return;
+        el2.addEventListener('input', function(){ this.value = this.value.replace(/\D+/g,'').slice(0,max); });
+      }
+      onlyDigits('si_its',8); onlyDigits('si_whatsapp',10);
+
+      $('#si_form').addEventListener('submit', function(e){ e.preventDefault(); actSignIn(); });
+    }
+    function actSignIn(){
+  const its = ($('#si_its').value || '').trim();
+  const whatsapp = ($('#si_whatsapp').value || '').trim();
+  const err = $('#si_err');
+  err.textContent = '';
+
+  if (!/^\d{8}$/.test(its)) { err.textContent = 'ITS must be 8 digits'; return; }
+  if (!/^\d{10}$/.test(whatsapp)) { err.textContent = 'Whatsapp Number must be 10 digits'; return; }
+
+  const btn = $('#btnSignIn');
+  const orig = btn ? btn.textContent : '';
+  if (btn){ btn.disabled = true; btn.textContent = 'Signing in…'; }
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (btn){ btn.disabled = false; btn.textContent = orig; }
+      if (!res || !res.ok){ err.textContent = (res && res.error) || 'Invalid credentials'; return; }
+
+      state.user = res.user; 
+      saveSession();
+
+      AdminAPI.bootstrap(state.user.its, function(b){
+        state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b || {});
+      }, console.warn);
+
+      // Small welcome
+      layout(el('<div class="card stack" style="align-items:center;text-align:center">Welcome, ' + (state.user.first_name || 'Athlete') + '!</div>'));
+
+      setTimeout(function(){
+      // Require profile completion takes precedence
+      if (res.requireValidation) { location.hash = '#/edit'; return; }
+
+      // Return to where they were headed (e.g., #/stat) if we saved it in router.sync()
+      if (state.tmp && state.tmp.returnTo){
+        const dest = state.tmp.returnTo;
+        delete state.tmp.returnTo;
+        location.hash = dest;
+      } else {
+        location.hash = '#/home';
+      }
+    }, 600);
+    })
+    .withFailureHandler(function(e){
+      if (btn){ btn.disabled = false; btn.textContent = orig; }
+      err.textContent = (e && e.message) || 'Sign-in failed';
+    })
+    .api_signIn({ its, whatsapp });
+    
+}
+
+
+
+    /* ===================== SHARED HELPERS ===================== */
+function appendAndBust_(tab, obj){
+  const id = _appendObject(tab, obj);
+  _cacheBust(tab);
+  return id;
+}
+function updateAndBust_(tab, pred, patch){
+  const n = _updateWhere(tab, pred, patch);
+  _cacheBust(tab);
+  return n;
+}
+
+    function withinCheckInWindow(evt){
+      var start = parseDT(evt && evt.start_datetime);
+      if (!start) return false;
+      var end   = parseDT(evt && evt.end_datetime);
+      var nowTs = now();
+      var openAt  = new Date(start.getTime() - 30*60*1000);
+      var closeAt = end ? new Date(end.getTime() - 30*60*1000) : new Date(start.getTime() + 30*60*1000);
+      return nowTs >= openAt && nowTs <= closeAt;
+    }
+    function doCheckIn(eventId, itsOrGuest, btnEl){
+      if(!navigator.geolocation){ alert('Location not available on this device/browser.'); return; }
+      var originalText = btnEl ? btnEl.textContent : '';
+      if (btnEl){ btnEl.disabled = true; btnEl.textContent = 'Checking…'; }
+      navigator.geolocation.getCurrentPosition(function(pos){
+        var lat = pos.coords.latitude, lng = pos.coords.longitude;
+        google.script.run
+          .withSuccessHandler(function(r){
+            if(!r || !r.ok){
+              alert((r && r.error) || 'Check-in failed');
+              if (btnEl){ btnEl.disabled = false; btnEl.textContent = originalText; }
+              return;
+            }
+            if (btnEl){
+              btnEl.disabled = true;
+              btnEl.textContent = 'Checked In';
+              btnEl.classList.add('checked-in');
+            } else {
+              alert('Check-in successfully recorded!');
+            }
+          })
+          .withFailureHandler(function(e){
+            alert('Check-in failed: ' + (e && e.message || e));
+            if (btnEl){ btnEl.disabled = false; btnEl.textContent = originalText; }
+          })
+          .api_checkInWithLocation(state.user.its, eventId, (itsOrGuest || state.user.its), lat, lng);
+      }, function(err){
+        alert('Could not get your location: ' + (err && err.message ? err.message : 'Unknown error'));
+        if (btnEl){ btnEl.disabled = false; btnEl.textContent = originalText; }
+      }, { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+    }
+    function refreshCheckinButtonsVisibility(){
+      document.querySelectorAll('.js-checkin-btn').forEach(function(btn){
+        if (btn.classList.contains('checked-in')) return;
+        var start = btn.getAttribute('data-start');
+        var end   = btn.getAttribute('data-end');
+        if (!start){ btn.style.display = 'none'; return; }
+        var evt = { start_datetime: start, end_datetime: end };
+        var can = withinCheckInWindow(evt);
+        btn.style.display = can ? 'inline-flex' : 'none';
+        btn.disabled = !can;
+      });
+    }
+    function computeStatusBadge(st){
+      var s = String(st||'none').toLowerCase();
+      if (s==='active')   return '<span class="badge ok">Active</span>';
+      if (s==='waitlist') return '<span class="badge warn">Waitlist</span>';
+      if (s==='dropout')  return '<span class="badge warn">Dropped Out</span>';
+      return '';
+    }
+
+/* ===================== HOME ===================== */
+async function pageHome(){ 
+  if (!guard()) return;
+  setDocTitle('Home');
+
+  // Ensure timers holder exists
+  window.homeTimers = window.homeTimers || {};
+
+  // Clear any prior timers to avoid duplicates if user re-enters Home
+  if (homeTimers.cd) { clearInterval(homeTimers.cd); homeTimers.cd = null; }
+  if (homeTimers.uiRefresh) { clearInterval(homeTimers.uiRefresh); homeTimers.uiRefresh = null; }
+
+  // One loading state with the image (Home-only)
+  showHomeLoading();
+
+  try{
+    // Parallel core calls
+    const [balanceRes, listsRes, upcomingRes] = await Promise.all([
+      gs('api_balance', state.user.its),
+      gs('api_homeListsForUser', state.user.its),
+      gs('api_upcomingEvents', 5)
+    ]);
+
+    // Normalize lists
+    const selfList   = (listsRes && listsRes.self)   || [];
+    const guestList  = (listsRes && listsRes.guests) || [];
+    let   nextSelf   = (listsRes && listsRes.nextSelf) || null;
+
+    // Collect all event IDs we’ll need details for (self + guests + upcoming)
+    const ids = new Set();
+    selfList.forEach(e=> ids.add(e.id || e.event_id));
+    guestList.forEach(e=> ids.add(e.id || e.event_id));
+    (upcomingRes && upcomingRes.events || upcomingRes || []).forEach(e=> ids.add(e.id || e.event_id));
+
+    // Fetch details (capacity, live roster, etc.) so UI is correct at first paint
+    const detailPairs = await Promise.all(
+      Array.from(ids).filter(Boolean).map(id => 
+        gs('api_eventDetails', id).then(r => [id, r]).catch(()=>[id, null])
+      )
+    );
+    const detailsById = Object.fromEntries(detailPairs);
+
+    // Build DOM once (adds top-right Check In button)
+    const node = el(
+      '<div class="stack">'+
+        '<div class="card stack">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">'+
+            '<div class="stack" style="gap:6px">'+
+              '<div class="label">Your Next Event</div>'+
+              '<div id="home_cd" class="countdown muted">—</div>'+
+              '<div id="home_cd_sub" class="tiny"></div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Balance</div>'+
+          '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Your Events</div>'+
+          '<div id="home_self"></div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Guest Events</div>'+
+          '<div id="home_guests"></div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Upcoming Events</div>'+
+          '<div id="home_upcoming"></div>'+
+        '</div>'+
+      '</div>'
+    );
+    layout(node);
+
+    // ----- Balance -----
+    $('#home_balance').textContent = money(balanceRes && balanceRes.balance || 0);
+
+    // Helpers
+    function isFutureOngoingOrToday(e){
+      const end   = parseDT(e && e.end_datetime);
+      const start = parseDT(e && e.start_datetime);
+      const t = now();
+      const sameDay = d => d && d.toDateString() === t.toDateString();
+      if (end) return (end > t) || sameDay(end) || sameDay(start);
+      return (start && start > t) || sameDay(start);
+    }
+
+    // ----- Self events -----
+    const selfOk = selfList.filter(isFutureOngoingOrToday)
+                           .sort((a,b)=>parseDT(a.start_datetime)-parseDT(b.start_datetime));
+
+    (function renderSelf(){
+      const box = $('#home_self');
+      if (!selfOk.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+      box.innerHTML = selfOk.map(e=>{
+        const eid = e.id || e.event_id;
+        const d   = detailsById[eid];
+        const live = d && d.live || [];
+        const mine = live.find(r => !r.is_guest && String(r.person)===String(state.user.its));
+        const checked = !!(mine && mine.checked_in_at);
+        const can = (String(e.status||'').toLowerCase()==='active') && withinCheckInWindow(e) && !checked;
+
+        const badge = computeStatusBadge(e.status);
+        const title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
+        const sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') +
+                      (e.address ? ('<br/>' + addrHtml(e.address)) : '');
+
+        let btnHtml = '';
+        if (checked){
+          btnHtml = "<button class='btn js-checkin-btn checked-in' disabled data-start='"+(e.start_datetime||'')+"' data-end='"+(e.end_datetime||"")+"'>Checked In</button>";
+        } else if (can){
+          btnHtml = "<button class='btn js-checkin-btn' data-start='"+(e.start_datetime||'')+"' data-end='"+(e.end_datetime||"")+"' data-eid='"+eid+"' data-self='1'>Check In</button>";
+        }
+
+        return ''+
+          '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+            '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+            '<div style="display:flex;gap:8px;align-items:center">'+
+              (badge||'')+
+              btnHtml+
+              '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
+            '</div>'+
+          '</div>';
+      }).join('');
+
+      // Wire buttons (deep link)
+      box.querySelectorAll('[data-act="view"]').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          const id = b.getAttribute('data-eid');
+          if (id) router.navigate('event', { id });
+        });
+      });
+      box.querySelectorAll('.js-checkin-btn[data-self="1"]').forEach(btn=>{
+        const eid = btn.getAttribute('data-eid');
+        btn.addEventListener('click', ()=> doCheckIn(eid, state.user.its, btn));
+      });
+    })();
+        
+    // ----- Guests -----
+    (function renderGuests(){
+      const box = $('#home_guests');
+      const guestOk = guestList.filter(isFutureOngoingOrToday)
+                               .sort((a,b)=>parseDT(a.start_datetime)-parseDT(b.start_datetime));
+      if (!guestOk.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+
+      box.innerHTML = guestOk.map(ev=>{
+        const eid  = ev.id || ev.event_id;
+        const det  = detailsById[eid] || {};
+        const live = det.live || [];
+        const mine = live.filter(r => r.is_guest && String(r.owner_its)===String(state.user.its));
+
+        if (!mine.length) return '';
+        const sub   = (ev.start_datetime ? (fmtDT(ev.start_datetime)) : '') + (ev.address ? ('<br/>' + addrHtml(ev.address)) : '');
+        return mine.map(r=>{
+          const title = (ev.sport ? (ev.sport+' - ') : '') + (ev.name||'Event') + ' — ' + (r.name || 'Guest');
+          const badge = computeStatusBadge(r.status);
+          const checked = !!r.checked_in_at;
+          const can = (String(r.status||'').toLowerCase()==='active') && withinCheckInWindow(ev) && !checked;
+          const btnHtml = checked
+            ? "<button class='btn js-checkin-btn checked-in' disabled data-start='"+(ev.start_datetime||'')+"' data-end='"+(ev.end_datetime||"")+"'>Checked In</button>"
+            : (can ? "<button class='btn js-checkin-btn' data-eid='"+eid+"' data-gi='"+r.person+"' data-start='"+(ev.start_datetime||'')+"' data-end='"+(ev.end_datetime||"")+"'>Check In</button>" : "");
+
+          return ''+
+            '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+              '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+              '<div style="display:flex;gap:8px;align-items:center">'+
+                (badge||'')+
+                btnHtml+
+                '<button class="btn secondary" data-act="view" data-eid="'+eid+'">View</button>'+
+              '</div>'+
+            '</div>';
+        }).join('');
+      }).join('');
+
+      // Wire buttons (deep link)
+      box.querySelectorAll('[data-act="view"]').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          const id = b.getAttribute('data-eid');
+          if (id) router.navigate('event', { id });
+        });
+      });
+      box.querySelectorAll('.js-checkin-btn[data-gi]').forEach(btn=>{
+        const eid = btn.getAttribute('data-eid');
+        const gi  = btn.getAttribute('data-gi');
+        btn.addEventListener('click', ()=> doCheckIn(eid, gi, btn));
+      });
+    })();
+
+    // ----- Upcoming (simple list, all ready) -----
+    (function renderUpcoming(){
+      const list = upcomingRes && (upcomingRes.events || upcomingRes) || [];
+      const box = $('#home_upcoming');
+      if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+      box.innerHTML = list.map(e=>{
+        const title = (e.sport ? (e.sport+' - ') : '') + (e.name||'Event');
+        const sub   = (e.start_datetime ? (fmtDT(e.start_datetime)) : '') + (e.address ? ('<br/>' + addrHtml(e.address)) : '');
+        const eid   = e.id || e.event_id || '';
+        return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+                 '<div><b>'+title+'</b><div class="tiny">'+sub+'</div></div>'+
+                 '<div><button class="btn secondary" data-eid="'+eid+'">View</button></div>'+
+               '</div>';
+      }).join('');
+      box.querySelectorAll('button[data-eid]').forEach(b=>{
+        b.onclick = ()=>{
+          const id = b.getAttribute('data-eid');
+          if (id) router.navigate('event', { id });
+        };
+      });
+    })();
+
+    // ----- Countdown (computed once everything exists) -----
+    (function setupCountdown(){
+      const cd  = $('#home_cd'); 
+      const sub = $('#home_cd_sub');
+      const chk = $('#home_checkin');
+
+      function pickSelfEventForCountdown(nowVal){
+        const current = selfList.find(e=>{ const s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
+        if (current) return current;
+        return selfList.find(e=>{ const s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
+      }
+      let next = pickSelfEventForCountdown(now()) || nextSelf;
+
+      function wireTopCheckinFor(evt){
+        if (!chk || !evt) return;
+        const eid = (evt.id || evt.event_id || '');
+        chk.style.display = 'none';
+        chk.textContent = 'Check In';
+        chk.classList.remove('checked-in');
+
+        const det = detailsById[eid] || {};
+        const mine = (det.live || []).find(r => !r.is_guest && String(r.person)===String(state.user.its));
+        const already = !!(mine && mine.checked_in_at);
+        const can = (String(evt.status || '').toLowerCase() === 'active') && withinCheckInWindow(evt) && !already;
+
+        if (already){
+          chk.style.display = 'inline-flex';
+          chk.disabled = true;
+          chk.classList.add('checked-in');
+          chk.textContent = 'Checked In';
+        } else if (can){
+          chk.style.display = 'inline-flex';
+          chk.disabled = false;
+          chk.textContent = 'Check In';
+          chk.onclick = function(){ if (!chk.disabled) doCheckIn(eid, state.user.its, chk); };
+        } else {
+          chk.style.display = 'none';
+          chk.disabled = true;
+          chk.onclick = null;
+        }
+      }
+
+      if (!next){
+        cd.textContent='You have no upcoming registrations.'; sub.textContent=''; if (chk) chk.style.display='none';
+        return;
+      }
+      wireTopCheckinFor(next);
+
+      function tick(){
+        const nowVal = now();
+        const tgt = parseDT(next.start_datetime);
+        const diff = tgt - nowVal;
+
+        if (diff <= 0){
+          const since = nowVal - tgt;
+          if (since <= 30*60*1000){
+            cd.textContent = ((next.sport ? (next.sport+' - ') : '') + (next.name || '')) + ' has begun';
+            sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
+            return;
+          } else {
+            next = pickSelfEventForCountdown(nowVal);
+            if (!next){
+              cd.textContent='You have no upcoming registrations.'; sub.textContent=''; if (chk) chk.style.display='none';
+              clearInterval(homeTimers.cd); homeTimers.cd = null; return;
+            }
+            wireTopCheckinFor(next);
+          }
+        } else {
+          cd.textContent = humanCountdown(diff) + ' until ' + ((next.sport ? (next.sport+' - ') : '') + (next.name || ''));
+          sub.innerHTML  = fmtDT(next.start_datetime) + (next.address ? ('<br/>' + addrHtml(next.address)) : '');
+        }
+      }
+      tick();
+      if (homeTimers.cd) clearInterval(homeTimers.cd);
+      homeTimers.cd = setInterval(tick, 1000);
+    })();
+
+  } catch(e){
+    layout(el('<div class="card" style="color:var(--err)">Failed to load: '+(e && e.message || e)+'</div>'));
+  }
+}
+
+    /* ===================== QR Check in ===================== */
+
+
+async function pageQrCheckin(eventId, token){
+  // If params weren’t passed from router, reread from hash just in case
+  if (!eventId || !token){
+    const raw = (location.hash || '').replace(/^#\/?/, '');
+    const qs  = raw.split('?')[1] || '';
+    const p   = new URLSearchParams(qs);
+    eventId = eventId || p.get('e') || '';
+    token   = token   || p.get('k') || '';
+  }
+
+  if (!eventId || !token){
+    layout(el("<div class='card'>Invalid QR link</div>"));
+    return;
+  }
+
+  // Gate sign-in: bounce to landing and come back here
+  if (!state.user){
+    state.tmp = state.tmp || {};
+    state.tmp.returnTo = location.hash;
+    setPage('landing');
+    return;
+  }
+
+  showLoading('Validating QR…');
+
+  try{
+    const v = await gs('api_validateCheckinToken', eventId, token);
+    if (!v || !v.ok){
+      layout(el("<div class='card' style='color:var(--err)'>QR invalid or expired.</div>"));
+      return;
+    }
+
+    // Location is optional; we’ll try and continue regardless.
+    let lat=null,lng=null;
+    try{
+      await new Promise(res=>{
+        if (!navigator.geolocation) return res();
+        navigator.geolocation.getCurrentPosition(
+          p=>{ lat=p.coords.latitude; lng=p.coords.longitude; res(); },
+          ()=>res(),
+          { enableHighAccuracy:true, timeout:6000, maximumAge:0 }
+        );
+      });
+    }catch(_){}
+
+    withClickLock('qrcheck:'+eventId+':'+state.user.its, null, null, async (done)=>{
+      try{
+        const r = await gs('api_checkInWithLocation', state.user.its, eventId, state.user.its, lat, lng);
+        if (!r || !r.ok){
+          layout(el("<div class='card' style='color:var(--err)'>"+((r && r.error)||'Check-in failed')+"</div>"));
+          return;
+        }
+        await gs('api_consumeCheckinToken', eventId, token);
+
+        layout(el(
+          "<div class='card stack' style='text-align:center'>"+
+            "<div style='font-size:var(--fs-lg);font-weight:800'>Checked in ✅</div>"+
+            "<div class='tiny'>Event ID: "+eventId+"</div>"+
+            "<div style='margin-top:10px'><button class='btn' id='goEvt'>View Event</button></div>"+
+          "</div>"
+        ));
+        const go = document.getElementById('goEvt');
+        if (go) go.onclick = ()=> router.navigate('event', { id:eventId });
+      } finally { done(); }
+    });
+
+  } catch(e){
+    layout(el("<div class='card' style='color:var(--err)'>"+(e && e.message || e)+"</div>"));
+  }
+}
+
+
+
+    /* ===================== PROFILE ===================== */
+    function pageProfile(){ if(!guard())return;
+      var u = state.user || {};
+      var rows = [
+        ['First Name',u.first_name],['Last Name',u.last_name],['ITS',u.its],['Whatsapp',u.whatsapp],['Email',u.email],
+        ['Height',ftIn(u.height_in)],['Weight (lb)',u.weight_lb],['Date of Birth',fmtDate(u.dob)],
+        ['Emergency Name',u.emer_name],['Emergency Phone',u.emer_phone],['Jamaat',u.jamaat],
+        ['Profile Created',fmtDate(u.created_at)],['Profile Updated',fmtDate(u.updated_at)]
+      ];
+      var table = rows.map(function(kv){ return '<tr><td class="label">'+kv[0]+'</td><td>'+(kv[1]||'')+'</td></tr>'; }).join('');
+      var node = el(
+        '<div class="card stack">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+            '<div style="font-size:var(--fs-lg);font-weight:800">'+(u.first_name||'')+' '+(u.last_name||'')+'</div>'+
+            '<button class="btn" id="btnEdit">Edit Profile</button>'+
+          '</div>'+
+          '<table class="table">'+table+'</table>'+
+        '</div>');
+      layout(node);
+      $('#btnEdit').onclick=function(){ setPage('edit'); };
+    }
+
+   /* ===================== BALANCE ===================== */
+function copyText(txt, btn){
+  function done(){
+    if (!btn) return;
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Copied!';
+    setTimeout(()=>{ btn.disabled = false; btn.innerHTML = orig; }, 1200);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(done).catch(function(){
+      legacyCopy(txt); done();
+    });
+  } else {
+    legacyCopy(txt); done();
+  }
+}
+function legacyCopy(txt){
+  const ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'absolute';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+function pageBalance(){
+  if(!guard()) return;
+
+  var node = el('<div class="card stack" id="bal_box"><div class="muted">Loading…</div></div>');
+  layout(node);
+
+  google.script.run.withSuccessHandler(function(res){
+    // Hide void transactions
+    var tx = (res.transactions || []).filter(function(t){
+      return String(t.status || '').toLowerCase() !== 'void';
+    });
+
+    var rows = tx.map(function(t){
+      var dt   = fmtDate(t.date || t.created_at);
+      var evt  = t.category || '';
+      var memo = t.memo || '';
+      var amt  = Number(t.amount || 0).toFixed(2);
+      var isCredit = String(t.type) === 'credit';
+      var cls  = isCredit ? 'amt-credit' : 'amt-debit';
+      var sign = isCredit ? '+' : '-';
+
+      // Show status exactly as it appears in the sheet; only color pending (case-insensitive)
+      var st = String(t.status || '');
+      var stLower = st.toLowerCase();
+      var stHtml = (stLower === 'pending')
+        ? "<span style='color:#f59e0b'>" + st + "</span>"
+        : st;
+
+      // Columns: Date | Event | Status | Amount (right-aligned)
+      return ''+
+        '<tr>'+
+          '<td>'+dt+'</td>'+
+          '<td>'+evt+(memo ? '<br/>'+memo : '')+'</td>'+
+          '<td>'+stHtml+'</td>'+
+          '<td class="right '+cls+'">'+sign+'$'+amt+'</td>'+
+        '</tr>';
+    }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
+
+    var itsVal   = (state.user && state.user.its ? String(state.user.its).trim() : 'YOUR ITS');
+    var memoText = itsVal + ' - Saifee Sports';
+    var email    = 'toloba@dallasjamaat.org';
+
+    $('#bal_box').innerHTML =
+      '<div class="label">Current Balance</div>'+
+      '<div style="font-size:var(--fs-xl);font-weight:800">'+money(res.balance || 0)+'</div>'+
+      '<div class="muted" style="margin-top:10px;line-height:1.6">'+
+        'Add to balance with Zelle to:<br/>'+
+        '<strong id="zelleEmail">'+email+'</strong> '+
+        '<button id="copyEmailBtn" class="btn btn--sm" aria-label="Copy Zelle email" '+
+          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
+        'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
+        '<span id="zelleMemo" style="font-weight:600">'+memoText+'</span> '+
+        '<button id="copyMemoBtn" class="btn btn--sm" aria-label="Copy memo" '+
+          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
+      '</div>'+
+      '<table class="table table--compact" style="margin-top:10px">'+
+        '<thead><tr><th>Date</th><th>Event</th><th>Status</th><th class="right">Amount</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table>'+
+      '<div><button id="downloadCsvBtn" class="btn" style="margin-top:8px;background:#fff;color:#0f2a6b;border:1px solid var(--border)">Download CSV</button></div>'
+;
+
+    var balBox = $('#bal_box');
+    var emailBtn = balBox.querySelector('#copyEmailBtn');
+    var memoBtn  = balBox.querySelector('#copyMemoBtn');
+    if (emailBtn) emailBtn.addEventListener('click', function(){ copyText(email, this); });
+    if (memoBtn)  memoBtn.addEventListener('click',  function(){ copyText(memoText, this); });
+
+    // Download CSV click handler
+    var dlBtn = balBox.querySelector('#downloadCsvBtn');
+    if (dlBtn){
+      dlBtn.addEventListener('click', function(){
+        var self = this;
+        var orig = self.textContent;
+        self.disabled = true; self.textContent = 'Preparing…';
+        google.script.run.withSuccessHandler(function(r){
+          self.disabled = false; self.textContent = orig;
+          if (!r || !r.ok || !r.csv){ alert((r && r.error) || 'No CSV available'); return; }
+          var blob = new Blob([r.csv], { type: 'text/csv;charset=utf-8;' });
+          var url  = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'transactions_'+ (state.user && state.user.its ? state.user.its : 'me') + '.csv';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+        }).api_balanceCsv(state.user.its);
+      });
+    }
+  }).api_balance(state.user.its);
+}
+
+    /* ===================== CALENDAR ===================== */
+    function pageCalendar(){ if(!guard())return;
+      var node=el('<div class="card"><iframe id="cal" src="" class="w-full" style="height:70vh;border:0;border-radius:12px"></iframe></div>');
+      layout(node);
+      google.script.run.withSuccessHandler(function(res){ $('#cal').src=res.url; }).api_calendarEmbedUrl();
+    }
+
+    /* ===================== GUESTS ===================== */
+    function pageGuests(){ if(!guard())return;
+      var node=el(
+        '<div class="stack">'+
+          '<div class="card stack">'+
+            '<div class="label">Add Guest</div>'+
+            '<input id="g_its" class="input" placeholder="ITS (8 digits)">'+
+            '<input id="g_first" class="input" placeholder="First Name">'+
+            '<input id="g_last" class="input" placeholder="Last Name">'+
+            '<input id="g_talent" class="input" placeholder="Talent Rating (1–10)" type="number" min="1" max="10">'+
+            '<button class="btn" id="g_add">Add</button>'+
+            '<div class="tiny" id="g_err" style="color:var(--err)"></div>'+
+          '</div>'+
+          '<div class="card stack">'+
+            '<div class="label">Your Guests</div>'+
+            '<div id="g_list" class="stack tiny">Loading…</div>'+
+          '</div>'+
+        '</div>'
+      );
+      layout(node);
+      $('#g_add').onclick = function(){
+        var its=($('#g_its').value||'').trim();
+        var first=($('#g_first').value||'').trim();
+        var last=($('#g_last').value||'').trim();
+        var talent=Number($('#g_talent').value||0);
+        var err=$('#g_err'); err.textContent='';
+        if(!/^\d{8}$/.test(its)) { err.textContent='Guest ITS must be 8 digits'; return; }
+        if(!first) { err.textContent='First Name is required'; return; }
+        if(!last) { err.textContent='Last Name is required'; return; }
+        if(!(talent>=1&&talent<=10)) { err.textContent='Talent must be between 1 and 10'; return; }
+        google.script.run.withSuccessHandler(function(r){
+          if(!r.ok){ err.textContent=r.error||'Failed to add'; return; }
+          $('#g_its').value=''; $('#g_first').value=''; $('#g_last').value=''; $('#g_talent').value='';
+          refreshGuests();
+        }).api_addGuest(state.user.its, { guest_its:its, first_name:first, last_name:last, talent:talent });
+      };
+      function refreshGuests(){
+        google.script.run.withSuccessHandler(function(res){
+          var box=$('#g_list');
+          var rows=(res.guests||[]).map(function(g){
+            return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+g.first_name+" "+g.last_name+" — ITS "+g.guest_its+" — Talent "+g.talent+"</div>";
+          }).join('');
+          box.innerHTML=rows||'<div class="muted">No guests</div>';
+        }).api_listGuests(state.user.its);
+      }
+      refreshGuests();
+    }
+
+    /* ===================== SPORT PAGE ===================== */
+    async function pageSport(){ 
+  if(!guard()) return;
+  setDocTitle(state.sport);
+  if (sportCountdownTimer) { clearInterval(sportCountdownTimer); sportCountdownTimer = null; }
+
+  showLoading('Loading '+state.sport+'…');
+
+  try{
+    // Load events + my status map in parallel
+    const [listRes, statusRes] = await Promise.all([
+      gs('api_listEvents', state.sport),
+      gs('api_myStatusesForSport', state.user.its, state.sport)
+    ]);
+
+    let list = (listRes && listRes.events) || (listRes || []);
+    const nowTs = now();
+    list = list
+      .filter(e => parseDT(e.end_datetime) && parseDT(e.end_datetime) > nowTs)
+      .sort((a,b)=> new Date(a.start_datetime||0) - new Date(b.start_datetime||0));
+
+    // Preload details for capacity/labels/check-in
+    const ids = list.map(e=> e.id).filter(Boolean);
+    const detailPairs = await Promise.all(ids.map(id => 
+      gs('api_eventDetails', id).then(r=>[id,r]).catch(()=>[id,null])
+    ));
+    const detailsById = Object.fromEntries(detailPairs);
+
+    // Now render once (reuse your existing layout/HTML—just read from detailsById + statusRes)
+    // ...
+    // If you want to keep your current render code, you can set a global (or pass into your function):
+    state.tmp = state.tmp || {};
+    state.tmp._sport_details = detailsById;
+    state.tmp._sport_status  = (statusRes && (statusRes.self_statuses || statusRes.statuses || statusRes.map)) || {};
+    
+    // Reuse your existing render block with minimal edits:
+    const node=el(
+      '<div class="stack">'+
+        '<div class="card stack">'+
+          '<div class="label">Next '+state.sport+' Event</div>'+
+          '<div id="sp_next" class="countdown muted">—</div>'+
+          '<div id="sp_next_sub" class="tiny"></div>'+
+        '</div>'+
+        '<div class="card stack">'+
+          '<div class="label">Upcoming '+state.sport+' Events</div>'+
+          '<div id="sp_list" class="stack"></div>'+
+        '</div>'+
+      '</div>'
+    );
+    layout(node);
+
+    // Countdown (unchanged logic; compute once)
+    function pickEvent(nowVal){
+      const current = list.find(e=>{ const s=parseDT(e.start_datetime); return s && (nowVal >= s && nowVal < new Date(s.getTime()+30*60*1000)); });
+      if (current) return current;
+      return list.find(e=>{ const s=parseDT(e.start_datetime); return s && s > nowVal; }) || null;
+    }
+    let upcoming = pickEvent(now());
+    const nextNode = $('#sp_next'); const nextSub = $('#sp_next_sub');
+    function renderSubline(e){ nextSub.innerHTML = fmtDT(e.start_datetime) + '<br/>' + addrHtml(e.address||''); }
+    function update(){
+      const nowVal = now();
+      if (!upcoming){ upcoming = pickEvent(nowVal); if (!upcoming){ nextNode.textContent='No upcoming events'; nextSub.textContent=''; return; } }
+      const start = parseDT(upcoming.start_datetime); const diff  = start - nowVal;
+      if (diff <= 0){
+        const since = nowVal - start;
+        if (since <= 30*60*1000){ nextNode.textContent = state.sport+' event has begun'; renderSubline(upcoming); return; }
+        else { upcoming = pickEvent(nowVal); if (!upcoming){ nextNode.textContent='No upcoming events'; nextSub.textContent=''; return; } }
+      }
+      nextNode.textContent = humanCountdown(diff) + ' until ' + ((upcoming.sport? (upcoming.sport+' - '):'') + (upcoming.name||'')); renderSubline(upcoming);
+    }
+    if (!upcoming){ nextNode.textContent = 'No upcoming events'; nextSub.textContent=''; }
+    else { update(); sportCountdownTimer = setInterval(update, 1000); }
+
+    // Render event list in one go using preloaded data
+    const statusMap = state.tmp._sport_status;
+    (function renderSportEventListOnce(){
+      const box = $('#sp_list');
+      if (!list.length){ box.innerHTML = '<div class="muted">No upcoming events</div>'; return; }
+      box.innerHTML = '';
+      list.forEach(e=>{
+        const d  = detailsById[e.id] || {};
+        const st = String(statusMap[e.id] || 'none').toLowerCase();
+        const regStart = parseDT(e.reg_start);
+        const regEnd   = parseDT(e.reg_end);
+        const afterClose = (regEnd && now() > regEnd);
+        const regOpen   = (!regStart || now() >= regStart) && (!regEnd || now() <= regEnd);
+        const badgeHtml = computeStatusBadge(st);
+        const cap = Number(e.max_capacity||0);
+        const activeCount = (d.live || []).filter(x=> String(x.status||'').toLowerCase()==='active').length;
+        const reached = (cap>0 && activeCount>=cap);
+
+        const card = el(
+          '<div class="event-card stack">'+
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+              '<div style="font-size:var(--fs-md);font-weight:800">'+(e.sport ? (e.sport+' - ') : '')+(e.name||'Untitled')+'</div>'+
+              '<div>'+badgeHtml+'</div>'+
+            '</div>'+
+            '<div class="tiny">'+(e.address?addrHtml(e.address):'')+'</div>'+
+            '<div class="tiny">Event: '+fmtDT(e.start_datetime)+' – '+fmtDT(e.end_datetime)+'</div>'+
+            '<div class="tiny">Registration: '+(e.reg_start?fmtDT(e.reg_start):'—')+' → '+(e.reg_end?fmtDT(e.reg_end):'—')+'</div>'+
+            '<div class="tiny">Approx Fee: '+money(e.approx_fee||0)+' | Capacity: '+(cap?cap:'—')+'</div>'+
+            '<div class="event-actions">'+
+              '<button class="btn" data-act="register" '+((!regOpen || st==='active' || st==='waitlist')?'disabled':'')+'>'+
+                (reached ? 'Register Me on Waitlist' : 'Register Me')+
+              '</button>'+
+              '<button class="btn secondary" data-act="deregister" '+(((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'))?'':'disabled')+'>Deregister</button>'+
+              '<button class="btn secondary" data-act="dropout" '+((afterClose && st==='active')?'':'disabled')+'>Dropout</button>'+
+              '<button class="btn secondary" data-act="view">View</button>'+
+            '</div>'+
+            '<div class="tiny" data-role="hint">'+(reached ? 'Capacity is full. You will be added to the waitlist.' : '')+'</div>'+
+          '</div>'
+        );
+        box.appendChild(card);
+
+        function q(act){ return card.querySelector('[data-act="'+act+'"]'); }
+        q('register').addEventListener('click', (ev)=> actRegister(e.id, false, ev.currentTarget));
+        q('deregister').addEventListener('click', (ev)=> actDeregister(e.id, undefined, ev.currentTarget));
+        q('dropout').addEventListener('click', (ev)=> actDropout(e.id, undefined, ev.currentTarget));
+
+        q('view').onclick      = function(){ router.navigate('event', { id: e.id }); };
+      });
+    })();
+
+  }catch(e){
+    layout(el('<div class="card" style="color:var(--err)">Failed to load: '+(e && e.message || e)+'</div>'));
+  }
+}
+
+/* ===================== EVENT DETAIL ===================== */
+
+// --- Admin helpers (client-side) ---
+// Return true only if the user is an ADMIN for this sport (not Captain)
+function isAdminForSport(sport){
+  if (!sport) return false;
+  try {
+    // Prefer a flat array on state; fall back to state.admin.adminSports
+    var list =
+      (state && Array.isArray(state.adminSports) && state.adminSports) ||
+      (state && state.admin && Array.isArray(state.admin.adminSports) && state.admin.adminSports) ||
+      [];
+    return list.some(function(x){ return String(x) === String(sport); });
+  } catch(e){ return false; }
+}
+
+// Ensure adminSports is present on state; fetch once if missing
+function ensureAdminSports(cb){
+  if (state && Array.isArray(state.adminSports) && state.adminSports.length){ cb && cb(); return; }
+  google.script.run.withSuccessHandler(function(r){
+    if (r && Array.isArray(r.adminSports)) { state.adminSports = r.adminSports; }
+    cb && cb();
+  }).api_admin_bootstrap(state.user.its);
+}
+
+async function openEvent(id){
+  if(!guard()) return;
+
+  // One clean loading view
+  if (typeof showLoading === 'function') showLoading('Loading event…');
+
+  try{
+    // 1) Load everything we need up front (in parallel)
+    const [details, statuses, guestsRes, adminBoot] = await Promise.all([
+      gs('api_eventDetails', id),
+      gs('api_myStatusesForEvents', state.user.its, [id]),
+      gs('api_listGuests', state.user.its),
+      gs('api_admin_bootstrap', state.user.its)
+    ]);
+
+    // 2) Normalize data
+    const evt   = details && details.event || {};
+    const live  = details && details.live  || [];
+    const map   = (statuses && (statuses.map || statuses.statuses || statuses.billing_statuses)) || {};
+    const myStatus = String(map[evt.id] || 'none').toLowerCase();
+
+    // Ensure adminSports is available for isAdminForSport()
+    if (adminBoot && Array.isArray(adminBoot.adminSports)) {
+      state.adminSports = adminBoot.adminSports;
+      state.admin = Object.assign({}, state.admin || {}, { adminSports: adminBoot.adminSports });
+    }
+
+    const nowTs    = now();
+    const regStart = parseDT(evt.reg_start);
+    const regEnd   = parseDT(evt.reg_end);
+    const regOpen    = (!regStart || nowTs >= regStart) && (!regEnd || nowTs <= regEnd);
+    const afterClose = (regEnd && nowTs > regEnd);
+    const capText  = (evt.max_capacity && Number(evt.max_capacity)>0) ? String(evt.max_capacity) : '—';
+    const addrSafe = evt.address ? ('<a href="https://www.google.com/maps?q='+encodeURIComponent(evt.address)+'" target="_blank" rel="noopener">'+evt.address+'</a>') : '';
+
+    // Nice header for link previews
+    setDocTitle(`${evt.sport ? (evt.sport + ' — ') : ''}${evt.name || 'Event'}`);
+
+    // Helper (uses preloaded evt)
+    function computeCheckinPill(r){
+      try{
+        const start = parseDT(evt.start_datetime);
+        if(!start) return '';
+        const windowClose = new Date(start.getTime() + 30*60*1000);
+        const ci = r && r.checked_in_at ? parseDT(r.checked_in_at) : null;
+        if (ci){ return (ci <= start) ? "<span class='badge ok'>On Time</span>" : "<span class='badge warn'>Late</span>"; }
+        else if (now() > windowClose){ return "<span class='badge' style='background:rgba(239,68,68,.15);color:#fecaca;border:1px solid rgba(239,68,68,.35)'>No Show</span>"; }
+        return '';
+      }catch(e){ return ''; }
+    }
+
+    // 3) Render the full page once
+    const myBadge = computeStatusBadge(myStatus);
+    const node = el(
+      "<div class='stack'>"+
+        "<div class='card stack'>"+
+          "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
+            "<div style='font-size:var(--fs-lg);font-weight:800'>"+(evt.sport? (evt.sport+' - '):'')+evt.name+"</div>"+
+            "<div>"+myBadge+"</div>"+
+          "</div>"+
+          "<div class='tiny'>"+addrSafe+"</div>"+
+          "<div class='tiny'>"+fmtDT(evt.start_datetime)+" – "+fmtDT(evt.end_datetime)+"</div>"+
+          "<div class='tiny'>Registration: "+(evt.reg_start?fmtDT(evt.reg_start):'—')+" → "+(evt.reg_end?fmtDT(evt.reg_end):'—')+"</div>"+
+          "<div class='tiny'>Approx Fee: "+money(evt.approx_fee||0)+" | Capacity: "+capText+"</div>"+
+        "</div>"+
+
+        "<div class='card stack'>"+
+          "<div class='label'>Your Registration</div>"+
+          "<div class='event-actions'>"+
+            "<button class='btn' id='reg_me'>Register Me</button>"+
+            "<button class='btn secondary' id='dereg_me'>Deregister</button>"+
+            "<button class='btn secondary' id='dropout_me'>Dropout</button>"+
+            "<button class='btn secondary' id='share_evt'>Share</button>"+
+          "</div>"+
+        "</div>"+
+
+        "<div class='card stack'>"+
+          "<div class='label'>Manage your guests for this event</div>"+
+          "<select id='gx_sel' class='input'><option value=''>Select a guest…</option></select>"+
+          "<div style='display:flex;gap:8px;flex-wrap:wrap'>"+
+            "<button class='btn' id='reg_guest'>Register Guest</button>"+
+          "</div>"+
+          "<div class='tiny' id='gx_hint'></div>"+
+          "<div id='my_guest_list' class='stack' style='margin-top:6px'></div>"+
+        "</div>"+
+
+        "<div class='card stack'>"+
+          "<div class='label'>Live Roster List</div>"+
+          "<div id='live_list'></div>"+
+          "<div class='tiny' id='cap_hint'></div>"+
+        "</div>"+
+      "</div>"
+    );
+    layout(node);
+
+    // Share button
+    (function wireShare(){
+      const shareBtn = document.getElementById('share_evt');
+      if (!shareBtn) return;
+
+      // Use current hash URL (works without server changes)
+      const url = location.origin + '/#/event/' + encodeURIComponent(evt.id);
+      const text = `${evt.sport ? evt.sport+' — ' : ''}${evt.name}
+${fmtDT(evt.start_datetime)}
+${evt.address || ''}`;
+
+      shareBtn.onclick = async () => {
+        try{
+          if (navigator.share) {
+            await navigator.share({ title: evt.name, text, url });
+          } else {
+            await navigator.clipboard.writeText(`${text}\n${url}`);
+            alert('Copied share text + link!');
+          }
+        } catch(_) { /* ignore cancel */ }
+      };
+    })();
+
+    // 4) Wire "Your Registration" buttons based on current status (pass clicked button)
+    (function applySelfButtons(){
+      const canRegister   = regOpen && (myStatus==='none' || myStatus==='dropout');
+      const canDeregister = ((regOpen && (myStatus==='active' || myStatus==='waitlist')) || (!regOpen && myStatus==='waitlist'));
+      const canDropout    = afterClose && myStatus==='active';
+      $('#reg_me').disabled     = !canRegister;
+      $('#dereg_me').disabled   = !canDeregister;
+      $('#dropout_me').disabled = !canDropout;
+
+      $('#reg_me').onclick     = (ev)=> actRegister(evt.id, false, ev.currentTarget);
+      $('#dereg_me').onclick   = (ev)=> actDeregister(evt.id, undefined, ev.currentTarget);
+      $('#dropout_me').onclick = (ev)=> actDropout(evt.id, undefined, ev.currentTarget);
+    })();
+
+// After "Your Registration" buttons inside openEvent(...)
+(function addAdminQr(){
+  if (!isAdminForSport(evt.sport)) return;
+
+  const adminCard = el(
+    "<div class='card stack'>"+
+      "<div class='label'>Admin Tools</div>"+
+      "<div class='event-actions'>"+
+        "<button class='btn' id='btnShowQr'>Show Check-in QR</button>"+
+        "<button class='btn secondary' id='btnRotateQr'>Rotate (new token)</button>"+
+      "</div>"+
+      "<div class='tiny'>QR is short-lived. Rotate as needed.</div>"+
+      "<div id='qr_holder' style='display:none;align-items:center;gap:16px;flex-wrap:wrap'></div>"+
+    "</div>"
+  );
+  document.getElementById('root').appendChild(adminCard);
+
+  // Lazy-load QR generator (tiny, zero deps)
+  const ensureQrLib = ()=> new Promise((res, rej)=>{
+    if (window.QRCode) return res();
+    const s = document.createElement('script');
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    s.onload = res; s.onerror = ()=>rej(new Error('QR lib failed to load'));
+    document.head.appendChild(s);
+  });
+
+  async function issueAndRender(tokenMinutes){
+    const r = await gs('api_issueCheckinToken', evt.id, tokenMinutes||10);
+    if (!r || !r.ok){ alert((r && r.error)||'Could not issue token'); return; }
+
+    const url = location.origin + "/#/checkin?e=" + encodeURIComponent(evt.id) + "&k=" + encodeURIComponent(r.token);
+
+    const box = document.getElementById('qr_holder');
+    box.style.display = 'flex';
+    box.innerHTML =
+      "<div>"+
+        "<div id='qr_canvas' style='width:240px;height:240px;background:#fff;border-radius:12px;padding:10px'></div>"+
+        "<div class='tiny' style='margin-top:6px'>Expires: "+fmtDT(r.expires_at)+"</div>"+
+        "<div class='tiny'>URL: "+url+"</div>"+
+      "</div>";
+
+    await ensureQrLib();
+    new QRCode(document.getElementById('qr_canvas'), {
+      text: url,
+      width: 220,
+      height: 220,
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
+
+  document.getElementById('btnShowQr').onclick = ()=> issueAndRender(10);
+  document.getElementById('btnRotateQr').onclick = ()=> issueAndRender(10);
+})();
+
+
+    // 5) Guests (use preloaded list; no fetch on render)
+    (function renderGuests(){
+      const guests = (guestsRes && guestsRes.guests) || [];
+      const sel  = $('#gx_sel'); 
+      const hint = $('#gx_hint');
+      guests.forEach(gu=>{
+        const opt = document.createElement('option');
+        opt.value = gu.guest_its;
+        opt.textContent = gu.first_name+' '+gu.last_name+' — ITS '+gu.guest_its;
+        sel.appendChild(opt);
+      });
+      if(!guests.length){ hint.textContent = 'No saved guests yet. Add guests on the Guests tab.'; }
+      if(!regOpen || !guests.length){ sel.disabled = true; $('#reg_guest').disabled = true; }
+
+      // Show my guests for this event
+      const mine = live.filter(r => r.is_guest && String(r.owner_its)===String(state.user.its));
+      const gl = $('#my_guest_list');
+      if (!mine.length){
+        gl.innerHTML = "<div class='muted tiny'>No guests of yours are on this event yet.</div>";
+      } else {
+        gl.innerHTML = mine.map(r=>{
+          const st = String(r.status||'').toLowerCase();
+          const statusBadge = (st==='active') ? " <span class='badge ok'>Active</span>" :
+                              (st==='waitlist') ? " <span class='badge warn'>Waitlist</span>" :
+                              (st==='dropout') ? " <span class='badge warn'>Dropped Out</span>" : "";
+          const checkinBadge = computeCheckinPill(r);
+          const canDereg = ((regOpen && (st==='active' || st==='waitlist')) || (!regOpen && st==='waitlist'));
+          const canDrop  = (afterClose && st==='active');
+          return ""+
+          "<div class='event-card' style='padding:8px;margin-top:6px'>"+
+            "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'>"+
+              "<div><b>"+r.name+"</b> "+statusBadge+" "+checkinBadge+"</div>"+
+              "<div class='event-actions'>"+
+                "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-dereg' "+(canDereg?'':'disabled')+">Deregister</button>"+
+                "<button class='btn secondary' data-gi='"+r.person+"' data-act='g-drop' "+(canDrop?'':'disabled')+">Dropout</button>"+
+              "</div>"+
+            "</div>"+
+          "</div>";
+        }).join('');
+
+        // Use click-lock aware wrappers (pass the button)
+        gl.querySelectorAll('[data-act="g-dereg"]').forEach(b=>{
+          b.addEventListener('click', (ev)=> {
+            const guestIts = b.getAttribute('data-gi');
+            actDeregister(evt.id, guestIts, ev.currentTarget);
+          });
+        });
+        gl.querySelectorAll('[data-act="g-drop"]').forEach(b=>{
+          b.addEventListener('click', (ev)=> {
+            const guestIts = b.getAttribute('data-gi');
+            actDropout(evt.id, guestIts, ev.currentTarget);
+          });
+        });
+      }
+
+      // Register guest button (pass the button)
+      $('#reg_guest').onclick  = function(ev){
+        const v = (sel && sel.value || '').trim();
+        if(!/^\d{8}$/.test(v)){ alert('Please select a guest.'); return; }
+        actRegister(id, true, ev.currentTarget);
+      };
+    })();
+
+    // 6) Live roster — per-row Remove (admins only; "Captain" NOT allowed)
+    (function renderLive(){
+      const listEl = $('#live_list');
+      const admin  = isAdminForSport(evt.sport); // strict admin check
+
+      const html = live.map(function(r, i){
+        const num = i + 1;
+        const st = String(r.status||'').toLowerCase();
+        const statusBadge  = computeStatusBadge(st);
+        const checkinBadge = computeCheckinPill(r);
+        const canRemove = admin && (st==='active' || st==='waitlist');
+        const removeBtn = canRemove
+          ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
+          : "";
+        return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
+                 num+". "+r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
+               "</div>";
+      }).join('');
+
+      listEl.innerHTML = html || "<div class='muted'>No registrations yet</div>";
+
+      if (admin){
+        listEl.querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
+          b.addEventListener('click', function(){
+            const person = b.getAttribute('data-person');
+            if (!confirm('Remove this registration and promote the next from waitlist?')) return;
+            google.script.run.withSuccessHandler(function(r){
+              if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
+              openEvent(id); // refresh
+            }).api_admin_cancelRegistration(state.user.its, id, person);
+          });
+        });
+      }
+
+      // Capacity hint (computed locally from preloaded live)
+      const cap = Number(evt.max_capacity||0);
+      const activeCount = live.filter(x=> String(x.status||'').toLowerCase()==='active').length;
+      const reached = (cap>0 && activeCount>=cap);
+      const capHint = $('#cap_hint');
+      if (capHint) capHint.textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
+    })();
+
+  } catch(e){
+    layout(el('<div class="card" style="color:var(--err)">Failed to load event: '+(e && e.message || e)+'</div>'));
+  }
+}
+    /* ===================== CREATE / EDIT PROFILE ===================== */
+    function pageCreateOrEdit(edit){
+      var u=edit?(state.user||{}):{};
+      var node=el(
+        "<div class='card stack'>"+
+          "<div style='display:flex;gap:10px;align-items:center;justify-content:space-between'>"+
+            "<div style='font-size:var(--fs-md);font-weight:800'>"+(edit?"Edit Profile":"Create Profile")+"</div>"+
+            "<button class='btn secondary' id='btnBack'>Back</button>"+
+          "</div>"+
+          "<div class='form-grid'>"+
+            "<div class='stack'>"+
+              "<label class='label'>Whatsapp Number</label>"+
+              "<input id='f_whatsapp' class='input' placeholder='7861102153' value='"+(u.whatsapp||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>ITS</label>"+
+              "<input id='f_its' class='input' placeholder='30442153' value='"+(u.its||"") +"' "+(edit?'disabled':'')+">"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Email</label>"+
+              "<input id='f_email' class='input' placeholder='name@example.com' value='"+(u.email||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>First Name</label>"+
+              "<input id='f_first' class='input' placeholder='Burhanuddin' value='"+(u.first_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Last Name</label>"+
+              "<input id='f_last' class='input' placeholder='Saifee' value='"+(u.last_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Profile Picture</label>"+
+              "<input id='f_pic' type='file' accept='image/*' class='input'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Height</label>"+
+              "<select id='f_height' class='input'></select>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Weight (lb)</label>"+
+              "<input id='f_weight' class='input' placeholder='180' value='"+(u.weight_lb||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Date of Birth</label>"+
+              "<input id='f_dob' type='date' class='input' value='"+(u.dob||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Emergency Contact Name</label>"+
+              "<input id='f_emer_name' class='input' placeholder='Saifuddin Saifee' value='"+(u.emer_name||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Emergency Phone Number</label>"+
+              "<input id='f_emer_phone' class='input' placeholder='7861102153' value='"+(u.emer_phone||"") +"'>"+
+            "</div>"+
+            "<div class='stack'>"+
+              "<label class='label'>Jamaat</label>"+
+              "<select id='f_jamaat' class='input'></select>"+
+            "</div>"+
+            (edit? '' :
+              "<div class='card' style='background:#0e1626'>"+
+                "<div class='label'>Waiver</div>"+
+                "<div style='max-height:180px;overflow:auto;font-size:var(--fs-xs);white-space:pre-line'>"+waiverText()+"</div>"+
+                "<label style='display:flex;gap:8px;align-items:flex-start;margin-top:8px'>"+
+                  "<input id='f_waiver' type='checkbox'>"+
+                  "<span class='tiny'>I have read and agree to the waiver terms.</span>"+
+                "</label>"+
+              "</div>"
+            )+
+          "</div>"+
+          "<div style='display:flex;gap:10px;justify-content:flex-end'>"+
+            "<button class='btn' id='f_save'>"+(edit?'Save Changes':'Create Profile')+"</button>"+
+          "</div>"+
+          "<div class='tiny' id='f_err' style='color:var(--err)'></div>"+
+        "</div>"
+      );
+      layout(node);
+      $('#btnBack').onclick=function(){ setPage('landing'); };
+      var h=$('#f_height');
+      for(var ft=4;ft<=7;ft++){ for(var i=0;i<12;i++){ var v=ft*12+i; var o=document.createElement('option'); o.value=v; o.textContent=ft+'ft '+i+'in'; h.appendChild(o); } }
+      if(u.height_in) h.value=u.height_in;
+      var jamaats=["Dallas","Plano","Atlanta","Austin","Bakersfield","Boston","Calgary","Charlotte","Chicago","Chicago North","Columbia","Columbus","Connecticut","Detroit","Edmonton","Houston","Los Angeles","Miami","Minneapolis","Mississauga","Montreal","New Jersey","New York","Orange County","Ottawa","Philadelphia","Poconos","Portland","Raleigh","San Antonio","San Diego","San Francisco","San Jose","Seattle","South Jersey","Spartanburg","Tampa","Toronto","Vancouver","Virginia","Washington, DC","Woodlands"];
+      var jSel=$('#f_jamaat'); jamaats.forEach(function(j){ var o=document.createElement('option'); o.value=j; o.text=j; jSel.appendChild(o); }); if(u.jamaat) jSel.value=u.jamaat;
+      $('#f_save').onclick=function(){ saveProfile(!!edit); };
+    }
+    function waiverText(){ return "I HEREBY ASSUME ALL OF THE RISKS OF PARTICIPATING IN ANY/ALL ACTIVITIES ASSOCIATED WITH EVENTS BY SAIFEE SPORTS ... (same text as before)"; }
+    function validateProfile(d, requireWaiver){
+      var phone=/^\d{10}$/; var its=/^\d{8}$/; var email=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      if(!its.test(d.its)) return 'ITS must be 8 digits';
+      if(!phone.test(d.whatsapp)) return 'Whatsapp Number must be 10 digits';
+      if(!email.test(d.email)) return 'Provide a valid email';
+      var w=Number(d.weight_lb); if(d.weight_lb && !(w>=50&&w<=350)) return 'Weight must be between 50 and 350';
+      var dob=new Date(d.dob); var age=(Date.now()-dob.getTime())/(365.25*24*3600*1000);
+      if(!(age>4&&age<90)) return 'Age must be between 4 and 90';
+      if(requireWaiver){ if(!$('#f_waiver').checked) return 'You must accept the waiver'; if(!$('#f_pic').files[0]) return 'Profile picture is required'; }
+      return '';
+    }
+    function saveProfile(edit){
+      function setErr(m){ $('#f_err').textContent=m; }
+      var data={ whatsapp:$('#f_whatsapp').value.trim(), its:$('#f_its').value.trim(), email:$('#f_email').value.trim(), first_name:$('#f_first').value.trim(), last_name:$('#f_last').value.trim(),
+        height_in:$('#f_height').value, weight_lb:$('#f_weight').value.trim(), dob:$('#f_dob').value,
+        emer_name:$('#f_emer_name').value.trim(), emer_phone:$('#f_emer_phone').value.trim(), jamaat:$('#f_jamaat').value };
+      var err=validateProfile(data,!edit); if(err){setErr(err);return;}
+      var file=$('#f_pic').files[0];
+      function finish(pic){
+        if(!edit){
+          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Create failed'); state.user=Object.assign({},data,{profile_pic_url:pic}); setPage('home'); }).api_createProfile(Object.assign({},data,{profile_pic_url:pic}));
+        } else {
+          google.script.run.withSuccessHandler(function(r){ if(!r.ok) return setErr(r.error||'Save failed'); if(pic) state.user.profile_pic_url=pic; state.user=Object.assign({},state.user,data); setPage('home'); }).api_updateProfile(state.user.its, pic?Object.assign({},data,{profile_pic_url:pic}):data);
+        }
+      }
+      if(file){
+        var fr=new FileReader();
+        fr.onload=function(){ google.script.run.withSuccessHandler(function(u){ finish(u.url); }).api_uploadProfilePic(fr.result,file.name,edit?state.user.its:data.its); };
+        fr.readAsDataURL(file);
+      } else finish(null);
+    }
+
+/* ===================== REGISTRATION ACTIONS ===================== */
+/* ---- global click-lock helper ---- */
+const _actionLocks = new Set();
+
+function withClickLock(key, btn, workingLabel, run){
+  if (_actionLocks.has(key)) return;        // already running
+  _actionLocks.add(key);
+
+  // optimistically disable the button
+  const restore = (() => {
+    if (!btn) return () => {};
+    const orig = { text: btn.textContent, dis: btn.disabled };
+    btn.disabled = true;
+    btn.setAttribute('aria-busy','true');
+    if (workingLabel) btn.textContent = workingLabel;
+    return () => {
+      btn.disabled = orig.dis;
+      btn.removeAttribute('aria-busy');
+      btn.textContent = orig.text;
+    };
+  })();
+
+  const done = () => { _actionLocks.delete(key); restore(); };
+  try { run(done); } catch(e){ done(); throw e; }
+}
+// 1) Self or Guest register
+function actRegister(eventId, isGuest, btn){
+  if (isGuest){
+    const sel = document.querySelector('#gx_sel');
+    const guestIts = sel ? (sel.value || '').trim() : '';
+    if (!/^\d{8}$/.test(guestIts)) { alert('Please select a guest.'); return; }
+
+    const key = `reg:${eventId}:${guestIts}`;
+    return withClickLock(key, btn, 'Registering…', (done)=>{
+      google.script.run
+        .withSuccessHandler(function(res){
+          done();
+          if (!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+          // Hold on the OWNER (me) for THIS guest registration
+          google.script.run.api_billing_createPendingHold(state.user.its, eventId, guestIts);
+          if (state.page==='sport') pageSport(); else openEvent(eventId);
+        })
+        .withFailureHandler(function(e){ done(); alert((e && e.message) || 'Failed'); })
+        .api_register(state.user.its, eventId, guestIts, true);
+    });
+  }
+
+  // Self register
+  const key = `reg:${eventId}:${state.user.its}`;
+  return withClickLock(key, btn, 'Registering…', (done)=>{
+    google.script.run
+      .withSuccessHandler(function(res){
+        done();
+        if(!res || !res.ok){ alert((res && res.error) || 'Failed'); return; }
+        google.script.run.api_billing_createPendingHold(state.user.its, eventId, state.user.its);
+        if (state.page==='sport') pageSport(); else openEvent(eventId);
+      })
+      .withFailureHandler(function(e){ done(); alert((e && e.message) || 'Failed'); })
+      .api_register(state.user.its, eventId, state.user.its, false);
+  });
+}
+
+// 2) Deregister (self or specific ITS)
+function actDeregister(eventId, its, btn){
+  const who = its || state.user.its;
+  const key = `dereg:${eventId}:${who}`;
+  return withClickLock(key, btn, 'Removing…', (done)=>{
+    google.script.run
+      .withSuccessHandler(function(res){
+        done();
+        if (!res || !res.ok){ alert((res && res.error) || 'Failed to deregister'); return; }
+        if (state.page === 'sport') pageSport(); else openEvent(eventId);
+      })
+      .withFailureHandler(function(e){ done(); alert((e && e.message) || 'Failed to deregister'); })
+      .api_deregister(state.user.its, eventId, who);
+  });
+}
+
+// 3) Dropout (after close)
+function actDropout(eventId, its, btn){
+  const who = its || state.user.its;
+  const key = `drop:${eventId}:${who}`;
+  return withClickLock(key, btn, 'Dropping…', (done)=>{
+    google.script.run
+      .withSuccessHandler(function(res){
+        done();
+        if (!res || !res.ok){ alert((res && res.error) || 'Failed to drop out'); return; }
+        if (state.page === 'sport') pageSport(); else openEvent(eventId);
+      })
+      .withFailureHandler(function(e){ done(); alert((e && e.message) || 'Failed to drop out'); })
+      .api_dropout(state.user.its, eventId, who);
+  });
+}
+
+    /* ===================== ADMIN: EVENTS ===================== */
+    function pageAdminEvents(){ if(!guard())return;
+      const node = el(`
+        <div class="card stack">
+          <div class="label">Create or Edit Event</div>
+          <div class="form-grid">
+            <div class="stack">
+              <label class="label">Prefill from event</label>
+              <select id="ae_copy" class="input"></select>
+            </div>
+            <div class="stack">
+              <label class="label">Sport</label>
+              <select id="ae_sport" class="input"></select>
+            </div>
+            <div class="stack">
+              <label class="label">Event Name</label>
+              <input id="ae_name" class="input" placeholder="Name">
+            </div>
+            <div class="stack">
+              <label class="label">Address (pick or type)</label>
+              <input id="ae_addr" class="input" list="addr_list" placeholder="Address">
+              <datalist id="addr_list"></datalist>
+            </div>
+            <div class="stack">
+              <label class="label">Start</label>
+              <input id="ae_start" class="input" type="datetime-local">
+            </div>
+            <div class="stack">
+              <label class="label">End</label>
+              <input id="ae_end" class="input" type="datetime-local">
+            </div>
+            <div class="stack">
+              <label class="label">Registration Opens</label>
+              <input id="ae_reg_start" class="input" type="datetime-local">
+            </div>
+            <div class="stack">
+              <label class="label">Registration Closes</label>
+              <input id="ae_reg_end" class="input" type="datetime-local">
+            </div>
+            <div class="stack">
+              <label class="label">Approximate Fee</label>
+              <input id="ae_fee" class="input" type="number" step="0.01" min="0">
+            </div>
+            <div class="stack">
+              <label class="label">Maximum Capacity</label>
+              <input id="ae_capacity" class="input" type="number" step="1" min="1" placeholder="e.g., 24">
+              <div class="tiny">Capacity controls waitlist automatically.</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+            <button class="btn" id="ae_save_new">Save as New</button>
+            <button class="btn secondary" id="ae_update" disabled>Update Event</button>
+            <button class="btn danger" id="ae_delete" disabled>Delete Event</button>
+          </div>
+          <div class="tiny" id="ae_err" style="color:var(--err)"></div>
+        </div>
+      `);
+      layout(node);
+
+      const hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
+      if (!hasAdminSports && state.user && state.user.its){
+        AdminAPI.bootstrap(state.user.its, b=>{ state.admin=Object.assign(state.admin,b||{}); render(); }, console.warn);
+        return;
+      }
+
+      const toLocalDTInput = (s)=> {
+        if(!s) return '';
+        var d=new Date(s); if(isNaN(d)) return '';
+        var yyyy=d.getFullYear(); var mm=('0'+(d.getMonth()+1)).slice(-2); var dd=('0'+d.getDate()).slice(-2);
+        var hh=('0'+d.getHours()).slice(-2); var mi=('0'+d.getMinutes()).slice(-2);
+        return yyyy+'-'+mm+'-'+dd+'T'+hh+':'+mi;
+      };
+
+      const sportSel = $('#ae_sport');
+      (state.admin.adminSports||[]).forEach(sp=>{ const o=document.createElement('option'); o.value=sp; o.textContent=sp; sportSel.appendChild(o); });
+
+      const dl=$('#addr_list');
+      (state.admin.pastAddresses||[]).forEach(a=>{ const o=document.createElement('option'); o.value=a; dl.appendChild(o); });
+
+      const cp=$('#ae_copy');
+      const placeholder = document.createElement('option'); placeholder.value=''; placeholder.textContent='Choose'; cp.appendChild(placeholder);
+      (state.admin.adminEvents||[]).forEach(e=>{
+        const o=document.createElement('option');
+        o.value=e.id; o.textContent = (e.sport || '')+' - '+e.name+' - '+fmtDT(e.start_datetime);
+        cp.appendChild(o);
+      });
+
+      const startInput     = $('#ae_start');
+      const endInput       = $('#ae_end');
+      const regStartInput  = $('#ae_reg_start');
+      const regEndInput    = $('#ae_reg_end');
+      const feeInput       = $('#ae_fee');
+      const capInput       = $('#ae_capacity');
+      const nameInput      = $('#ae_name');
+      const addrInput      = $('#ae_addr');
+
+      let prefillBase = null; const MS_DAY = 24*60*60*1000;
+      const override = { end:false, reg_start:false, reg_end:false };
+      endInput.addEventListener('input', ()=> override.end = true);
+      regStartInput.addEventListener('input', ()=> override.reg_start = true);
+      regEndInput.addEventListener('input', ()=> override.reg_end = true);
+
+      function enableEditButtons(enabled){ $('#ae_update').disabled = !enabled; $('#ae_delete').disabled = !enabled; }
+
+      cp.onchange = ()=>{
+        const id = cp.value; state.tmp = state.tmp || {}; state.tmp.editId = id || null; enableEditButtons(!!id);
+        if(!id) return;
+        const e = (state.admin.adminEvents||[]).find(ev => String(ev.id)===String(id)); if (!e) return;
+        sportSel.value = e.sport || sportSel.value; nameInput.value = e.name || ''; addrInput.value = e.address || '';
+        startInput.value    = toLocalDTInput(e.start_datetime);
+        endInput.value      = toLocalDTInput(e.end_datetime);
+        regStartInput.value = toLocalDTInput(e.reg_start);
+        regEndInput.value   = toLocalDTInput(e.reg_end);
+        feeInput.value = (Number(e.approx_fee||0)).toFixed(2);
+        capInput.value = e.max_capacity ? String(e.max_capacity) : '';
+        prefillBase = { start:parseDT(e.start_datetime), end:parseDT(e.end_datetime), reg_start:parseDT(e.reg_start), reg_end:parseDT(e.reg_end) };
+        override.end = override.reg_start = override.reg_end = false;
+      };
+
+      startInput.addEventListener('input', ()=>{
+        if (!prefillBase || !prefillBase.start) return;
+        const newStart = new Date(startInput.value); if (isNaN(newStart)) return;
+        const deltaDays = Math.round((newStart - prefillBase.start)/MS_DAY); if (!Number.isFinite(deltaDays)) return;
+        if (prefillBase.end && !override.end){ endInput.value = toLocalDTInput(new Date(prefillBase.end.getTime() + deltaDays*MS_DAY)); }
+        if (prefillBase.reg_start && !override.reg_start){ regStartInput.value = toLocalDTInput(new Date(prefillBase.reg_start.getTime() + deltaDays*MS_DAY)); }
+        if (prefillBase.reg_end && !override.reg_end){ regEndInput.value = toLocalDTInput(new Date(prefillBase.reg_end.getTime() + deltaDays*MS_DAY)); }
+      });
+
+      function getPayload(withId){
+        const payload = {
+          sport: sportSel.value,
+          name: (nameInput.value||'').trim(),
+          address: (addrInput.value||'').trim(),
+          start_datetime: startInput.value,
+          end_datetime: endInput.value,
+          reg_start: regStartInput.value,
+          reg_end: regEndInput.value,
+          approx_fee: Number(feeInput.value||0),
+          max_capacity: Number(capInput.value||0)
+        };
+        if (withId && state.tmp && state.tmp.editId) payload.id = state.tmp.editId;
+        return payload;
+      }
+      function requireEventFields(p){
+        const errEl = $('#ae_err'); errEl.textContent='';
+        const required = ['sport','name','address','start_datetime','end_datetime','reg_start','reg_end'];
+        for (let i=0;i<required.length;i++){ const k=required[i]; if(!p[k]){ errEl.textContent='Please fill '+k.replace(/_/g,' '); return false; } }
+        if (!(p.approx_fee>=0)){ errEl.textContent='Approximate fee must be 0 or more'; return false; }
+        if (!(p.max_capacity && p.max_capacity>0 && Math.floor(p.max_capacity)===p.max_capacity)){ errEl.textContent='Maximum capacity must be a positive whole number'; return false; }
+        return true;
+      }
+      function refreshAdmin(){
+        AdminAPI.bootstrap(state.user.its, b=>{
+          state.admin = Object.assign(state.admin, b||{});
+          setPage('admin_events');
+        }, e=> showErr('#ae_err', e));
+      }
+
+      $('#ae_save_new').onclick = ()=>{
+  const payload = getPayload(false); if(!requireEventFields(payload)) return; delete payload.id;
+  AdminAPI.eventSave(state.user.its, payload, ()=>{ 
+    alert('Event created.');
+    // NEW: re-schedule the next registration-open trigger
+    google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+
+    state.tmp = state.tmp || {}; state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); 
+    refreshAdmin();
+  }, e=> showErr('#ae_err', e));
+};
+
+      $('#ae_update').onclick = ()=>{
+        if(!(state.tmp && state.tmp.editId)){ showErr('#ae_err','Choose an event to update.'); return; }
+        const payload = getPayload(true); if(!requireEventFields(payload)) return;
+        AdminAPI.eventSave(state.user.its, payload, ()=>{ 
+  alert('Event updated.');
+  google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+  refreshAdmin(); 
+}, e=> showErr('#ae_err', e));
+      };
+      $('#ae_delete').onclick = ()=>{
+        if(!(state.tmp && state.tmp.editId)){ showErr('#ae_err','Choose an event to delete.'); return; }
+        if(!confirm('Delete this event? This will also remove it from Google Calendar.')) return;
+        AdminAPI.eventDelete(state.user.its, state.tmp.editId, ()=>{ 
+  alert('Event deleted.');
+  google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+
+  state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); 
+  refreshAdmin(); 
+}, e=> showErr('#ae_err', e));
+      };
+    }
+
+    /* ===================== ADMIN: RECEIPTS ===================== */
+    function pageAdminReceipts(){ if(!guard())return;
+      const node = el(`
+        <div class="card stack">
+          <div class="label">Upload Receipt</div>
+          <div class="form-grid">
+            <div class="stack">
+              <label class="label">Event</label>
+              <select id="ar_event" class="input"></select>
+            </div>
+            <div class="stack">
+              <label class="label">Amount</label>
+              <input id="ar_amount" class="input" type="number" step="0.01" min="0">
+            </div>
+            <div class="stack">
+              <label class="label">Category</label>
+              <select id="ar_cat" class="input">
+                <option value="Space Rental">Space Rental</option>
+                <option value="Food">Food</option>
+                <option value="Equipment Rental">Equipment Rental</option>
+                <option value="Shirts">Shirts</option>
+                <option value="Referees">Referees</option>
+                <option value="Trophies">Trophies</option>
+                <option value="Printing">Printing</option>
+                <option value="Labor">Labor</option>
+                <option value="Photography">Photography</option>
+                <option value="Karamat">Karamat</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="stack">
+              <label class="label">Receipt Date</label>
+              <input id="ar_date" class="input" type="date">
+            </div>
+            <div class="stack">
+              <label class="label">Extra Notes (optional)</label>
+              <input id="ar_notes" class="input" placeholder="Notes">
+            </div>
+            <div class="stack">
+              <label class="label">Upload Receipt</label>
+              <input id="ar_file" class="input" type="file" accept="image/*,application/pdf" required>
+              <div class="tiny">A receipt image/PDF is required.</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px">
+            <button class="btn" id="ar_save">Save Receipt</button>
+            <button class="btn secondary" id="ar_finalize">Finalize Now</button>
+          </div>
+          <div class="tiny" id="ar_err" style="color:var(--err)"></div>
+        </div>
+      `);
+      layout(node);
+
+      var hasAdminSports = (state.admin && state.admin.adminSports && state.admin.adminSports.length) ? true : false;
+      if (!hasAdminSports && state.user && state.user.its){
+        AdminAPI.bootstrap(state.user.its, function(b){ state.admin=Object.assign(state.admin,b||{}); pageAdminReceipts(); }, console.warn);
+        return;
+      }
+
+      AdminAPI.receiptsList(state.user.its, function(res){
+        var sel = $('#ar_event');
+        var first=document.createElement('option'); first.value=''; first.textContent='Choose'; sel.appendChild(first);
+        (res.events||[]).forEach(function(e){ var o=document.createElement('option'); o.value=e.id; o.textContent=e.label; sel.appendChild(o); });
+      }, function(e){ showErr('#ar_err', e); });
+
+      $('#ar_save').onclick = function(){
+        var sel = $('#ar_event'); var errEl = $('#ar_err'); errEl.textContent='';
+        var amt = Number($('#ar_amount').value||NaN);
+        var cat = $('#ar_cat').value;
+        var date = $('#ar_date').value;
+        var fileElt = $('#ar_file'); var f = fileElt.files[0];
+        if(!sel.value){ errEl.textContent='Please choose an event.'; return; }
+        if(!(amt>=0)){ errEl.textContent='Please enter a valid amount (≥ 0).'; return; }
+        if(!cat){ errEl.textContent='Please choose a category.'; return; }
+        if(!date){ errEl.textContent='Please choose a receipt date.'; return; }
+        if(!f){ errEl.textContent='Please attach a receipt image/PDF.'; return; }
+        var reader = new FileReader();
+        reader.onload = function(){
+          var payload = { event_id: sel.value, amount: amt, category: cat, receipt_date: date, notes: $('#ar_notes').value, imageDataUrl: reader.result };
+          AdminAPI.receiptSave(state.user.its, payload, function(){ alert('Receipt saved.'); $('#ar_amount').value=''; $('#ar_notes').value=''; fileElt.value=''; }, function(e){ showErr('#ar_err', e); });
+        };
+        reader.onerror = function(err){ showErr('#ar_err', err); };
+        reader.readAsDataURL(f);
+      };
+
+      $('#ar_finalize').onclick = function(){
+        var sel = $('#ar_event'); var errEl = $('#ar_err'); errEl.textContent='';
+        if(!sel.value){ errEl.textContent='Please choose an event to finalize.'; return; }
+        var btn = $('#ar_finalize');
+        btn.disabled = true;
+        AdminAPI.receiptsFinalizeNow(state.user.its, sel.value, function(r){
+          btn.disabled = false;
+          if(!r || !r.ok){ errEl.textContent = (r && (r.message || r.error)) || 'Failed to finalize.'; return; }
+          alert('Finalized: $'+Number(r.amount||0).toFixed(2)+' per person ('+(r.posted||0)+' billable).');
+        }, function(e){ btn.disabled = false; showErr('#ar_err', e); });
+      };
+    }
+
+    /* ===================== Captain page ===================== */
+    function pageCaptain(sport){
+      if(!guard()) return;
+      var links = (state.admin && state.admin.captainLinks) || {};
+      var url = links[sport];
+      var node = el(
+        '<div class="card stack">'+
+          '<div class="label">'+sport+' Captain</div>'+
+          (url
+            ? '<div class="stack"><div class="tiny">This opens your draft sheet:</div>'+
+              '<div><a class="btn" href="'+url+'" target="_blank" rel="noopener">Open '+sport+' Draft Sheet</a></div>'+
+              '<iframe src="'+url+'" style="width:100%;height:70vh;border:0;border-radius:12px;margin-top:8px"></iframe></div>'
+            : '<div class="muted">No draft sheet is configured for '+sport+'.</div>'
+          )+
+        '</div>'
+      );
+      layout(node);
+    }
+
+    /* ===================== ROUTER + RENDER ===================== */
+    function render(){
+      buildNav();
+      wireMenuButtons();
+
+      if(state.page==='landing') return pageLanding();
+      if(state.page==='create') return pageCreateOrEdit(false);
+      if(state.page==='edit') return pageCreateOrEdit(true);
+      if(state.page==='home') return pageHome();
+      if(state.page==='profile') return pageProfile();
+      if(state.page==='balance') return pageBalance();
+      if(state.page==='calendar') return pageCalendar();
+      if(state.page==='guests') return pageGuests();
+      if(state.page==='sport') return pageSport();
+      if(state.page==='admin_events') return pageAdminEvents();
+      if(state.page==='admin_receipts') return pageAdminReceipts();
+      if(state.page==='stat') return pageStat();
+      if(state.page==='qrcheck') return pageQrCheckin();
+
+      if (state.page && state.page.startsWith('captain_')) {
+        return pageCaptain(state.page.replace('captain_',''));
+      }
+
+      pageLanding();
+    }
+  </script>
+
+
+  <script id="STATKIT">
+/* ===================== STATKIT (client) ===================== */
+/* Team/name-aware stat tracker with robust parsing and per-Game filtering.
+   - Shows list, score, and jersey map ONLY for the selected Game.
+   - Pairs: completion/reception; target/incomplete; interception thrown/defensive pick.
+   - Overrides: TD/XP go to BOTH players for completion/reception, but for INT+TD only the defender gets TD.
+   - Canonicals: "interception thrown" and "defensive pick".
+*/
+
+(function(){
+
+  // ---- Local offline queue (simple, resilient) + client-side dedupe ----
+  const QKEY = 'statkitQueue.v1';
+  const DKEY = 'statkitDedup.v1';  // fingerprint cache to suppress dupes for a short window
+  function loadQ(){ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(_){ return []; } }
+  function saveQ(arr){ localStorage.setItem(QKEY, JSON.stringify(arr||[])); }
+
+  // Fingerprint helpers (eventId|game|its|stat|time)
+  function _makeFP(it){
+    return [String(it.eventId||''), String(it.game||''), String(it.its||''), String(it.stat||''), String(it.time||'')].join('|');
+  }
+  function _loadDedup(){ try{ return JSON.parse(localStorage.getItem(DKEY)||'{}'); }catch(_){ return {}; } }
+  function _saveDedup(map){ localStorage.setItem(DKEY, JSON.stringify(map||{})); }
+  function _markFP(fp){
+    const m=_loadDedup(); const now=Date.now(); m[fp]=now;
+    const cutoff = now - 120000; const keys = Object.keys(m).sort((a,b)=>m[a]-m[b]);
+    for (const k of keys){ if (m[k] < cutoff || Object.keys(m).length > 300) delete m[k]; }
+    _saveDedup(m);
+  }
+  function _seenFP(fp, windowMs){ const ts = _loadDedup()[fp]||0; return (Date.now() - ts) <= (windowMs||60000); }
+  function _uniqQueue(q){
+    const seen = new Set(); const out=[];
+    for(const it of q){ const fp = _makeFP(it); if (seen.has(fp)) continue; seen.add(fp); out.push(it); }
+    return out;
+  }
+  async function flushQueue(){
+    if (!navigator.onLine) return;
+    let q = loadQ(); if (!q.length) return;
+    q = _uniqQueue(q);
+    const keep = [];
+    for (const it of q){
+      try{
+        await gs('api_stats_record', it.adminIts, it.eventId, it.its, it.stat, it.raw, it.time, it.game);
+      }catch(_){ keep.push(it); }
+    }
+    saveQ(keep);
+  }
+  window.addEventListener('online', ()=>flushQueue());
+
+  // ---- Page ----
+  async function pageStat(){
+    if (!guard()) return;
+    setDocTitle('Stat Tracker');
+    showLoading('Loading Stat Tracker…');
+
+    state.tmp = state.tmp || {};
+    const mySport = state.sport || 'Soccer';
+
+    try{
+      const [boot, eventsPack] = await Promise.all([
+        gs('api_stats_bootstrap', state.user.its),
+        new Promise(resolve => { AdminAPI.receiptsList(state.user.its, resolve, () => resolve({ events: [] })); })
+      ]);
+
+      const isAdmin = Array.isArray(boot.adminSports) && boot.adminSports.some(x=>String(x)===String(mySport));
+      if (!isAdmin){
+        layout(el('<div class="card">You must be an admin for '+String(mySport) +' to use the Stat Tracker.</div>'));
+        return;
+      }
+
+      // ===== Build maps (TEAM + NAME aware) =====
+      const jerseysArr = boot.jerseys || [];
+      const jerseysByTeamNum = {}; // `${teamLower}::${number}` -> its
+      const itsToMeta = {};        // its -> { team, number, name }
+      const teamSet = new Set();
+      jerseysArr.forEach(j=>{
+        const team = String(j.team||'').trim();
+        const num  = String(j.number||'').trim();
+        const its  = String(j.its||'').trim();
+        const name = String(j.name||'').trim();
+        if (!its || !num) return;
+        if (team) teamSet.add(team);
+        jerseysByTeamNum[`${team.toLowerCase()}::${num}`] = its;
+        itsToMeta[its] = { team, number:num, name };
+      });
+
+      let statMap = (boot.sports && boot.sports[mySport] && boot.sports[mySport].aliasToKey) || {};
+
+      // Alias index
+      function _buildAliasIndex(map){
+        const collapsed = {};
+        Object.keys(map || {}).forEach(alias => {
+          const an = alias.toLowerCase().replace(/[^a-z0-9]/g, '');
+          (collapsed[an] ||= []).push(alias);
+        });
+        const keyToAliases = {};
+        Object.entries(map || {}).forEach(([alias, key]) => {
+          (keyToAliases[key] ||= new Set()).add(alias);
+        });
+        return { collapsed, keyToAliases };
+      }
+      let _aliasIndex = _buildAliasIndex(statMap);
+
+      function renderStatsList(){
+        const box = document.getElementById('st_statslist');
+        if (!box) return;
+        const entries = Object.entries(_aliasIndex.keyToAliases || {});
+        if (!entries.length){ box.innerHTML = '<span class="muted">—</span>'; return; }
+        const keys = entries.map(([key])=>key).sort((a,b)=>a.localeCompare(b));
+        const chips = keys.map(key=>`<span style="border:1px solid var(--border);border-radius:999px;padding:2px 8px;line-height:1.8">${esc(key)}</span>`);
+        box.innerHTML = chips.join('');
+      }
+
+      // Team index for parsing (longest-first)
+      function _buildTeamIndex(set){
+        const collapsed = {};
+        Array.from(set).forEach(name=>{
+          const an = name.toLowerCase().replace(/[^a-z0-9]/g,'');
+          (collapsed[an] ||= []).push(name);
+        });
+        const order = Object.keys(collapsed).sort((a,b)=> b.length - a.length);
+        return { collapsed, order };
+      }
+      const _teamIndex = _buildTeamIndex(teamSet);
+
+      // ===== Events =====
+      const evOptions = (eventsPack && eventsPack.events) || [];
+      if (!evOptions.length){
+        layout(el('<div class="card stack"><div class="label">Stat Tracker — '+String(mySport)+'</div><div class="muted">No events found in the Events sheet.</div></div>'));
+        return;
+      }
+
+// --- STATKIT layout CSS (insert once) ---
+if (!document.getElementById('statkit-layout-css')) {
+  document.head.insertAdjacentHTML('beforeend', `
+  <style id="statkit-layout-css">
+    /* form layout */
+    .st-form { display:grid; grid-template-columns: 1fr; gap:12px; }
+    .st-field { display:flex; flex-direction:column; gap:6px; }
+    .st-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    /* Stack the Record button on the next line */
+.st-manual-row {
+  display:flex;
+  flex-direction: column;
+  gap:8px;
+  align-items: flex-start;
+}
+.st-manual-row input {
+  width:100%;
+}
+    .st-voice { display:flex; align-items:center; gap:10px; }
+
+    /* desktop: chips on next line; voice under manual */
+    @media (min-width: 900px) {
+      .st-form {
+        grid-template-columns: 1.2fr 0.6fr;
+        grid-template-areas:
+          "event game"
+          "chips chips"
+          "manual manual"
+          "voice voice";
+      }
+      .st-field.event  { grid-area:event; }
+      .st-field.game   { grid-area:game; }
+      .st-field.chips  { grid-area:chips; }
+      .st-field.manual { grid-area:manual; }
+      .st-field.voice  { grid-area:voice; }
+    }
+
+    /* Scoreboard */
+    .st-score-card { padding:14px; border:1px solid var(--border); border-radius:12px; }
+    .st-score-row {
+      display:grid;
+      grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+      align-items:center; gap:10px;
+    }
+    .st-team-wrap { display:flex; align-items:center; gap:12px; }
+    .st-team-right { justify-content:flex-end; }
+    .st-team {
+      font-weight:700; text-transform:uppercase;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      font-size: clamp(12px, 2.8vw, 14px);
+    }
+    .st-score { font-size: clamp(28px, 8vw, 46px); font-weight:800; line-height:1; }
+    .st-vs { font-size: clamp(12px, 2.5vw, 14px); opacity:.65; white-space:nowrap; padding:0 8px; }
+  </style>`);
+}
+
+
+      // ===== UI =====
+const node = el(
+  '<div class="stack">'+
+
+    // Main controls card
+    '<div class="card stack">'+
+      '<div style="font-weight:800;font-size:var(--fs-md)">Stat Tracker</div>'+
+      '<div class="st-form">'+
+
+        // Event
+        '<div class="st-field event">'+
+          '<label class="label">Event</label>'+
+          '<select id="st_evt" class="input"></select>'+
+        '</div>'+
+
+        // Game
+        '<div class="st-field game">'+
+          '<label class="label">Game</label>'+
+          '<select id="st_game" class="input"></select>'+
+        '</div>'+
+
+        // Chips (full-width row on desktop)
+        '<div class="st-field chips">'+
+          '<label class="label">Stats you can record</label>'+
+          '<div id="st_statslist" class="st-chips tiny"></div>'+
+        '</div>'+
+
+        // Manual command (full-width row)
+        '<div class="st-field manual">'+
+          '<label class="label">Manual Command</label>'+
+          '<div class="st-manual-row">'+
+            '<input id="st_manual" class="input" placeholder="19 Red pass to 18 Red for touchdown">'+
+            '<button class="btn" id="st_add">Record</button>'+
+          '</div>'+
+          '<div id="st_posting" class="tiny muted" style="margin-top:4px;white-space:pre-line"></div>'+
+        '</div>'+
+
+        // Voice (placed under Manual on desktop)
+        '<div class="st-field voice">'+
+          '<label class="label">Voice</label>'+
+          '<div class="st-voice">'+
+            '<button class="btn" id="st_mic">Start Listening</button>'+
+            '<div id="st_mic_status" class="tiny muted">Idle</div>'+
+          '</div>'+
+        '</div>'+
+
+      '</div>'+ // /.st-form
+    '</div>'+   // /.card
+
+    // Scoreboard card (nice, always one line; sits BEFORE Recorded)
+    '<div class="card stack">'+
+      '<div class="label">Scoreboard</div>'+
+      '<div class="st-score-card">'+
+        '<div class="st-score-row">'+
+          '<div class="st-team-wrap">'+
+            '<div id="st_score_teamA" class="st-team">—</div>'+
+            '<div id="st_score_valA" class="st-score">0</div>'+
+          '</div>'+
+          '<div class="st-vs">vs</div>'+
+          '<div class="st-team-wrap st-team-right">'+
+            '<div id="st_score_valB" class="st-score">0</div>'+
+            '<div id="st_score_teamB" class="st-team">—</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+
+    // Recorded + Jersey map
+    '<div class="row">'+
+      '<div class="col">'+
+        '<div class="card stack">'+
+          '<div class="label">Recorded (this game)</div>'+
+          '<div id="st_list"></div>'+
+          '<div class="tiny muted" id="st_hint"></div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="col">'+
+        '<div class="card stack">'+
+          '<div class="label">Jersey Map</div>'+
+          '<div id="st_jersey"></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+
+  '</div>'
+);
+layout(node);
+
+
+      // Selects
+      const sel = $('#st_evt');
+      const selGame = $('#st_game');
+      const LAST_KEY = 'statkit.lastEventId';
+
+      // Build Game dropdown 1..99 (remember per-event)
+      (function buildGameSelect(){
+        selGame.innerHTML = '';
+        for (let i=1;i<=99;i++){
+          const o = document.createElement('option'); o.value = String(i); o.textContent = String(i); selGame.appendChild(o);
+        }
+      })();
+      function _gameKeyForEvent(eid){ return `statkit.lastGame.${eid}`; }
+      function _loadGameForEvent(eid){ const v = localStorage.getItem(_gameKeyForEvent(eid)); return (v && /^\d+$/.test(v)) ? v : '1'; }
+      function _saveGameForEvent(eid, v){ localStorage.setItem(_gameKeyForEvent(eid), String(v||'1')); }
+
+      const lastId = localStorage.getItem(LAST_KEY);
+      evOptions.forEach(e=>{
+        const o = document.createElement('option'); o.value = e.id; o.textContent = e.label || e.id; sel.appendChild(o);
+      });
+      if (lastId && evOptions.some(e=>String(e.id)===String(lastId))) sel.value = lastId;
+      if (!sel.value && evOptions[0]) sel.value = evOptions[0].id;
+
+      state.tmp.stat_event_id = sel.value || '';
+      selGame.value = _loadGameForEvent(state.tmp.stat_event_id);
+      state.tmp.stat_game = selGame.value;
+
+      // One-time sport infer + alias build
+      (()=>{
+        const opt = sel.options[sel.selectedIndex]; const label = opt ? (opt.textContent || '') : '';
+        const inferredSport = (label.split(' - ')[0] || '').trim();
+        if (inferredSport) state.sport = inferredSport;
+        statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
+        _aliasIndex = _buildAliasIndex(statMap);
+        renderStatsList();
+      })();
+
+      // ===== Jersey Map =====
+      function renderJersey(teamsSet){
+        const box = $('#st_jersey');
+        const rows = [...jerseysArr]
+          .filter(j => !teamsSet || !teamsSet.size || teamsSet.has(String(j.team||'').trim()))
+          .sort((a,b)=> String(a.team||'').localeCompare(String(b.team||'')) || Number(a.number||0)-Number(b.number||0))
+          .map(j=>{
+            const team = String(j.team||'').trim();
+            const num  = String(j.number||'').trim();
+            const nm   = String(j.name||'').trim();
+            return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:6px 0">'+
+                   '<div>'+esc(num)+' '+esc(team||'')+' - '+esc(nm||'')+'</div>'+
+                   '<div class="tiny"></div></div>';
+          }).join('') || '<div class="muted">No jerseys found. Add rows in the “Jerseys” sheet.</div>';
+        box.innerHTML = rows;
+      }
+      renderJersey(); // until we know teams for the selected game
+
+      // ===== Scorebox helpers =====
+      function _parseTimeStr(s){
+        if (!s) return null;
+        const m = String(s).match(/^(\d{2}):(\d{2})(am|pm)\s+(\d{2})\/(\d{2})\/(\d{4})$/i);
+        if (!m) return null;
+        let h = parseInt(m[1],10), mi = parseInt(m[2],10);
+        const ampm = m[3].toLowerCase();
+        const month = parseInt(m[4],10)-1, day=parseInt(m[5],10), year=parseInt(m[6],10);
+        if (ampm === 'pm' && h !== 12) h += 12;
+        if (ampm === 'am' && h === 12) h = 0;
+        return new Date(year, month, day, h, mi, 0, 0);
+      }
+
+      function _renderScorebox(list){
+        // Use ONLY the rows for the current game (list already filtered upstream)
+        const seenTeams = [];
+        list.forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          const t = meta.team || '';
+          if (t && !seenTeams.includes(t)) seenTeams.push(t);
+        });
+        let teams = seenTeams.slice(0,2);
+        const [teamA, teamB] = [teams[0]||'Team A', teams[1]||'Team B'];
+
+        $('#st_score_teamA').textContent = teamA;
+        $('#st_score_teamB').textContent = teamB;
+
+        const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+        const k1  = _resolveKeyAlias('1 point')   || '1 point';
+        const k2  = _resolveKeyAlias('2 point')   || '2 point';
+        const k3  = _resolveKeyAlias('3 point')   || '3 point';
+
+        const evByTeam = {};
+        list.forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          const team = meta.team || '';
+          if (!team) return;
+          const d = _parseTimeStr(r.time || '');
+          if (!d) return;
+          (evByTeam[team] ||= []).push({ t:d.getTime(), stat:String(r.stat||'') });
+        });
+        Object.values(evByTeam).forEach(arr=>arr.sort((a,b)=>a.t-b.t));
+
+        function calcScore(team){
+          const arr = evByTeam[team] || [];
+          let score = 0;
+          let lastTdStart = -Infinity;
+          let lastXpStart = -Infinity;
+          const WIN = 2*60*1000;
+          for (const e of arr){
+            if (e.stat === kTD){
+              if (e.t - lastTdStart > WIN){ score += 6; lastTdStart = e.t; }
+            }else if (e.stat === k1 || e.stat === k2 || e.stat === k3){
+              const pts = (e.stat === k3) ? 3 : (e.stat === k2 ? 2 : 1);
+              if (e.t - lastXpStart > WIN){ score += pts; lastXpStart = e.t; }
+            }
+          }
+          return score;
+        }
+
+        $('#st_score_valA').textContent = String(calcScore(teamA));
+        $('#st_score_valB').textContent = String(calcScore(teamB));
+      }
+
+      // ===== Recorded list (filter by Game) =====
+      let _allRows = [];
+      async function loadEventRows(){
+        if (!state.tmp.stat_event_id){
+          $('#st_list').innerHTML = '<div class="muted">Pick an event above.</div>';
+          return;
+        }
+        const res  = await gs('api_stats_list_for_event', state.tmp.stat_event_id);
+        _allRows = ((res && res.rows) || []).sort((a,b)=>(b.rowIndex||0)-(a.rowIndex||0));
+        _refreshForGame();
+      }
+
+      function _filterByGame(list){
+        const g = String(state.tmp.stat_game||'');
+        // legacy rows with empty game → show in Game 1
+        return (list||[]).filter(r => String(r.game||'') === g || (g==='1' && !String(r.game||'').trim()));
+      }
+
+      function _teamsFromList(list){
+        const s = new Set();
+        (list||[]).forEach(r=>{
+          const meta = itsToMeta[String(r.its||'')] || {};
+          if (meta.team) s.add(meta.team);
+        });
+        return s;
+      }
+
+      function _refreshForGame(){
+        const list = _filterByGame(_allRows);
+        _renderList(list);
+        _renderScorebox(list);
+        renderJersey(_teamsFromList(list)); // jersey map only for teams that have stats in THIS game
+      }
+
+      function _renderList(list){
+        const box = $('#st_list');
+        if (!list.length){
+          box.innerHTML = '<div class="muted">No stats yet for this game.</div>';
+          $('#st_hint').textContent = navigator.onLine ? '' : 'You are offline. New stats will be queued.';
+          $('#st_score_valA').textContent = '0';
+          $('#st_score_valB').textContent = '0';
+          $('#st_score_teamA').textContent = 'Team A';
+          $('#st_score_teamB').textContent = 'Team B';
+          return;
+        }
+        box.innerHTML = list.map(r=>{
+          const its  = String(r.its||'');
+          const meta = itsToMeta[its] || {};
+          const team = meta.team || '';
+          const num  = meta.number || '';
+          const name = meta.name || '';
+          const when = r.time || '';
+          const g    = String(r.game || state.tmp.stat_game || '');
+          return `
+            <div class="row" style="align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0">
+              <div class="col" style="min-width:260px">
+                <div class="tiny muted">${esc(when)} · Game ${esc(g)}</div>
+                <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
+              </div>
+              <div class="col">${esc(r.stat)}</div>
+              <div class="col" style="min-width:160px">
+                <button class="btn secondary" data-act="del" data-row="${r.rowIndex}">Delete</button>
+              </div>
+            </div>`;
+        }).join('');
+        box.querySelectorAll('[data-act="del"]').forEach(b=>{
+          b.addEventListener('click', async ()=>{
+            const row = b.getAttribute('data-row');
+            try{ await gs('api_stats_delete', state.user.its, row); loadEventRows(); }
+            catch(e){ alert('Delete failed'); }
+          });
+        });
+      }
+
+      // Local queued row (only show if it's for the current game)
+      function renderRowLocal(r){
+        const game = String(r.game||state.tmp.stat_game||'');
+        if (game !== String(state.tmp.stat_game||'')) return;
+
+        const its  = String(r.its||'');
+        const meta = itsToMeta[its] || {};
+        const team = meta.team || '';
+        const num  = meta.number || '';
+        const name = meta.name || '';
+        const when = r.time || _fmtTime(new Date());
+
+        const box = $('#st_list');
+        const div = document.createElement('div');
+        div.className = 'row';
+        div.style.cssText = 'align-items:flex-start;border-bottom:1px solid var(--border);padding:6px 0;opacity:.7';
+        div.innerHTML = `
+          <div class="col" style="min-width:260px">
+            <div class="tiny muted">${esc(when)} · Game ${esc(game)}</div>
+            <div>${esc(team)} ${esc(num)} - ${esc(name || '—')}</div>
+          </div>
+          <div class="col">${esc(r.stat)} <span class="tiny muted">(queued)</span></div>
+          <div class="col" style="min-width:160px"></div>`;
+        if (!box.firstChild) box.appendChild(div); else box.insertBefore(div, box.firstChild);
+      }
+      window._statkit_renderRowLocal = renderRowLocal;
+
+      // Event change
+      sel.addEventListener('change', ()=>{
+        state.tmp.stat_event_id = sel.value || '';
+        localStorage.setItem(LAST_KEY, state.tmp.stat_event_id || '');
+        selGame.value = _loadGameForEvent(state.tmp.stat_event_id);
+        state.tmp.stat_game = selGame.value;
+
+        const opt = sel.options[sel.selectedIndex];
+        const label = opt ? (opt.textContent || '') : '';
+        const inferredSport = (label.split(' - ')[0] || '').trim();
+        if (inferredSport) state.sport = inferredSport;
+        statMap = (boot.sports && boot.sports[state.sport] && boot.sports[state.sport].aliasToKey) || {};
+        _aliasIndex = _buildAliasIndex(statMap);
+        renderStatsList();
+
+        loadEventRows();
+      });
+
+      // Game change (remember per event + refilter immediately)
+      selGame.addEventListener('change', ()=>{
+        state.tmp.stat_game = selGame.value || '1';
+        _saveGameForEvent(state.tmp.stat_event_id, state.tmp.stat_game);
+        _refreshForGame();
+      });
+
+// ===== Voice recognition (dictate into Manual input; no auto-submit) =====
+const micBtn      = $('#st_mic');
+const micStatus   = $('#st_mic_status');
+const micPosting  = $('#st_posting');   // left intact; we simply don't use it here
+const inputManual = $('#st_manual');
+const rec         = _statkit_makeRecognizer();
+
+let dictationActive = false;
+let accFinal = '';
+
+function startMic(){
+  if (!rec) { alert('Speech Recognition not supported on this browser. Use manual input.'); return; }
+  // Start a fresh dictation session and clear the Manual Command input
+  accFinal = '';
+  if (inputManual) inputManual.value = '';
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  try { rec.start(); } catch(_) {}
+  dictationActive = true;
+  micBtn.textContent = 'Stop Listening';
+  micStatus.textContent = 'Listening';   // no “Heard …” status
+  if (micPosting) micPosting.textContent = '';
+}
+
+function stopMic(){
+  if (rec) { try { rec.stop(); } catch(_) {} }
+  dictationActive = false;
+  micBtn.textContent = 'Start Listening';
+  micStatus.textContent = 'Idle';        // no “Heard …” status
+}
+
+if (rec){
+  rec.onresult = (ev)=>{
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++){
+      const chunk = ev.results[i][0].transcript;
+      if (ev.results[i].isFinal){
+        accFinal = accFinal ? (accFinal + ' ' + chunk) : chunk;
+      } else {
+        interim += chunk;
+      }
+    }
+    const combined = (accFinal + ' ' + interim).replace(/\s+/g,' ').trim();
+    if (inputManual) inputManual.value = combined; // just fill the textbox, don't submit
+    // Intentionally do not change micStatus to “Heard …”
+  };
+
+  rec.onend = ()=>{
+    dictationActive = false;
+    micBtn.textContent = 'Start Listening';
+    micStatus.textContent = 'Idle';
+  };
+
+  rec.onerror = ()=>{
+    dictationActive = false;
+    micBtn.textContent = 'Start Listening';
+    micStatus.textContent = 'Idle';
+  };
+}
+
+micBtn.addEventListener('click', ()=>{
+  if (!dictationActive) startMic(); else stopMic();
+});
+// ===== /Voice recognition =====
+
+      // ===== Manual entry (queue-first, non-blocking) =====
+(()=>{
+  const input = $('#st_manual');
+  const btn   = $('#st_add');
+
+  function submit(){
+    const v = (input.value || '').trim();
+    if (!v) return;
+
+    const orig = btn.textContent;
+    btn.setAttribute('aria-busy','1');
+    btn.disabled = true;
+    btn.textContent = 'Recording…';
+
+    // Queue fast and re-enable UI immediately; flush in background
+    _statkit_processCommand(v, /*fromVoice*/false, /*queueOnly*/true)
+      .finally(()=>{
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        btn.textContent = orig;
+        input.value = '';
+        input.focus();
+        // try to send queued rows without blocking the UI
+        setTimeout(()=>{ try{ flushQueue(); }catch(_){ } }, 0);
+      });
+  }
+
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { e.preventDefault(); submit(); }});
+})();
+
+
+      // ===== Parse & record helpers =====
+      function _fmtTime(d){
+        const pad = n => String(n).padStart(2,'0');
+        let h = d.getHours(), m = d.getMinutes();
+        const ampm = h>=12 ? 'pm' : 'am';
+        h = h%12; if (h===0) h=12;
+        return `${pad(h)}:${pad(m)}${ampm} ${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+      }
+
+      function _clean(s){
+        return String(s||'')
+          .toLowerCase()
+          .replace(/[^\w\s]/g,' ')
+          .replace(/\s+/g,' ')
+          .trim();
+      }
+
+      // tolerant number extraction for spoken "twenty one"
+      function _extractNumber(tokens, startIdx){
+        const ones = {zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
+          ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19};
+        const tens = { twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90 };
+        for (let i=startIdx; i<Math.min(tokens.length, startIdx+4); i++){
+          const t = tokens[i];
+          if (/^\d{1,3}$/.test(t)) return parseInt(t,10);
+          if (t in tens){ let v = tens[t]; if (i+1<tokens.length && tokens[i+1] in ones) v += ones[tokens[i+1]]; return v; }
+          if (t in ones) return ones[t];
+        }
+        return null;
+      }
+
+      function _resolveKeyAlias(raw){
+        if (!raw) return null;
+        const norm = String(raw).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+        if (statMap[norm]) return statMap[norm];
+        const tight = norm.replace(/\s+/g,'');
+        for (const alias of Object.keys(statMap)){ if (alias.replace(/\s+/g,'') === tight) return statMap[alias]; }
+        return null;
+      }
+
+      function _isScoringKey(key){
+        if (!key) return false;
+        const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+        const k1  = _resolveKeyAlias('1 point')   || '1 point';
+        const k2  = _resolveKeyAlias('2 point')   || '2 point';
+        const k3  = _resolveKeyAlias('3 point')   || '3 point';
+        return key === kTD || key === k1 || key === k2 || key === k3;
+      }
+
+      function _findPrimaryActionKey(text){
+        const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+        const aliasesCollapsed = Object.keys(_aliasIndex.collapsed || {}).sort((a,b)=>b.length-a.length);
+        const seen = new Set(); const matches = [];
+        for (const an of aliasesCollapsed){
+          if (norm.includes(an)){
+            const originalAlias = _aliasIndex.collapsed[an][0];
+            const key = statMap[originalAlias];
+            if (key && !seen.has(key)){ seen.add(key); matches.push(key); }
+          }
+        }
+        const nonScoring = matches.find(k => !_isScoringKey(k));
+        return nonScoring || matches[0] || null;
+      }
+
+      // Robust player extraction (handles "Red 19" and "19 Red", sliding windows)
+      function _extractPlayersLoose(text){
+        const tokens = _clean(text).split(' ');
+        const players = [];
+        // search both orders around each token window
+        for (let i=0;i<tokens.length;i++){
+          // team then number
+          for (const an of _teamIndex.order){
+            const origTeam = _teamIndex.collapsed[an][0];
+            const teamWords = origTeam.toLowerCase().split(' ');
+            const slice = tokens.slice(i, i + teamWords.length).join(''); // collapsed
+            if (slice === an){
+              const num = _extractNumber(tokens, i + teamWords.length);
+              if (num!=null) players.push({ team: origTeam, number: String(num) });
+            }
+          }
+          // number then team
+          if (/^\d+$/.test(tokens[i]) || /^(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)$/.test(tokens[i])){
+            const n = _extractNumber(tokens, i);
+            for (const an of _teamIndex.order){
+              const origTeam = _teamIndex.collapsed[an][0];
+              const teamWords = origTeam.toLowerCase().split(' ');
+              const slice = tokens.slice(i+1, i+1 + teamWords.length).join('');
+              if (n!=null && slice === an){ players.push({ team: origTeam, number: String(n) }); }
+            }
+          }
+        }
+        // dedupe by team::number keeping order
+        const seen = new Set(); const out=[];
+        for (const p of players){ const k = p.team.toLowerCase()+'::'+p.number; if (!seen.has(k)){ seen.add(k); out.push(p);} }
+        return out.slice(0,2); // we only ever use A and B
+      }
+
+      function _mentionsStat(aliasLike, text){
+  const key = _resolveKeyAlias(aliasLike);
+  if (!key) return false;
+  const norm = String(text||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const aliases = Object.entries(statMap).filter(([a,k])=>k===key).map(([a])=>a);
+  return aliases.some(a => norm.includes(a.replace(/[^a-z0-9]/g,'')));
+}
+
+
+      // Natural pair rules (single & two-player) — updated order & logic per spec
+function _expandPairwise(players, primaryKey, rawText){
+  const actions = [];
+  if (!players.length || !primaryKey) return actions;
+
+  const A = players[0], B = players[1];
+
+  const kCompletion   = _resolveKeyAlias('completion')             || 'completion';
+  const kReception    = _resolveKeyAlias('reception')              || 'reception';
+  const kInterThrown  = _resolveKeyAlias('interception thrown')    || 'interception thrown';
+  const kDefPick      = _resolveKeyAlias('defensive pick')         || 'defensive pick';
+  const kTarget       = _resolveKeyAlias('target')                 || 'target';
+  const kIncomp       = _resolveKeyAlias('incomplete')             || 'incomplete';
+  const kPass         = _resolveKeyAlias('pass');
+  const kComplete     = _resolveKeyAlias('complete') || _resolveKeyAlias('completion');
+  const kThrows       = _resolveKeyAlias('throws');
+  const kRush         = _resolveKeyAlias('rush')                   || 'rush';
+  const kDrop         = _resolveKeyAlias('drop')                   || 'drop';
+
+  const key = primaryKey;
+
+  // 1) DROP OVERRIDE: “A pass/complete/anything to B drop” → ONLY B drop
+  //    (covers “A incomplete to B drop” and “A pass to B drop” etc.)
+  if (B && _mentionsStat('drop', rawText)) {
+    actions.push({ its:B.its, stat:kDrop });
+    return actions;
+  }
+
+  // 2) INTERCEPTION/PICK must beat completion:
+  //    “A throws interception/pick to B” → A interception thrown, B defensive pick
+  //    (A should NOT get completion)
+  if (B && (key === kInterThrown || key === kDefPick ||
+            _mentionsStat('interception', rawText) || _mentionsStat('pick', rawText))) {
+    actions.push({ its:A.its, stat:kInterThrown });
+    actions.push({ its:B.its, stat:kDefPick    });
+    return actions;
+  }
+
+  // 3) INCOMPLETE TO B → A incomplete, B target
+  //    (works even if only “incomplete … to B” is said without the word “target”)
+  if (B && (key === kIncomp || _mentionsStat('incomplete', rawText))) {
+    actions.push({ its:A.its, stat:kIncomp });
+    actions.push({ its:B.its, stat:kTarget });
+    return actions;
+  }
+
+  // 4) Completion/pass/throws → A completion, B reception
+  if (B && (key === kCompletion || key === kPass || key === kComplete || (kThrows && key === kThrows))) {
+    actions.push({ its:A.its, stat:kCompletion });
+    actions.push({ its:B.its, stat:kReception  });
+    return actions;
+  }
+
+  // 5) Single-actor rush
+  if (!B && key === kRush) {
+    actions.push({ its:A.its, stat:kRush });
+    return actions;
+  }
+
+  // Fallback: single actor gets the key
+  actions.push({ its:A.its, stat:key });
+  return actions;
+}
+
+
+      function _detectScoreIntent(text){
+        const t = String(text||'').toLowerCase();
+        if (/\b(td|touchdown|t\.?d\.?)\b/.test(t)) return { mode:'TD' };
+        const xp2 = /\b(2\s*(pt|point|points|xp)|two\s*(point|points)|2\s*pointer)\b/.test(t);
+        const xp3 = /\b(3\s*(pt|point|points|xp)|three\s*(point|points)|3\s*pointer)\b/.test(t);
+        const xp1 = /\b(1\s*(pt|point|points|xp)|extra\s*point|xp|1\s*pointer)\b/.test(t);
+        if (xp3) return { mode:'XP', points:3 };
+        if (xp2) return { mode:'XP', points:2 };
+        if (xp1) return { mode:'XP', points:1 };
+        return null;
+      }
+
+      function _isInterceptionContext(parsed){
+        const kInterThrown  = _resolveKeyAlias('interception thrown') || 'interception thrown';
+        const kDefPick      = _resolveKeyAlias('defensive pick')     || 'defensive pick';
+        const stats = new Set((parsed.baseActions||[]).map(a=>a.stat));
+        return stats.has(kInterThrown) && stats.has(kDefPick);
+      }
+
+      function _combineBaseAndOverrides(parsed){
+        let actions = [...(parsed.baseActions || [])];
+        if (parsed.override === 'TD' || parsed.override === 'XP'){
+          const interceptionCtx = _isInterceptionContext(parsed);
+          let targetsIts;
+          if (interceptionCtx){
+            const kDefPick = _resolveKeyAlias('defensive pick') || 'defensive pick';
+            targetsIts = Array.from(new Set((parsed.baseActions||[]).filter(a=>a.stat===kDefPick).map(a=>a.its)));
+          }else{
+            targetsIts = Array.from(new Set(parsed.players.map(p=>p.its)));
+          }
+
+          if (parsed.override === 'TD'){
+            const kTD = _resolveKeyAlias('touchdown') || 'touchdown';
+            actions.push(...targetsIts.map(its => ({ its, stat:kTD })));
+          }else{
+            const key1 = _resolveKeyAlias('1 point') || _resolveKeyAlias('xp') || '1 point';
+            const key2 = _resolveKeyAlias('2 point') || '2 point';
+            const key3 = _resolveKeyAlias('3 point') || '3 point';
+            const key = parsed.xpPoints === 3 ? key3 : parsed.xpPoints === 2 ? key2 : key1;
+            actions.push(...targetsIts.map(its => ({ its, stat:key })));
+          }
+        }
+        // de-dupe
+        const seen = new Set();
+        actions = actions.filter(a=>{ const k = `${a.its}::${a.stat}`; if (seen.has(k)) return false; seen.add(k); return true; });
+        return actions;
+      }
+
+      // ---- Parser entry (tolerant) ----
+      function _parseCommand(text){
+        const rawText = String(text||'');
+        const playersFound = _extractPlayersLoose(rawText); // [{team,number}, ...]
+        if (!playersFound.length) return null;
+
+        // resolve to ITS
+        const players = playersFound.map(p=>{
+          const its = jerseysByTeamNum[`${p.team.toLowerCase()}::${p.number}`];
+          return its ? { ...p, its } : null;
+        }).filter(Boolean);
+        if (!players.length) return null;
+
+        const override = _detectScoreIntent(rawText);
+
+        // Find primary action; prefer non-scoring
+        let primaryKey = _findPrimaryActionKey(rawText);
+
+        // Helpful default: if two players connected by "to" and no primary key, treat as completion/reception
+        if (!primaryKey && players.length>=2 && /\bto\b/.test(_clean(rawText))){
+          primaryKey = _resolveKeyAlias('completion') || 'completion';
+        }
+
+        const base = primaryKey ? _expandPairwise(players, primaryKey, rawText) : [];
+
+        if (override && override.mode === 'TD')  return { players, baseActions: base, override:'TD', raw:rawText };
+        if (override && override.mode === 'XP')  return { players, baseActions: base, override:'XP', xpPoints: override.points, raw:rawText };
+
+        if (!base.length) return null;
+        return { players, baseActions: base, override:null, raw:rawText };
+      }
+
+      // ---------- Recorder ----------
+      async function _statkit_processCommand(text, fromVoice, queueOnly){
+        if (!state.tmp.stat_event_id){
+          if (navigator.onLine && !fromVoice) alert('Pick an event first');
+          else { $('#st_mic_status').textContent = 'Pick an event first'; }
+          return;
+        }
+
+        const parsed = _parseCommand(text);
+        if (!parsed){
+          const hint = 'Could not parse. Try “19 Red pass to 18 Red for touchdown”, “7 White incomplete to White 10”, “Blue 4 interception to Red 19 for touchdown”.';
+          if (fromVoice){ $('#st_posting').textContent = hint; }
+          else{
+            // keep this as a non-blocking UI hint instead of alert spam
+            $('#st_posting').textContent = hint;
+          }
+          return;
+        }
+
+        const actions = _combineBaseAndOverrides(parsed);
+        const timeStr = _fmtTime(new Date());
+        const gameNum = state.tmp.stat_game || '1';
+
+        const lines = actions.map(a=>{
+        const m = itsToMeta[a.its] || {};
+        return `${m.team||''} ${m.number||''} - ${m.name||''} — ${a.stat} (G${gameNum})`;
+        });
+        const postEl = $('#st_posting');
+        if (postEl) postEl.innerHTML = lines.map(esc).join('<br>');
+
+
+        for (const a of actions){
+  const recObj = {
+    adminIts: state.user.its,
+    eventId:  state.tmp.stat_event_id,
+    its:      a.its,
+    stat:     a.stat,
+    raw:      text,
+    time:     timeStr,
+    game:     gameNum
+  };
+
+  const fp = _makeFP(recObj);
+  if (_seenFP(fp, 60000)){ $('#st_mic_status').textContent = 'Duplicate ignored'; continue; }
+  _markFP(fp);
+
+  // --- Queue-first path or offline ---
+  if (queueOnly || !navigator.onLine){
+    let q = loadQ();
+    if (!q.some(x => _makeFP(x) === fp)){
+      q.push(recObj); saveQ(q);
+      _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr, game: gameNum });
+    }
+    if (!navigator.onLine){
+      const hint = $('#st_hint'); if (hint) hint.textContent = 'Offline: queued. Will upload when online.';
+    }
+    continue;
+  }
+
+  // --- Online immediate try; fall back to queue on error ---
+  try{
+    await gs('api_stats_record', recObj.adminIts, recObj.eventId, recObj.its, recObj.stat, recObj.raw, recObj.time, recObj.game);
+  }catch(e){
+    let q = loadQ();
+    if (!q.some(x => _makeFP(x) === fp)){
+      q.push(recObj); saveQ(q);
+      _statkit_renderRowLocal({ its: a.its, stat: a.stat, time: timeStr, game: gameNum });
+    }
+  }
+}
+
+// Refresh list (non-blocking if we queued)
+if (!queueOnly && navigator.onLine){ await loadEventRows(); }
+else { setTimeout(()=>{ loadEventRows(); }, 0); }
+}
+
+      // Initial load & flush any queued
+      await loadEventRows();
+      flushQueue();
+
+    }catch(e){
+      layout(el('<div class="card" style="color:var(--err)">Failed to load Stat Tracker: '+esc(e && e.message || e)+'</div>'));
+    }
+  }
+
+  // Expose page
+  window.pageStat = pageStat;
+
+  // Utilities
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function _statkit_makeRecognizer(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null; const r = new SR(); r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 1; return r;
+  }
+
+})(); // end IIFE
+/* =================== /STATKIT (client) =================== */
+
+</script>
+
+</body>
+</html>
