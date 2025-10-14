@@ -4,18 +4,15 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Saifee Sports</title>
-
-  <!-- Favicons (add these) -->
-  <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
-  <link rel="manifest" href="/site.webmanifest">
-  <link rel="mask-icon" href="/icons/safari-pinned-tab.svg" color="#0b1220">
-  <meta name="theme-color" content="#0b1220">
-  <!-- /Favicons -->
-  
+  <!-- Favicons -->
+<link rel="icon" href="/favicon.ico" sizes="any"><!-- classic .ico fallback -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"><!-- crisp modern -->
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/icons/safari-pinned-tab.svg" color="#0b1220">
+<meta name="theme-color" content="#0b1220">
 <style>
   :root{
     /* Colors */
@@ -93,6 +90,7 @@
     padding: 10px var(--pad);
     border-bottom:1px solid var(--border);
   }
+
   .hamburger{
     min-width:88px;
     min-height:44px;
@@ -296,46 +294,30 @@
     .btn{ padding:9px 10px; }
     .countdown{ font-size: clamp(17px, 6.6vw, 21px); }
   }
-</style>
 
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/firebase-messaging-sw.js') // or '/app/firebase-messaging-sw.js'
-      .catch(console.error);
-  });
+  /* ===== Notifications banner ===== */
+.notify-banner{
+  position: sticky;            /* sits just under the sticky topbar */
+  top: 1;                      /* because it's inside <main> under .topbar */
+  z-index: 190;                /* below .topbar (200), above content */
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: none;
 }
-</script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-compat.js"></script>
-<script>
-  firebase.initializeApp({
-    apiKey: "AIzaSyBf2IarBF2qPQzlly6G3RUcBCj-QRqdQc4",
-    authDomain: "mfl-app-1d2e9.firebaseapp.com",
-    projectId: "mfl-app-1d2e9",
-    messagingSenderId: "279758160799",
-    appId: "1:279758160799:web:5731135ef7b1acd2ceb3aa",
-  });
+.notify-banner.show{ display:block; }
+.notify-banner .inner{
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px var(--pad);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.notify-banner .msg{ font-size: var(--fs-xxs); color: var(--text); }
+.notify-banner .actions{ display:flex; gap:8px; flex-wrap:wrap; }
 
-  const messaging = firebase.messaging();
-
-  async function enablePush() {
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') throw new Error('Permission not granted');
-      const token = await messaging.getToken({
-        vapidKey: 'BDdjFhb2rJiZ5SIzkaFFDliF3dGFrVcmR6ug2EUvk9TaVDZlM-2tz6p5Lwl9ZR4HIcqNZ0IF6q_Ove5-vl8Sob0'
-      });
-      await gs('api_push_saveToken', state.user.its, token, navigator.userAgent);
-      console.log('FCM token:', token);
-      // Save this token to your backend (Apps Script) associated with the user
-    } catch (e) {
-      console.error(e);
-    }
-  }
-  // Call enablePush() from a user gesture (button)
-</script>
-
+</style>
 
 <script>
 /* google.script.run polyfill for Cloudflare Pages */
@@ -412,17 +394,39 @@ if ('serviceWorker' in navigator) {
     <!-- Main content -->
     <main class="content">
       <div class="topbar">
-        <button class="hamburger" id="btnMenu">☰ Menu</button>
-        <div class="brand">
-          <img id="logoTop" class="logo" src="" alt="logo" onerror="this.style.display='none'"/>
-          <div>   Saifee Sports</div>
-        </div>
-      </div>
-      <div class="container"><div id="root"></div></div>
+  <button class="hamburger" id="btnMenu">☰ Menu</button>
+  <div class="brand">
+    <img id="logoTop" class="logo" src="" alt="logo" onerror="this.style.display='none'"/>
+    <div>   Saifee Sports</div>
+  </div>
+</div>
+
+
+<!-- Notifications enable banner -->
+<div id="notifyBanner" class="notify-banner">
+  <div class="inner">
+    <div class="msg" data-msg>Get alerts when registration opens and other updates.</div>
+    <div class="actions">
+      <button class="btn" data-enable>Enable notifications</button>
+      <button class="btn secondary" data-close>Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<div class="container"><div id="root"></div></div>
+
     </main>
   </div>
 
   <script>
+// Safe fallback if your real enablePush() isn't loaded on this page
+if (typeof window.enablePush !== 'function') {
+  window.enablePush = async function(){
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    // If you also have Firebase Messaging set up elsewhere, that'll pick up post-permission.
+  };
+}
 
 // ===== Simple deep-link router (hash-based) =====
 var router = {
@@ -841,6 +845,70 @@ if (state.user){
     wireMenuButtons();
     updateMenuButtonVisibility();
 
+/* ===== Notifications enable banner ===== */
+function initNotifyBanner(){
+  const bar = document.getElementById('notifyBanner');
+  if (!bar) return;
+
+  const btnEnable = bar.querySelector('[data-enable]');
+  const btnClose  = bar.querySelector('[data-close]');
+  const msgEl     = bar.querySelector('[data-msg]');
+
+  function refresh(){
+  // Only prompt signed-in users (optional)
+  if (!window.state || !state.user) { 
+    bar.classList.remove('show'); 
+    return; 
+  }
+
+  if (!('Notification' in window)) {
+    bar.classList.remove('show');
+    return;
+  }
+    const perm = Notification.permission;   // 'default' | 'granted' | 'denied'
+    if (perm === 'granted') {
+      bar.classList.remove('show');         // hide if already enabled
+      return;
+    }
+    if (perm === 'default'){
+      msgEl.textContent = 'Get alerts when registration opens and other updates.';
+      btnEnable.classList.remove('hide');
+      btnEnable.disabled = false;
+    } else { // denied
+      msgEl.textContent = 'Notifications are blocked. Enable them in your browser’s site settings for this site to receive alerts.';
+      btnEnable.classList.add('hide');      // don’t re-prompt
+    }
+    bar.classList.add('show');              // show the banner
+  }
+
+  btnEnable && (btnEnable.onclick = async ()=>{
+    btnEnable.disabled = true;
+    try { 
+      if (typeof enablePush === 'function') await enablePush();
+    } catch(_) {}
+    refresh();  // will hide if permission became 'granted'
+  });
+
+  btnClose && (btnClose.onclick = ()=>{
+    // Dismiss for this session only; banner will reappear on next load if still not granted
+    bar.classList.remove('show');
+  });
+
+  // React to permission changes (where supported)
+  if (navigator.permissions && navigator.permissions.query){
+    try {
+      navigator.permissions.query({ name: 'notifications' }).then(p => {
+        p.onchange = refresh;
+      });
+    } catch(_) {}
+  }
+
+  refresh();
+}
+
+// Run it once on page load (ensure DOM is ready)
+window.addEventListener('load', initNotifyBanner);
+
     /* ===================== AUTH VIEWS ===================== */
     function pageLanding(){
       var hasLogo = (state.boot && state.boot.logoUrl);
@@ -928,6 +996,17 @@ if (state.user){
 
 
     /* ===================== SHARED HELPERS ===================== */
+function appendAndBust_(tab, obj){
+  const id = _appendObject(tab, obj);
+  _cacheBust(tab);
+  return id;
+}
+function updateAndBust_(tab, pred, patch){
+  const n = _updateWhere(tab, pred, patch);
+  _cacheBust(tab);
+  return n;
+}
+
     function withinCheckInWindow(evt){
       var start = parseDT(evt && evt.start_datetime);
       if (!start) return false;
@@ -1046,14 +1125,6 @@ async function pageHome(){
           '<div class="label">Balance</div>'+
           '<div id="home_balance" style="font-size:var(--fs-xl);font-weight:800">—</div>'+
         '</div>'+
-        // --- Notifications card (between Balance and Your Events) ---
-'<div class="card stack" id="home_push_card">'+
-  '<div class="row" style="align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">'+
-    '<div class="label">Notifications</div>'+
-    '<button class="btn" id="home_push_btn">Enable Notifications</button>'+
-  '</div>'+
-  '<div id="home_push_hint" class="tiny muted"></div>'+
-'</div>'+
         '<div class="card stack">'+
           '<div class="label">Your Events</div>'+
           '<div id="home_self"></div>'+
@@ -1069,67 +1140,6 @@ async function pageHome(){
       '</div>'
     );
     layout(node);
-    // ----- Notifications button wiring -----
-(function wireNotifications(){
-  const card = $('#home_push_card');
-  const btn  = $('#home_push_btn');
-  const hint = $('#home_push_hint');
-
-  if (!card || !btn || !hint) return;
-
-  function updateState(){
-    if (!('Notification' in window)) {
-      btn.disabled = true;
-      btn.textContent = 'Not supported';
-      hint.textContent = 'Your browser does not support notifications.';
-      return;
-    }
-    if (Notification.permission === 'granted') {
-      btn.disabled = true;
-      btn.textContent = 'Notifications Enabled';
-      hint.textContent = 'You can manage this in your browser settings.';
-      return;
-    }
-    if (Notification.permission === 'denied') {
-      btn.disabled = true;
-      btn.textContent = 'Notifications Blocked';
-      hint.textContent = 'Enable notifications in your browser settings to receive alerts.';
-      return;
-    }
-    // default
-    btn.disabled = false;
-    btn.textContent = 'Enable Notifications';
-    hint.textContent = 'Get alerts when registration opens and other updates.';
-  }
-
-  btn.addEventListener('click', async ()=>{
-    // Prefer your global enablePush() if you added it (Firebase setup).
-    btn.setAttribute('aria-busy','1');
-    btn.disabled = true;
-    try {
-      if (typeof window.enablePush === 'function') {
-        await window.enablePush();       // your Firebase permission + token save flow
-      } else if (typeof window.requestPushPermission === 'function') {
-        await window.requestPushPermission();
-      } else {
-        // Minimal inline fallback if you haven’t wired enablePush yet:
-        if (!('Notification' in window)) throw new Error('unsupported');
-        const p = await Notification.requestPermission();
-        if (p !== 'granted') throw new Error('not granted');
-        // If using Firebase, your real flow should get token and send to backend:
-        // const token = await firebase.messaging().getToken({ vapidKey: 'YOUR_VAPID' });
-        // await fetch('/api/saveToken', { method:'POST', body: JSON.stringify({ token }) });
-      }
-    } catch (e) {
-      hint.textContent = 'Permission was blocked or failed. You can enable it later in browser settings.';
-    } finally {
-      btn.removeAttribute('aria-busy');
-      updateState();
-    }
-  });
-
-  updateState();
-})();
 
     // ----- Balance -----
     $('#home_balance').textContent = money(balanceRes && balanceRes.balance || 0);
@@ -2443,18 +2453,36 @@ function actDropout(eventId, its, btn){
       }
 
       $('#ae_save_new').onclick = ()=>{
-        const payload = getPayload(false); if(!requireEventFields(payload)) return; delete payload.id;
-        AdminAPI.eventSave(state.user.its, payload, ()=>{ alert('Event created.'); state.tmp = state.tmp || {}; state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); refreshAdmin(); }, e=> showErr('#ae_err', e));
-      };
+  const payload = getPayload(false); if(!requireEventFields(payload)) return; delete payload.id;
+  AdminAPI.eventSave(state.user.its, payload, ()=>{ 
+    alert('Event created.');
+    // NEW: re-schedule the next registration-open trigger
+    google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+
+    state.tmp = state.tmp || {}; state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); 
+    refreshAdmin();
+  }, e=> showErr('#ae_err', e));
+};
+
       $('#ae_update').onclick = ()=>{
         if(!(state.tmp && state.tmp.editId)){ showErr('#ae_err','Choose an event to update.'); return; }
         const payload = getPayload(true); if(!requireEventFields(payload)) return;
-        AdminAPI.eventSave(state.user.its, payload, ()=>{ alert('Event updated.'); refreshAdmin(); }, e=> showErr('#ae_err', e));
+        AdminAPI.eventSave(state.user.its, payload, ()=>{ 
+  alert('Event updated.');
+  google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+  refreshAdmin(); 
+}, e=> showErr('#ae_err', e));
       };
       $('#ae_delete').onclick = ()=>{
         if(!(state.tmp && state.tmp.editId)){ showErr('#ae_err','Choose an event to delete.'); return; }
         if(!confirm('Delete this event? This will also remove it from Google Calendar.')) return;
-        AdminAPI.eventDelete(state.user.its, state.tmp.editId, ()=>{ alert('Event deleted.'); state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); refreshAdmin(); }, e=> showErr('#ae_err', e));
+        AdminAPI.eventDelete(state.user.its, state.tmp.editId, ()=>{ 
+  alert('Event deleted.');
+  google.script.run.withFailureHandler(console.warn).api_rescheduleRegOpenTrigger();
+
+  state.tmp.editId = null; prefillBase=null; cp.value=''; enableEditButtons(false); 
+  refreshAdmin(); 
+}, e=> showErr('#ae_err', e));
       };
     }
 
