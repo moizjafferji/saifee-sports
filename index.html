@@ -366,7 +366,7 @@ if ('serviceWorker' in navigator) {
             } catch (e) {
               (ctx.fail || console.error)(e);
             }
-          )();
+          })();
           return runner(base, {});
         };
       }
