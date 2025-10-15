@@ -446,7 +446,7 @@
     if (perm !== 'granted') return;
 
     // 2) Register the SW at root
-    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
     await navigator.serviceWorker.ready; // ensure active
 
     // 3) Mint an FCM token
