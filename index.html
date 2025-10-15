@@ -489,7 +489,6 @@ var router = {
       case 'sport':           return '#/sport/' + encodeURIComponent((opts && opts.sport) || state.sport || 'Soccer');
       case 'admin_events':    return '#/admin/events';
       case 'admin_receipts':  return '#/admin/receipts';
-      case 'admin_ci':        return '#/admin/ci';
       case 'captain':         return '#/captain/' + encodeURIComponent((opts && opts.sport) || '');
       case 'event':           return '#/event/' + encodeURIComponent((opts && opts.id) || '');
       case 'create':          return '#/create';
@@ -520,7 +519,6 @@ var router = {
     if (seg === 'captain') return { page:'captain', sport: decodeURIComponent(parts[1]||'') };
     if (seg === 'admin' && parts[1]==='events')   return { page:'admin_events' };
     if (seg === 'admin' && parts[1]==='receipts') return { page:'admin_receipts' };
-    if (seg === 'admin' && parts[1]==='ci')       return { page:'admin_ci' };
     if (seg === 'event')   return { page:'event',   id: decodeURIComponent(parts[1]||'') };
 
     // QR check-in landing (already in your app)
@@ -554,16 +552,13 @@ var router = {
       const route = router.parse();
 
       // Gate protected pages if signed out
-const publicPages = new Set(['landing','create','edit','']); // keep only public pages here
-if (!state.user && !publicPages.has(route.page)) {
-  // remember intended destination both in-memory and across reloads
-  const desired = location.hash || router.normalize(route.page, route) || '#/landing';
-  state.tmp = state.tmp || {};
-  state.tmp.returnTo = desired;
-  try { sessionStorage.setItem('return_to', desired); } catch(_) {}
-  setPage('landing', { updateHash:false });
-  return;
-}
+      const publicPages = new Set(['landing','create','edit','']); // 'stat' is intentionally NOT public
+      if (!state.user && !publicPages.has(route.page)) {
+        state.tmp = state.tmp || {};
+        state.tmp.returnTo = location.hash; // remember where they wanted to go (e.g., #/stat)
+        setPage('landing', {updateHash:false});
+        return;
+      }
 
       // Route → page
       if (route.page === 'sport'){
@@ -601,30 +596,15 @@ window.addEventListener('hashchange', router.sync);
     var homeTimers = { cd:null, uiRefresh:null };
 
     /* ===================== BOOT ===================== */
-    // AFTER — route immediately if already signed in
-restoreSession();
-router.sync();  // let the hash pick the page right away
-
-google.script.run.withSuccessHandler(function(res){
+    google.script.run.withSuccessHandler(function(res){
   state.boot = res || {};
   if (state.boot && state.boot.logoUrl) {
     document.getElementById('logo').src = state.boot.logoUrl;
     document.getElementById('logoTop').src = state.boot.logoUrl;
   }
-  // optional: refresh nav/logo once boot lands
-  buildNav();
+  restoreSession();
+  router.sync();   // <— let the URL pick the page
 }).api_bootstrap();
-
-/* Persist intended destination across login/reload */
-(function rememberIntendedHash(){
-  try{
-    const h = location.hash || '';
-    const publicHashes = new Set(['#/landing', '#/create', '#/edit', '#']);
-    if (h && !publicHashes.has(h)) {
-      sessionStorage.setItem('return_to', h);
-    }
-  }catch(_){}
-})();
 
 
     /* ===================== UTILS ===================== */
@@ -693,10 +673,6 @@ function setSport(sp){
         var saved = JSON.parse(localStorage.getItem('saifee_user') || 'null');
         if (saved && saved.its){
           state.user = saved;
-          try{
-  const rt = sessionStorage.getItem('return_to');
-  if (rt) location.hash = rt;
-}catch(_){}
           if (!state.page || state.page === 'landing') state.page = 'home';
           AdminAPI.bootstrap(saved.its, function(b){
             state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b||{});
@@ -1045,20 +1021,17 @@ window.addEventListener('load', initNotifyBanner);
       layout(el('<div class="card stack" style="align-items:center;text-align:center">Welcome, ' + (state.user.first_name || 'Athlete') + '!</div>'));
 
       setTimeout(function(){
-if (res.requireValidation) { location.hash = '#/edit'; return; }
+      // Require profile completion takes precedence
+      if (res.requireValidation) { location.hash = '#/edit'; return; }
 
-const sessReturn = (()=>{ try{ return sessionStorage.getItem('return_to') || ''; }catch(_){ return ''; }})();
-if (state.tmp && state.tmp.returnTo){
-  const dest = state.tmp.returnTo;
-  delete state.tmp.returnTo;
-  try{ sessionStorage.removeItem('return_to'); }catch(_){}
-  location.hash = dest;
-} else if (sessReturn){
-  try{ sessionStorage.removeItem('return_to'); }catch(_){}
-  location.hash = sessReturn;
-} else {
-  location.hash = '#/home';
-}
+      // Return to where they were headed (e.g., #/stat) if we saved it in router.sync()
+      if (state.tmp && state.tmp.returnTo){
+        const dest = state.tmp.returnTo;
+        delete state.tmp.returnTo;
+        location.hash = dest;
+      } else {
+        location.hash = '#/home';
+      }
     }, 600);
     })
     .withFailureHandler(function(e){
@@ -2745,246 +2718,7 @@ function actDropout(eventId, its, btn){
         }, function(e){ btn.disabled = false; showErr('#ar_err', e); });
       };
     }
-/* ===================== ADMIN: Check in ===================== */
-async function pageAdminCI(){
-  if (!guard()) return;
-  // Only admins see this page
-const isAdmin = (state.admin && Array.isArray(state.admin.adminSports) && state.admin.adminSports.length) || false;
-if (!isAdmin){
-  layout(el("<div class='card'>You don’t have access to the Check-in Desk.</div>"));
-  return;
-}
 
-  // Ensure admin bootstrap is present (for adminEvents list)
-  const hasBoot = state && state.admin && Array.isArray(state.admin.adminEvents);
-  if (!hasBoot || !state.admin.adminEvents.length){
-    showLoading('Loading admin tools…');
-    try{
-      const b = await new Promise((res, rej)=>{
-        AdminAPI.bootstrap(state.user.its, r=>res(r||{}), rej);
-      });
-      state.admin = Object.assign({adminSports:[], pastAddresses:[], adminEvents:[]}, b||{});
-    }catch(e){
-      layout(el("<div class='card' style='color:var(--err)'>"+(e && e.message || e)+"</div>"));
-      return;
-    }
-  }
-
-  setDocTitle('Check-in Desk');
-
-  // UI shell
-  const node = el(
-    `<div class="stack">
-      <div class="card stack">
-        <div class="label">Check-in Desk</div>
-        <div class="form-grid">
-          <div class="stack">
-            <label class="label">Event</label>
-            <select id="aqr_event" class="input"></select>
-            <div class="tiny" id="aqr_evt_meta"></div>
-          </div>
-          <div class="stack">
-            <label class="label">Participant</label>
-            <select id="aqr_person" class="input" disabled>
-              <option value="">Select an event first…</option>
-            </select>
-            <div class="tiny" id="aqr_hint"></div>
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn" id="aqr_checkin" disabled>Check In</button>
-          <button class="btn secondary" id="aqr_refresh" disabled>Refresh</button>
-        </div>
-        <div class="tiny" id="aqr_err" style="color:var(--err)"></div>
-      </div>
-      <div class="card stack">
-        <div class="label">Roster Preview</div>
-        <div id="aqr_list" class="stack tiny">Select an event to load roster…</div>
-      </div>
-    </div>`
-  );
-  layout(node);
-
-  const selEvent   = $('#aqr_event');
-  const selPerson  = $('#aqr_person');
-  const btnCI      = $('#aqr_checkin');
-  const btnRef     = $('#aqr_refresh');
-  const listBox    = $('#aqr_list');
-  const evtMeta    = $('#aqr_evt_meta');
-  const hint       = $('#aqr_hint');
-  const errEl      = $('#aqr_err');
-
-  function showErr(msg){ errEl.textContent = msg || ''; }
-
-  // Event dropdown (same source as Admin Events tab)
-  const evts = (state.admin && state.admin.adminEvents) ? state.admin.adminEvents.slice() : [];
-  // Sort by start date upcoming first
-  evts.sort((a,b)=> new Date(a.start_datetime||0) - new Date(b.start_datetime||0));
-
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = 'Select an event…';
-  selEvent.appendChild(placeholder);
-
-  evts.forEach(e=>{
-    const o = document.createElement('option');
-    o.value = e.id;
-    o.textContent = (e.sport ? (e.sport+' - ') : '') + (e.name||'Untitled') + ' — ' + (fmtDT(e.start_datetime)||'');
-    selEvent.appendChild(o);
-  });
-
-  // Helpers
-  function nameParts(n){
-    const bits = String(n||'').trim().split(/\s+/);
-    const last = bits.length ? bits[bits.length-1] : '';
-    const first = bits.slice(0, -1).join(' ');
-    return { first, last };
-  }
-  function sortByFirstLast(aName, bName){
-    const a = nameParts(aName), b = nameParts(bName);
-    return (a.last || '').localeCompare(b.last || '') || (a.first || '').localeCompare(b.first || '');
-  }
-  function badgeFor(r){
-    const s = String(r.status||'').toLowerCase();
-    if (s==='active') return "<span class='badge ok'>Active</span>";
-    if (s==='waitlist') return "<span class='badge warn'>Waitlist</span>";
-    if (s==='dropout') return "<span class='badge warn'>Dropped Out</span>";
-    return "";
-  }
-  function checkedPill(r){
-    try{
-      if (!r.checked_in_at) return '';
-      const start = new Date((r.event_start)||0); // might be missing; we’ll just show a simple tag
-      // Simple tag:
-      return "<span class='badge ok' style='margin-left:6px'>Checked</span>";
-    }catch(_){ return "<span class='badge ok' style='margin-left:6px'>Checked</span>"; }
-  }
-
-  // Load roster for selected event
-  let currentEventId = '';
-  let currentLive = []; // raw roster rows
-
-  async function loadRoster(eventId){
-    showErr('');
-    listBox.innerHTML = '<div class="muted">Loading roster…</div>';
-    selPerson.innerHTML = '<option value="">Loading…</option>';
-    selPerson.disabled = true;
-    btnCI.disabled = true;
-    btnRef.disabled = true;
-    evtMeta.textContent = '';
-
-    try{
-      const det = await gs('api_eventDetails', eventId);
-      const evt = (det && det.event) || {};
-      const live = (det && det.live) || [];
-      currentLive = live.slice();
-
-      // Build alphabetized dropdown
-      const rows = live.map(r=>{
-        const nm = String(r.name||'').trim();
-        const label = nm || (String(r.person||''));
-        return { its:String(r.person||''), label, row:r };
-      });
-
-      rows.sort((a,b)=> sortByFirstLast(a.label, b.label));
-
-      selPerson.innerHTML = '';
-      const ph = document.createElement('option');
-      ph.value = '';
-      ph.textContent = 'Select participant…';
-      selPerson.appendChild(ph);
-
-      rows.forEach(({its,label,row})=>{
-        const opt = document.createElement('option');
-        // show guest flag and checked state inline
-        const isGuest = !!row.is_guest;
-        const isChecked = !!row.checked_in_at;
-        opt.value = its;
-        opt.textContent = label + (isGuest ? ' (Guest)' : '') + (isChecked ? ' [Checked]' : '');
-        selPerson.appendChild(opt);
-      });
-
-      selPerson.disabled = false;
-      btnRef.disabled = false;
-
-      // Event meta and preview list
-      const cap = Number(evt.max_capacity||0);
-      const activeCount = live.filter(x => String(x.status||'').toLowerCase()==='active').length;
-      evtMeta.innerHTML = 
-        `Registration: ${(evt.reg_start?fmtDT(evt.reg_start):'—')} → ${(evt.reg_end?fmtDT(evt.reg_end):'—')}
-         <br/>Capacity: ${cap?cap:'—'} | Active: ${activeCount}`;
-
-      // Roster preview
-      listBox.innerHTML = live.length
-        ? live
-            .slice()
-            .sort((a,b)=> sortByFirstLast(String(a.name||''), String(b.name||'')))
-            .map(r =>
-              `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
-                 <b>${r.name||r.person}</b>
-                 ${badgeFor(r)} ${checkedPill(r)}
-               </div>`
-            ).join('')
-        : '<div class="muted">No registrations yet</div>';
-
-    }catch(e){
-      showErr((e && e.message) || 'Failed to load roster');
-      listBox.innerHTML = '<div class="muted">Failed to load roster</div>';
-    }
-  }
-
-  selEvent.addEventListener('change', ()=>{
-    currentEventId = selEvent.value || '';
-    if (!currentEventId){
-      selPerson.innerHTML = '<option value="">Select an event first…</option>';
-      selPerson.disabled = true;
-      btnCI.disabled = true;
-      btnRef.disabled = true;
-      listBox.innerHTML = 'Select an event to load roster…';
-      evtMeta.textContent = '';
-      return;
-    }
-    loadRoster(currentEventId);
-  });
-
-  selPerson.addEventListener('change', ()=>{
-    showErr('');
-    const val = selPerson.value || '';
-    btnCI.disabled = !val;
-  });
-
-  btnRef.addEventListener('click', ()=>{
-    if (currentEventId) loadRoster(currentEventId);
-  });
-
-  // Click-locked admin check-in (reuses your withClickLock helper)
-  btnCI.addEventListener('click', ()=>{
-    showErr('');
-    const personIts = selPerson.value || '';
-    if (!currentEventId || !personIts) return;
-
-    const key = `admin-checkin:${currentEventId}:${personIts}`;
-    withClickLock(key, btnCI, 'Checking…', async (done)=>{
-      try{
-        // Geolocation optional for desk; pass nulls
-        const r = await gs('api_checkInWithLocation', state.user.its, currentEventId, personIts, null, null);
-        if (!r || !r.ok){
-          showErr((r && r.error) || 'Check-in failed');
-          return;
-        }
-        // Refresh roster & dropdown labels to reflect "Checked"
-        await loadRoster(currentEventId);
-        // Keep selection on the same person if still present
-        selPerson.value = personIts;
-        btnCI.disabled = false;
-      }catch(e){
-        showErr((e && e.message) || 'Check-in failed');
-      }finally{
-        done();
-      }
-    });
-  });
-}
     /* ===================== Captain page ===================== */
     function pageCaptain(sport){
       if(!guard()) return;
@@ -3020,8 +2754,6 @@ if (!isAdmin){
       if(state.page==='sport') return pageSport();
       if(state.page==='admin_events') return pageAdminEvents();
       if(state.page==='admin_receipts') return pageAdminReceipts();
-      if(state.page==='admin_ci') return pageAdminCI();
-
       if(state.page==='stat') return pageStat();
       if(state.page==='qrcheck') return pageQrCheckin();
 
