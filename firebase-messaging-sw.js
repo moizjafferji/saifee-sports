@@ -2,6 +2,7 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-compat.js');
 
+
 firebase.initializeApp({
   apiKey: "AIzaSyBf2IarBF2qPQzlly6G3RUcBCj-QRqdQc4",
   projectId: "mfl-app-1d2e9",
