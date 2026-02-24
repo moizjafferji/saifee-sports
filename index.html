@@ -1243,14 +1243,14 @@ async function pageHome(){
 //$('#home_pen_noshow').textContent  = Number(pens.no_show || 0);
 
     // Helpers
-  //  function isFutureOngoingOrToday(e){
-  //    const end   = parseDT(e && e.end_datetime);
-  //    const start = parseDT(e && e.start_datetime);
-  //    const t = now();
-  //    const sameDay = d => d && d.toDateString() === t.toDateString();
-  //    if (end) return (end > t) || sameDay(end) || sameDay(start);
-  //    return (start && start > t) || sameDay(start);
-  //  }
+    function isFutureOngoingOrToday(e){
+      const end   = parseDT(e && e.end_datetime);
+      const start = parseDT(e && e.start_datetime);
+      const t = now();
+      const sameDay = d => d && d.toDateString() === t.toDateString();
+      if (end) return (end > t) || sameDay(end) || sameDay(start);
+      return (start && start > t) || sameDay(start);
+    }
 
     // ----- Self events -----
     const selfOk = selfList.filter(isFutureOngoingOrToday)
