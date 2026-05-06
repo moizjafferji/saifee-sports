@@ -605,15 +605,68 @@ window.addEventListener('hashchange', router.sync);
 restoreSession();
 router.sync();  // let the hash pick the page right away
 
-google.script.run.withSuccessHandler(function(res){
-  state.boot = res || {};
-  if (state.boot && state.boot.logoUrl) {
-    document.getElementById('logo').src = state.boot.logoUrl;
-    document.getElementById('logoTop').src = state.boot.logoUrl;
+// --- Merged bootstrap + sessionStorage cache ---
+// On first visit: one GAS call returns boot data AND admin data together.
+// On repeat visits (within 5 min): renders instantly from sessionStorage.
+// Cache cleared on sign-out and after 5 minutes (matches server TTL).
+(function bootApp(){
+  var CACHE_KEY = 'saifee_boot_v1';
+  var CACHE_TTL = 5 * 60 * 1000; // 5 minutes in ms
+
+  function applyBoot(res){
+    state.boot = res || {};
+    if (state.boot.logoUrl) {
+      document.getElementById('logo').src = state.boot.logoUrl;
+      document.getElementById('logoTop').src = state.boot.logoUrl;
+    }
+    // Merge admin data returned by api_fullBootstrap
+    if (state.boot.admin) {
+      state.admin = Object.assign(
+        { adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} },
+        state.boot.admin
+      );
+      buildNav(); // re-build nav now that admin sports are known
+    } else {
+      buildNav();
+    }
   }
-  // optional: refresh nav/logo once boot lands
-  buildNav();
-}).api_bootstrap();
+
+  // Try sessionStorage cache first for instant render
+  try {
+    var raw = sessionStorage.getItem(CACHE_KEY);
+    if (raw) {
+      var cached = JSON.parse(raw);
+      if (cached && cached._ts && (Date.now() - cached._ts) < CACHE_TTL) {
+        applyBoot(cached);
+        // Silently refresh in the background so next visit is also fresh
+        google.script.run
+          .withSuccessHandler(function(fresh){
+            if (fresh && fresh.ok) {
+              fresh._ts = Date.now();
+              try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(fresh)); } catch(_){}
+            }
+          })
+          .api_fullBootstrap(state.user ? state.user.its : '');
+        return; // rendered from cache — done immediately
+      }
+    }
+  } catch(_) {}
+
+  // No valid cache — fetch fresh from server (first visit or cache expired)
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (res && res.ok) {
+        res._ts = Date.now();
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(res)); } catch(_){}
+      }
+      applyBoot(res);
+    })
+    .withFailureHandler(function(){
+      // Graceful fallback: if fullBootstrap not yet deployed, use old api_bootstrap
+      google.script.run.withSuccessHandler(applyBoot).api_bootstrap();
+    })
+    .api_fullBootstrap(state.user ? state.user.its : '');
+})();
 
 /* Persist intended destination across login/reload */
 (function rememberIntendedHash(){
@@ -694,19 +747,19 @@ function setSport(sp){
         if (saved && saved.its){
           state.user = saved;
           try{
-  const rt = sessionStorage.getItem('return_to');
-  if (rt) location.hash = rt;
-}catch(_){}
+            var rt = sessionStorage.getItem('return_to');
+            if (rt) location.hash = rt;
+          }catch(_){}
           if (!state.page || state.page === 'landing') state.page = 'home';
-          AdminAPI.bootstrap(saved.its, function(b){
-            state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b||{});
-            render();
-          }, console.warn);
+          // Admin data is loaded by bootApp() via api_fullBootstrap.
+          // Render immediately; admin state populates once boot resolves.
+          render();
         }
       } catch(e){}
     }
     function signOut(){
       try { localStorage.removeItem('saifee_user'); } catch(e){}
+      try { sessionStorage.removeItem('saifee_boot_v1'); } catch(e){}
       state.user = null;
       state.admin = { adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} };
       setPage('landing');
