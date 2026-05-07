@@ -32,18 +32,34 @@ export async function onRequest({ request, env }) {
     args = (body && body.args) || [];
   }
 
-  // ONLY cache public, non-user-specific GETs
-  const CACHEABLE = new Set(['api_listEvents','api_upcomingEvents','api_eventDetails']);
-  const isCacheableGet = (method === 'GET') && CACHEABLE.has(targetMethod);
+  // Cache TTLs (seconds) per method.
+  // User-specific methods use a short TTL so data stays fresh.
+  // Public methods use a longer TTL since they're the same for everyone.
+  const CACHE_TTLS = {
+    // Public — same for all users
+    'api_listEvents':      300,  // 5 min
+    'api_upcomingEvents':  300,  // 5 min
+    'api_eventDetails':    300,  // 5 min
 
-  // always POST to GAS (GAS reads JSON in doPost)
+    // Semi-public boot data (sports list, settings, logo) — changes rarely
+    'api_bootstrap':       300,  // 5 min
+
+    // Per-user but safe to cache briefly — keyed by ITS in the URL args
+    'api_balanceQuick':     60,  // 1 min (col U read, very fast to recompute)
+    'api_fullBootstrap':    60,  // 1 min (includes admin data per user)
+  };
+
+  const ttl = CACHE_TTLS[targetMethod];
+  const isCacheableGet = (method === 'GET') && !!ttl;
+
+  // Always POST to GAS (GAS reads JSON in doPost)
   const upstreamInit = {
     method: 'POST',
     headers: { 'Content-Type':'application/json' },
     body: JSON.stringify({ method: targetMethod, args })
   };
 
-  // Edge cache for public GETs
+  // Edge cache for cacheable GETs
   if (isCacheableGet) {
     const cache = caches.default;
     const cacheKey = new Request(request.url, { method:'GET' });
@@ -53,12 +69,12 @@ export async function onRequest({ request, env }) {
     const upstream = await fetch(env.GAS_BASE, upstreamInit);
     const body = await upstream.text();
     const resp = new Response(body, upstream);
-    resp.headers.set('Cache-Control','public, s-maxage=60, max-age=0'); // 60s edge TTL
+    resp.headers.set('Cache-Control', `public, s-maxage=${ttl}, max-age=0, stale-while-revalidate=60`);
     await cache.put(cacheKey, resp.clone());
     return withCors(resp, origin);
   }
 
-  // Non-cacheable (POST or sensitive)
+  // Non-cacheable (POST or write operations)
   const upstream = await fetch(env.GAS_BASE, upstreamInit);
   const resp = new Response(upstream.body, upstream);
   resp.headers.set('Cache-Control', 'no-store');
