@@ -605,15 +605,63 @@ window.addEventListener('hashchange', router.sync);
 restoreSession();
 router.sync();  // let the hash pick the page right away
 
-google.script.run.withSuccessHandler(function(res){
-  state.boot = res || {};
-  if (state.boot && state.boot.logoUrl) {
-    document.getElementById('logo').src = state.boot.logoUrl;
-    document.getElementById('logoTop').src = state.boot.logoUrl;
+(function bootApp(){
+  var CACHE_KEY = 'saifee_boot_v1';
+  var CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  function applyBoot(res){
+    state.boot = res || {};
+    if (state.boot.logoUrl) {
+      document.getElementById('logo').src = state.boot.logoUrl;
+      document.getElementById('logoTop').src = state.boot.logoUrl;
+    }
+    if (state.boot.admin) {
+      state.admin = Object.assign(
+        { adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} },
+        state.boot.admin
+      );
+    }
+    buildNav();
+    render(); // re-render now that admin data is available
   }
-  // optional: refresh nav/logo once boot lands
-  buildNav();
-}).api_bootstrap();
+
+  // Try sessionStorage cache first for instant render
+  try {
+    var raw = sessionStorage.getItem(CACHE_KEY);
+    if (raw) {
+      var cached = JSON.parse(raw);
+      if (cached && cached._ts && (Date.now() - cached._ts) < CACHE_TTL) {
+        applyBoot(cached);
+        // Silently refresh in background
+        google.script.run
+          .withSuccessHandler(function(fresh){
+            if (fresh && fresh.ok) {
+              fresh._ts = Date.now();
+              try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(fresh)); } catch(_){}
+              // Re-apply in case admin data changed
+              applyBoot(fresh);
+            }
+          })
+          .api_fullBootstrap(state.user ? state.user.its : '');
+        return;
+      }
+    }
+  } catch(_) {}
+
+  // No cache — fetch fresh
+  google.script.run
+    .withSuccessHandler(function(res){
+      if (res && res.ok) {
+        res._ts = Date.now();
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(res)); } catch(_){}
+      }
+      applyBoot(res);
+    })
+    .withFailureHandler(function(){
+      google.script.run.withSuccessHandler(applyBoot).api_bootstrap();
+    })
+    .api_fullBootstrap(state.user ? state.user.its : '');
+})();
 
 /* Persist intended destination across login/reload */
 (function rememberIntendedHash(){
@@ -694,19 +742,18 @@ function setSport(sp){
         if (saved && saved.its){
           state.user = saved;
           try{
-  const rt = sessionStorage.getItem('return_to');
-  if (rt) location.hash = rt;
-}catch(_){}
+            var rt = sessionStorage.getItem('return_to');
+            if (rt) location.hash = rt;
+          }catch(_){}
           if (!state.page || state.page === 'landing') state.page = 'home';
-          AdminAPI.bootstrap(saved.its, function(b){
-            state.admin = Object.assign({adminSports:[],pastAddresses:[],adminEvents:[],captainLinks:{}}, b||{});
-            render();
-          }, console.warn);
+          // Admin data is loaded by bootApp() via api_fullBootstrap.
+          render();
         }
       } catch(e){}
     }
     function signOut(){
       try { localStorage.removeItem('saifee_user'); } catch(e){}
+      try { sessionStorage.removeItem('saifee_boot_v1'); } catch(e){}
       state.user = null;
       state.admin = { adminSports:[], pastAddresses:[], adminEvents:[], captainLinks:{} };
       setPage('landing');
@@ -1591,9 +1638,6 @@ function pageBalance(){
   var memoText = itsVal + ' - Saifee Sports';
   var email    = 'toloba@dallasjamaat.org';
 
-  // --- Phase 1: show balance number instantly from pre-cached col U ---
-  // Renders the balance number and Zelle info immediately.
-  // The transaction table shows a skeleton row while Phase 2 loads.
   var node = el(
     '<div class="card stack" id="bal_box">'+
       '<div class="label">Current Balance</div>'+
@@ -1617,7 +1661,6 @@ function pageBalance(){
   );
   layout(node);
 
-  // Wire up copy buttons and CSV download immediately (no GAS needed)
   var balBox = $('#bal_box');
   var emailBtn = balBox.querySelector('#copyEmailBtn');
   var memoBtn  = balBox.querySelector('#copyMemoBtn');
@@ -1645,7 +1688,7 @@ function pageBalance(){
     });
   }
 
-  // Phase 1: fast call — reads only col U of Users sheet (~200ms)
+  // Phase 1: fast — reads only col U of Users (~200ms)
   google.script.run.withSuccessHandler(function(qRes){
     var balNum = $('#bal_number');
     if (balNum) balNum.textContent = money((qRes && qRes.balance != null) ? qRes.balance : 0);
@@ -1654,17 +1697,14 @@ function pageBalance(){
     if (balNum) balNum.textContent = '—';
   }).api_balanceQuick(state.user.its);
 
-  // Phase 2: full call — reads Transactions sheet for the history table (~2-3s, runs in background)
+  // Phase 2: full transaction history (background)
   google.script.run.withSuccessHandler(function(res){
-    // Update balance number with the authoritative computed value
     var balNum = $('#bal_number');
     if (balNum) balNum.textContent = money(res.balance || 0);
 
-    // Hide void transactions
     var tx = (res.transactions || []).filter(function(t){
       return String(t.status || '').toLowerCase() !== 'void';
     });
-
     var rows = tx.map(function(t){
       var dt   = fmtDate(t.date || t.created_at);
       var evt  = t.category || '';
@@ -1674,17 +1714,9 @@ function pageBalance(){
       var cls  = isCredit ? 'amt-credit' : 'amt-debit';
       var sign = isCredit ? '+' : '-';
       var st = String(t.status || '');
-      var stLower = st.toLowerCase();
-      var stHtml = (stLower === 'pending')
-        ? "<span style='color:#f59e0b'>" + st + "</span>"
-        : st;
-      return ''+
-        '<tr>'+
-          '<td>'+dt+'</td>'+
-          '<td>'+evt+(memo ? '<br/>'+memo : '')+'</td>'+
-          '<td>'+stHtml+'</td>'+
-          '<td class="right '+cls+'">'+sign+'$'+amt+'</td>'+
-        '</tr>';
+      var stHtml = (st.toLowerCase() === 'pending')
+        ? "<span style='color:#f59e0b'>" + st + "</span>" : st;
+      return '<tr><td>'+dt+'</td><td>'+evt+(memo?'<br/>'+memo:'')+'</td><td>'+stHtml+'</td><td class="right '+cls+'">'+sign+'$'+amt+'</td></tr>';
     }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
 
     var tbody = $('#bal_rows');
