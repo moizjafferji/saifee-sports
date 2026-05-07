@@ -1,13 +1,18 @@
 /index.html
-  Cache-Control: no-store
+  Cache-Control: public, max-age=0, s-maxage=300, stale-while-revalidate=60
 
-//firebase-messaging-sw.js
+/firebase-messaging-sw.js
   Cache-Control: no-cache, no-store, must-revalidate
   Service-Worker-Allowed: /
+
+/functions/gas.js
+  Cache-Control: no-store
+
 /assets/*
   Cache-Control: public, max-age=31536000, s-maxage=31536000, immutable, stale-while-revalidate=604800
+
 /icons/*
   Cache-Control: public, max-age=31536000, s-maxage=31536000, immutable, stale-while-revalidate=604800
+
 /site.webmanifest
   Cache-Control: public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600
-
