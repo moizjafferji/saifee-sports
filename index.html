@@ -621,8 +621,10 @@ router.sync();  // let the hash pick the page right away
         state.boot.admin
       );
     }
+    // Only rebuild nav — do NOT call render() here.
+    // render() would overwrite whatever page the router already navigated to
+    // (e.g. an event page from a shared link) with state.page (home).
     buildNav();
-    render(); // re-render now that admin data is available
   }
 
   // Try sessionStorage cache first for instant render
@@ -638,7 +640,6 @@ router.sync();  // let the hash pick the page right away
             if (fresh && fresh.ok) {
               fresh._ts = Date.now();
               try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(fresh)); } catch(_){}
-              // Re-apply in case admin data changed
               applyBoot(fresh);
             }
           })
@@ -741,13 +742,9 @@ function setSport(sp){
         var saved = JSON.parse(localStorage.getItem('saifee_user') || 'null');
         if (saved && saved.its){
           state.user = saved;
-          try{
-            var rt = sessionStorage.getItem('return_to');
-            if (rt) location.hash = rt;
-          }catch(_){}
-          if (!state.page || state.page === 'landing') state.page = 'home';
-          // Admin data is loaded by bootApp() via api_fullBootstrap.
-          render();
+          // Do NOT set state.page here — let router.sync() read the hash and
+          // decide the page. This prevents home briefly flashing before the
+          // intended page (e.g. a shared event link) loads.
         }
       } catch(e){}
     }
@@ -1697,11 +1694,10 @@ function pageBalance(){
     if (balNum) balNum.textContent = '—';
   }).api_balanceQuick(state.user.its);
 
-  // Phase 2: full transaction history (background)
+  // Phase 2: full transaction history (runs in background)
   google.script.run.withSuccessHandler(function(res){
     var balNum = $('#bal_number');
     if (balNum) balNum.textContent = money(res.balance || 0);
-
     var tx = (res.transactions || []).filter(function(t){
       return String(t.status || '').toLowerCase() !== 'void';
     });
@@ -1718,7 +1714,6 @@ function pageBalance(){
         ? "<span style='color:#f59e0b'>" + st + "</span>" : st;
       return '<tr><td>'+dt+'</td><td>'+evt+(memo?'<br/>'+memo:'')+'</td><td>'+stHtml+'</td><td class="right '+cls+'">'+sign+'$'+amt+'</td></tr>';
     }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
-
     var tbody = $('#bal_rows');
     if (tbody) tbody.innerHTML = rows;
   }).api_balance(state.user.its);
@@ -1941,11 +1936,11 @@ async function openEvent(id){
 
   try{
     // 1) Load everything we need up front (in parallel)
-    const [details, statuses, guestsRes, adminBoot] = await Promise.all([
+    // 3 parallel calls instead of 4 — admin data already loaded by api_fullBootstrap at boot
+    const [details, statuses, guestsRes] = await Promise.all([
       gs('api_eventDetails', id),
       gs('api_myStatusesForEvents', state.user.its, [id]),
-      gs('api_listGuests', state.user.its),
-      gs('api_admin_bootstrap', state.user.its)
+      gs('api_listGuests', state.user.its)
     ]);
 
     // 2) Normalize data
@@ -1953,12 +1948,6 @@ async function openEvent(id){
     const live  = details && details.live  || [];
     const map   = (statuses && (statuses.map || statuses.statuses || statuses.billing_statuses)) || {};
     const myStatus = String(map[evt.id] || 'none').toLowerCase();
-
-    // Ensure adminSports is available for isAdminForSport()
-    if (adminBoot && Array.isArray(adminBoot.adminSports)) {
-      state.adminSports = adminBoot.adminSports;
-      state.admin = Object.assign({}, state.admin || {}, { adminSports: adminBoot.adminSports });
-    }
 
     const nowTs    = now();
     const regStart = parseDT(evt.reg_start);
