@@ -607,7 +607,7 @@ router.sync();  // let the hash pick the page right away
 
 (function bootApp(){
   var CACHE_KEY = 'saifee_boot_v1';
-  var CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  var CACHE_TTL = 5 * 60 * 1000;
 
   function applyBoot(res){
     state.boot = res || {};
@@ -621,8 +621,6 @@ router.sync();  // let the hash pick the page right away
         state.boot.admin
       );
     }
-    // Only rebuild nav — do NOT call render() here.
-    // render() would overwrite whatever page the router already navigated to.
     buildNav();
   }
 
@@ -738,9 +736,6 @@ function setSport(sp){
         var saved = JSON.parse(localStorage.getItem('saifee_user') || 'null');
         if (saved && saved.its){
           state.user = saved;
-          // Do NOT set state.page here — let router.sync() read the hash and
-          // decide the page. This prevents home briefly flashing before the
-          // intended page (e.g. a shared event link) loads.
         }
       } catch(e){}
     }
@@ -1583,32 +1578,11 @@ async function pageQrCheckin(eventId, token){
         ['Profile Created',fmtDate(u.created_at)],['Profile Updated',fmtDate(u.updated_at)]
       ];
       var table = rows.map(function(kv){ return '<tr><td class="label">'+kv[0]+'</td><td>'+(kv[1]||'')+'</td></tr>'; }).join('');
-
-      // Profile picture — square card above the table, shown only if a URL exists
-      var picHtml = '';
-      if (u.profile_pic_url) {
-        picHtml =
-          '<div style="'+
-            'width:100%;'+
-            'aspect-ratio:1/1;'+
-            'max-width:240px;'+
-            'margin:0 auto 8px auto;'+
-            'border-radius:12px;'+
-            'overflow:hidden;'+
-            'background:var(--surface2,#f0f0f0);'+
-            'box-shadow:0 2px 8px rgba(0,0,0,0.12);'+
-          '">'+
-            '<img src="'+u.profile_pic_url+'" '+
-              'alt="Profile photo" '+
-              'style="width:100%;height:100%;object-fit:cover;display:block;" '+
-              'onerror="this.parentNode.style.display='none'" '+
-            '/>'+
-          '</div>';
-      }
-
       var node = el(
         '<div class="card stack">'+
-          picHtml+
+          '<div id="pic_wrap" style="width:100%;max-width:240px;margin:0 auto 8px auto;border-radius:12px;overflow:hidden;background:var(--surface2,#f0f0f0);box-shadow:0 2px 8px rgba(0,0,0,0.12);display:none;">'+
+            '<img id="pic_img" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;display:block;aspect-ratio:1/1;" />'+
+          '</div>'+
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
             '<div style="font-size:var(--fs-lg);font-weight:800">'+(u.first_name||'')+' '+(u.last_name||'')+'</div>'+
             '<button class="btn" id="btnEdit">Edit Profile</button>'+
@@ -1617,6 +1591,16 @@ async function pageQrCheckin(eventId, token){
         '</div>');
       layout(node);
       $('#btnEdit').onclick=function(){ setPage('edit'); };
+      // Set profile picture via JS to avoid quote-escaping issues in HTML strings
+      if (u.profile_pic_url) {
+        var wrap = document.getElementById('pic_wrap');
+        var img  = document.getElementById('pic_img');
+        if (img && wrap) {
+          img.src = u.profile_pic_url;
+          img.onload  = function(){ wrap.style.display = 'block'; };
+          img.onerror = function(){ wrap.style.display = 'none'; };
+        }
+      }
     }
 
    /* ===================== BALANCE ===================== */
@@ -1662,12 +1646,10 @@ function pageBalance(){
       '<div class="muted" style="margin-top:10px;line-height:1.6">'+
         'Add to balance with Zelle to:<br/>'+
         '<strong id="zelleEmail">'+email+'</strong> '+
-        '<button id="copyEmailBtn" class="btn btn--sm" aria-label="Copy Zelle email" '+
-          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
+        '<button id="copyEmailBtn" class="btn btn--sm" style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
         'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
-        '<span id="zelleMemo" style="font-weight:600">'+memoText+'</span> '+
-        '<button id="copyMemoBtn" class="btn btn--sm" aria-label="Copy memo" '+
-          'style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
+        '<span style="font-weight:600">'+memoText+'</span> '+
+        '<button id="copyMemoBtn" class="btn btn--sm" style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
       '</div>'+
       '<table class="table table--compact" style="margin-top:10px">'+
         '<thead><tr><th>Date</th><th>Event</th><th>Status</th><th class="right">Amount</th></tr></thead>'+
@@ -1679,63 +1661,53 @@ function pageBalance(){
   layout(node);
 
   var balBox = $('#bal_box');
-  var emailBtn = balBox.querySelector('#copyEmailBtn');
-  var memoBtn  = balBox.querySelector('#copyMemoBtn');
-  if (emailBtn) emailBtn.addEventListener('click', function(){ copyText(email, this); });
-  if (memoBtn)  memoBtn.addEventListener('click',  function(){ copyText(memoText, this); });
+  balBox.querySelector('#copyEmailBtn').addEventListener('click', function(){ copyText(email, this); });
+  balBox.querySelector('#copyMemoBtn').addEventListener('click',  function(){ copyText(memoText, this); });
+  balBox.querySelector('#downloadCsvBtn').addEventListener('click', function(){
+    var btn = this, orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Preparing…';
+    google.script.run.withSuccessHandler(function(r){
+      btn.disabled = false; btn.textContent = orig;
+      if (!r || !r.ok || !r.csv){ alert((r && r.error) || 'No CSV available'); return; }
+      var blob = new Blob([r.csv], { type: 'text/csv;charset=utf-8;' });
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      a.href = url; a.download = 'transactions_'+itsVal+'.csv';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+    }).api_balanceCsv(state.user.its);
+  });
 
-  var dlBtn = balBox.querySelector('#downloadCsvBtn');
-  if (dlBtn){
-    dlBtn.addEventListener('click', function(){
-      var self = this;
-      var orig = self.textContent;
-      self.disabled = true; self.textContent = 'Preparing…';
-      google.script.run.withSuccessHandler(function(r){
-        self.disabled = false; self.textContent = orig;
-        if (!r || !r.ok || !r.csv){ alert((r && r.error) || 'No CSV available'); return; }
-        var blob = new Blob([r.csv], { type: 'text/csv;charset=utf-8;' });
-        var url  = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'transactions_'+ itsVal + '.csv';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
-      }).api_balanceCsv(state.user.its);
-    });
-  }
-
-  // Phase 1: fast — reads only col U of Users (~200ms)
-  google.script.run.withSuccessHandler(function(qRes){
-    var balNum = $('#bal_number');
-    if (balNum) balNum.textContent = money((qRes && qRes.balance != null) ? qRes.balance : 0);
+  // Phase 1: fast balance from col U
+  google.script.run.withSuccessHandler(function(r){
+    var el = $('#bal_number');
+    if (el) el.textContent = money(r && r.balance != null ? r.balance : 0);
   }).withFailureHandler(function(){
-    var balNum = $('#bal_number');
-    if (balNum) balNum.textContent = '—';
+    var el = $('#bal_number'); if (el) el.textContent = '—';
   }).api_balanceQuick(state.user.its);
 
-  // Phase 2: full transaction history (runs in background)
+  // Phase 2: full transaction history
   google.script.run.withSuccessHandler(function(res){
-    var balNum = $('#bal_number');
-    if (balNum) balNum.textContent = money(res.balance || 0);
+    var el = $('#bal_number');
+    if (el) el.textContent = money(res.balance || 0);
     var tx = (res.transactions || []).filter(function(t){
       return String(t.status || '').toLowerCase() !== 'void';
     });
-    var rows = tx.map(function(t){
-      var dt   = fmtDate(t.date || t.created_at);
-      var evt  = t.category || '';
-      var memo = t.memo || '';
-      var amt  = Number(t.amount || 0).toFixed(2);
+    var html = tx.map(function(t){
       var isCredit = String(t.type) === 'credit';
-      var cls  = isCredit ? 'amt-credit' : 'amt-debit';
-      var sign = isCredit ? '+' : '-';
-      var st = String(t.status || '');
-      var stHtml = (st.toLowerCase() === 'pending')
-        ? "<span style='color:#f59e0b'>" + st + "</span>" : st;
-      return '<tr><td>'+dt+'</td><td>'+evt+(memo?'<br/>'+memo:'')+'</td><td>'+stHtml+'</td><td class="right '+cls+'">'+sign+'$'+amt+'</td></tr>';
+      var amt = Number(t.amount || 0).toFixed(2);
+      var st  = String(t.status || '');
+      var stHtml = st.toLowerCase() === 'pending' ? '<span style="color:#f59e0b">'+st+'</span>' : st;
+      var memo = t.memo || '';
+      return '<tr>'+
+        '<td>'+fmtDate(t.date||t.created_at)+'</td>'+
+        '<td>'+(t.category||'')+(memo ? '<br/>'+memo : '')+'</td>'+
+        '<td>'+stHtml+'</td>'+
+        '<td class="right '+(isCredit?'amt-credit':'amt-debit')+'">'+(isCredit?'+':'-')+'$'+amt+'</td>'+
+      '</tr>';
     }).join('') || '<tr><td colspan="4" class="muted">No transactions</td></tr>';
     var tbody = $('#bal_rows');
-    if (tbody) tbody.innerHTML = rows;
+    if (tbody) tbody.innerHTML = html;
   }).api_balance(state.user.its);
 }
 
@@ -1956,7 +1928,6 @@ async function openEvent(id){
 
   try{
     // 1) Load everything we need up front (in parallel)
-    // 3 parallel calls instead of 4 — admin data already loaded by api_fullBootstrap at boot
     const [details, statuses, guestsRes] = await Promise.all([
       gs('api_eventDetails', id),
       gs('api_myStatusesForEvents', state.user.its, [id]),
