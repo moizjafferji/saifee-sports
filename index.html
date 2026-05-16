@@ -622,19 +622,16 @@ router.sync();  // let the hash pick the page right away
       );
     }
     // Only rebuild nav — do NOT call render() here.
-    // render() would overwrite whatever page the router already navigated to
-    // (e.g. an event page from a shared link) with state.page (home).
+    // render() would overwrite whatever page the router already navigated to.
     buildNav();
   }
 
-  // Try sessionStorage cache first for instant render
   try {
     var raw = sessionStorage.getItem(CACHE_KEY);
     if (raw) {
       var cached = JSON.parse(raw);
       if (cached && cached._ts && (Date.now() - cached._ts) < CACHE_TTL) {
         applyBoot(cached);
-        // Silently refresh in background
         google.script.run
           .withSuccessHandler(function(fresh){
             if (fresh && fresh.ok) {
@@ -649,7 +646,6 @@ router.sync();  // let the hash pick the page right away
     }
   } catch(_) {}
 
-  // No cache — fetch fresh
   google.script.run
     .withSuccessHandler(function(res){
       if (res && res.ok) {
@@ -1587,8 +1583,32 @@ async function pageQrCheckin(eventId, token){
         ['Profile Created',fmtDate(u.created_at)],['Profile Updated',fmtDate(u.updated_at)]
       ];
       var table = rows.map(function(kv){ return '<tr><td class="label">'+kv[0]+'</td><td>'+(kv[1]||'')+'</td></tr>'; }).join('');
+
+      // Profile picture — square card above the table, shown only if a URL exists
+      var picHtml = '';
+      if (u.profile_pic_url) {
+        picHtml =
+          '<div style="'+
+            'width:100%;'+
+            'aspect-ratio:1/1;'+
+            'max-width:240px;'+
+            'margin:0 auto 8px auto;'+
+            'border-radius:12px;'+
+            'overflow:hidden;'+
+            'background:var(--surface2,#f0f0f0);'+
+            'box-shadow:0 2px 8px rgba(0,0,0,0.12);'+
+          '">'+
+            '<img src="'+u.profile_pic_url+'" '+
+              'alt="Profile photo" '+
+              'style="width:100%;height:100%;object-fit:cover;display:block;" '+
+              'onerror="this.parentNode.style.display='none'" '+
+            '/>'+
+          '</div>';
+      }
+
       var node = el(
         '<div class="card stack">'+
+          picHtml+
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
             '<div style="font-size:var(--fs-lg);font-weight:800">'+(u.first_name||'')+' '+(u.last_name||'')+'</div>'+
             '<button class="btn" id="btnEdit">Edit Profile</button>'+
