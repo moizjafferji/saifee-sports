@@ -325,7 +325,8 @@
   if (window.google && google.script && google.script.run) return;
 
   const CACHEABLE_READS = new Set([
-    'api_listEvents', 'api_upcomingEvents', 'api_eventDetails'
+    'api_listEvents', 'api_upcomingEvents'
+    // api_eventDetails intentionally excluded: live roster polls must bypass edge cache
   ]);
 
   function runner(base, ctx = { ok: null, fail: null }) {
@@ -673,7 +674,14 @@ router.sync();  // let the hash pick the page right away
     /* ===================== UTILS ===================== */
     function $(sel, root){ return (root||document).querySelector(sel); }
     function el(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
-    function layout(n){ var root=document.getElementById('root'); root.innerHTML=''; root.appendChild(n); }
+    function layout(n){
+      // Stop any live-roster poll from a previous event page before replacing DOM
+      if (typeof window._liveRosterCleanup === 'function'){
+        try{ window._liveRosterCleanup(); } catch(_){}
+        window._liveRosterCleanup = null;
+      }
+      var root=document.getElementById('root'); root.innerHTML=''; root.appendChild(n);
+    }
     function setPage(p, opts){
   state.page = p; state.error=''; closeMenu();
 
@@ -1650,6 +1658,11 @@ function pageBalance(){
         'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
         '<span style="font-weight:600">'+memoText+'</span> '+
         '<button id="copyMemoBtn" class="btn btn--sm" style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
+        '<br/><span class="tiny muted" style="display:block;margin-top:6px">Please allow up to 10 minutes for balance to update.</span>'+
+        '<div style="margin-top:10px">'+
+          '<button id="forgotMemoBtn" class="btn secondary" style="font-size:var(--fs-xs)">Help! Forgot Memo</button>'+
+          '<div id="forgotMemoMsg" style="display:none;margin-top:8px;color:var(--ok);font-weight:600">✓ Request Received<br/><span class="tiny muted" style="font-weight:400">We will manually search for your transaction within 24 hours, InshAllah.</span></div>'+
+        '</div>'+
       '</div>'+
       '<table class="table table--compact" style="margin-top:10px">'+
         '<thead><tr><th>Date</th><th>Event</th><th>Status</th><th class="right">Amount</th></tr></thead>'+
@@ -1663,6 +1676,26 @@ function pageBalance(){
   var balBox = $('#bal_box');
   balBox.querySelector('#copyEmailBtn').addEventListener('click', function(){ copyText(email, this); });
   balBox.querySelector('#copyMemoBtn').addEventListener('click',  function(){ copyText(memoText, this); });
+  balBox.querySelector('#forgotMemoBtn').addEventListener('click', function(){
+    var btn = this;
+    var confirmed = confirm('Confirm: Did you forget to add the Memo and need help to have your Zelle reflect on your balance?');
+    if (!confirmed) return;
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    var fullName = ((state.user.first_name||'') + ' ' + (state.user.last_name||'')).trim();
+    google.script.run
+      .withSuccessHandler(function(){
+        btn.style.display = 'none';
+        var msg = $('#forgotMemoMsg');
+        if (msg) msg.style.display = 'block';
+      })
+      .withFailureHandler(function(){
+        btn.disabled = false;
+        btn.textContent = 'Help! Forgot Memo';
+        alert('Something went wrong. Please try again.');
+      })
+      .api_forgotMemo(itsVal, fullName);
+  });
   balBox.querySelector('#downloadCsvBtn').addEventListener('click', function(){
     var btn = this, orig = btn.textContent;
     btn.disabled = true; btn.textContent = 'Preparing…';
@@ -2000,7 +2033,10 @@ async function openEvent(id){
         "</div>"+
 
         "<div class='card stack'>"+
-          "<div class='label'>Live Roster List</div>"+
+          "<div style='display:flex;align-items:center;justify-content:space-between;gap:8px'>"+
+            "<div class='label'>Live Roster</div>"+
+            "<div class='tiny muted' id='live_ts'></div>"+
+          "</div>"+
           "<div id='live_list'></div>"+
           "<div class='tiny' id='cap_hint'></div>"+
         "</div>"+
@@ -2163,46 +2199,72 @@ ${evt.address || ''}`;
       };
     })();
 
-    // 6) Live roster — per-row Remove (admins only; "Captain" NOT allowed)
-    (function renderLive(){
-      const listEl = $('#live_list');
-      const admin  = isAdminForSport(evt.sport); // strict admin check
+    // 6) Live roster — auto-refreshes every 30 s; per-row Remove for admins
+    (function setupLiveRoster(){
+      const admin = isAdminForSport(evt.sport);
 
-      const html = live.map(function(r, i){
-        const num = i + 1;
-        const st = String(r.status||'').toLowerCase();
-        const statusBadge  = computeStatusBadge(st);
-        const checkinBadge = computeCheckinPill(r);
-        const canRemove = admin && (st==='active' || st==='waitlist');
-        const removeBtn = canRemove
-          ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
-          : "";
-        return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
-                 num+". "+r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
-               "</div>";
-      }).join('');
+      function renderRows(rows){
+        const listEl = $('#live_list');
+        if (!listEl) return;
 
-      listEl.innerHTML = html || "<div class='muted'>No registrations yet</div>";
+        const html = rows.map(function(r, i){
+          const num = i + 1;
+          const st = String(r.status||'').toLowerCase();
+          const statusBadge  = computeStatusBadge(st);
+          const checkinBadge = computeCheckinPill(r);
+          const canRemove = admin && (st==='active' || st==='waitlist');
+          const removeBtn = canRemove
+            ? " <button class='btn danger sm' data-act='admin-cancel' data-person='"+r.person+"'>Remove</button>"
+            : "";
+          return "<div style='padding:6px 0;border-bottom:1px solid var(--border)'>"+
+                   num+". "+r.name+" "+statusBadge+" "+checkinBadge+removeBtn+
+                 "</div>";
+        }).join('');
 
-      if (admin){
-        listEl.querySelectorAll('button[data-act=\"admin-cancel\"]').forEach(function(b){
-          b.addEventListener('click', function(){
-            const person = b.getAttribute('data-person');
-            if (!confirm('Remove this registration and promote the next from waitlist?')) return;
-            google.script.run.withSuccessHandler(function(r){
-              if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
-              openEvent(id); // refresh
-            }).api_admin_cancelRegistration(state.user.its, id, person);
+        listEl.innerHTML = html || "<div class='muted'>No registrations yet</div>";
+
+        if (admin){
+          listEl.querySelectorAll('button[data-act="admin-cancel"]').forEach(function(b){
+            b.addEventListener('click', function(){
+              const person = b.getAttribute('data-person');
+              if (!confirm('Remove this registration and promote the next from waitlist?')) return;
+              google.script.run.withSuccessHandler(function(r){
+                if(!r || !r.ok){ alert((r && r.error) || 'Remove failed'); return; }
+                openEvent(id);
+              }).api_admin_cancelRegistration(state.user.its, id, person);
+            });
           });
-        });
+        }
+
+        // Capacity hint
+        const cap = Number(evt.max_capacity||0);
+        const activeCount = rows.filter(x=> String(x.status||'').toLowerCase()==='active').length;
+        const reached = (cap>0 && activeCount>=cap);
+        const capHint = $('#cap_hint');
+        if (capHint) capHint.textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
+
+        // Update "last refreshed" timestamp
+        const ts = $('#live_ts');
+        if (ts) ts.textContent = 'Updated ' + new Date().toLocaleTimeString();
       }
 
-      // Capacity hint (computed locally from preloaded live)
-      const cap = Number(evt.max_capacity||0);
-      const activeCount = live.filter(x=> String(x.status||'').toLowerCase()==='active').length;
-      const reached = (cap>0 && activeCount>=cap);
-      const capHint = $('#cap_hint');
-      if (capHint) capHint.textContent = reached ? 'Capacity is full. New registrations will go to the waitlist.' : '';
+      // Initial render with already-loaded data (instant)
+      renderRows(live);
+
+      // Poll every 30 s; stop when the user navigates away
+      const pollInterval = setInterval(async function(){
+        // Stop polling if this event card is no longer in the DOM
+        if (!document.getElementById('live_list')){ clearInterval(pollInterval); return; }
+        try{
+          const fresh = await gs('api_eventDetails', id);
+          const freshLive = (fresh && fresh.live) || [];
+          renderRows(freshLive);
+        }catch(_){ /* silently ignore transient errors */ }
+      }, 30000);
+
+      // Also stop polling when the router navigates to a new page
+      const _origLayout = window._liveRosterCleanup;
+      window._liveRosterCleanup = function(){ clearInterval(pollInterval); if (_origLayout) _origLayout(); };
     })();
 
   } catch(e){
