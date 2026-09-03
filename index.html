@@ -1648,54 +1648,230 @@ function pageBalance(){
   var email    = 'toloba@dallasjamaat.org';
 
   var node = el(
-    '<div class="card stack" id="bal_box">'+
-      '<div class="label">Current Balance</div>'+
-      '<div id="bal_number" style="font-size:var(--fs-xl);font-weight:800">Loading…</div>'+
-      '<div class="muted" style="margin-top:10px;line-height:1.6">'+
-        'Add to balance with Zelle to:<br/>'+
-        '<strong id="zelleEmail">'+email+'</strong> '+
-        '<button id="copyEmailBtn" class="btn btn--sm" style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
-        'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
-        '<span style="font-weight:600">'+memoText+'</span> '+
-        '<button id="copyMemoBtn" class="btn btn--sm" style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
-        '<br/><span class="tiny muted" style="display:block;margin-top:6px">Please allow up to 10 minutes for balance to update.</span>'+
-        '<div style="margin-top:10px">'+
-          '<button id="forgotMemoBtn" class="btn secondary" style="font-size:var(--fs-xs)">Help! Forgot Memo</button>'+
-          '<div id="forgotMemoMsg" style="display:none;margin-top:8px;color:var(--ok);font-weight:600">✓ Request Received<br/><span class="tiny muted" style="font-weight:400">We will manually search for your transaction within 24 hours, InshAllah.</span></div>'+
-        '</div>'+
+  '<div class="card stack" id="bal_box">'+
+    '<div class="label">Current Balance</div>'+
+    '<div id="bal_number" style="font-size:var(--fs-xl);font-weight:800">Loading…</div>'+
+    '<div class="muted" style="margin-top:10px;line-height:1.6">'+
+      'Add to balance with Zelle to:<br/>'+
+      '<strong id="zelleEmail">'+email+'</strong> '+
+      '<button id="copyEmailBtn" class="btn btn--sm" style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy email</button><br/>'+
+      'MUST WRITE THIS EXACTLY IN MEMO:<br/>'+
+      '<span style="font-weight:600">'+memoText+'</span> '+
+      '<button id="copyMemoBtn" class="btn btn--sm" style="margin-left:6px;padding:4px 8px;border-radius:8px;cursor:pointer;">Copy memo</button>'+
+      '<br/><span class="tiny muted" style="display:block;margin-top:6px">Please allow up to 10 minutes for balance to update.</span>'+
+      '<div style="margin-top:10px">'+
+        '<button id="forgotMemoBtn" class="btn secondary" style="font-size:var(--fs-xs)">Help! Forgot Memo</button>'+
+        '<button id="balRefundBtn" class="btn secondary" style="font-size:var(--fs-xs);margin-left:8px">Refund</button>'+
+        '<div id="forgotMemoMsg" style="display:none;margin-top:8px;color:var(--ok);font-weight:600">✓ Request Received<br/><span class="tiny muted" style="font-weight:400">We will manually search for your transaction within 24 hours, InshAllah.</span></div>'+
       '</div>'+
-      '<table class="table table--compact" style="margin-top:10px">'+
-        '<thead><tr><th>Date</th><th>Event</th><th>Status</th><th class="right">Amount</th></tr></thead>'+
-        '<tbody id="bal_rows"><tr><td colspan="4" class="muted">Loading transactions…</td></tr></tbody>'+
-      '</table>'+
-      '<div><button id="downloadCsvBtn" class="btn" style="margin-top:8px;background:#fff;color:#0f2a6b;border:1px solid var(--border)">Download CSV</button></div>'+
-    '</div>'
-  );
-  layout(node);
+    '</div>'+
+    '<table class="table table--compact" style="margin-top:10px">'+
+      '<thead><tr><th>Date</th><th>Event</th><th>Status</th><th class="right">Amount</th></tr></thead>'+
+      '<tbody id="bal_rows"><tr><td colspan="4" class="muted">Loading transactions…</td></tr></tbody>'+
+    '</table>'+
+    '<div><button id="downloadCsvBtn" class="btn" style="margin-top:8px;background:#fff;color:#0f2a6b;border:1px solid var(--border)">Download CSV</button></div>'+
+  '</div>'
+);
 
-  var balBox = $('#bal_box');
-  balBox.querySelector('#copyEmailBtn').addEventListener('click', function(){ copyText(email, this); });
-  balBox.querySelector('#copyMemoBtn').addEventListener('click',  function(){ copyText(memoText, this); });
-  balBox.querySelector('#forgotMemoBtn').addEventListener('click', function(){
-    var btn = this;
-    var confirmed = confirm('Confirm: Did you forget to add the Memo and need help to have your Zelle reflect on your balance?');
-    if (!confirmed) return;
-    btn.disabled = true;
-    btn.textContent = 'Sending…';
-    var fullName = ((state.user.first_name||'') + ' ' + (state.user.last_name||'')).trim();
-    google.script.run
-      .withSuccessHandler(function(){
-        btn.style.display = 'none';
-        var msg = $('#forgotMemoMsg');
-        if (msg) msg.style.display = 'block';
-      })
-      .withFailureHandler(function(){
-        btn.disabled = false;
-        btn.textContent = 'Help! Forgot Memo';
-        alert('Something went wrong. Please try again.');
-      })
-      .api_forgotMemo(itsVal, fullName);
+layout(node);
+
+var balBox = $('#bal_box');
+
+balBox.querySelector('#copyEmailBtn').addEventListener('click', function(){
+  copyText(email, this);
+});
+
+balBox.querySelector('#copyMemoBtn').addEventListener('click', function(){
+  copyText(memoText, this);
+});
+
+
+/* ===== Help: Forgot Memo ===== */
+
+balBox.querySelector('#forgotMemoBtn').addEventListener('click', function(){
+  var btn = this;
+
+  var confirmed = confirm(
+    'Confirm: Did you forget to add the Memo and need help to have your Zelle reflect on your balance?'
+  );
+
+  if (!confirmed) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  var fullName = ((state.user.first_name || '') + ' ' + (state.user.last_name || '')).trim();
+
+  google.script.run
+    .withSuccessHandler(function(){
+      btn.style.display = 'none';
+
+      var msg = $('#forgotMemoMsg');
+      if (msg) msg.style.display = 'block';
+    })
+    .withFailureHandler(function(){
+      btn.disabled = false;
+      btn.textContent = 'Help! Forgot Memo';
+      alert('Something went wrong. Please try again.');
+    })
+    .api_forgotMemo(itsVal, fullName);
+});
+
+
+/* ===== Refund ===== */
+
+balBox.querySelector('#balRefundBtn').addEventListener('click', function(){
+  var btn = this;
+
+  // Build refund modal
+  var modal = document.createElement('div');
+
+  modal.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;'+
+    'display:flex;align-items:center;justify-content:center;padding:16px;';
+
+  modal.innerHTML =
+    '<div style="background:var(--card);border-radius:14px;padding:24px;max-width:400px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.3)">'+
+
+      '<div style="font-size:var(--fs-lg);font-weight:700;margin-bottom:8px">'+
+        'Refund Request'+
+      '</div>'+
+
+      '<div style="margin-bottom:12px;line-height:1.5;font-size:var(--fs-xs);color:var(--muted)">'+
+        'Enter the phone number or email address registered with your Zelle account.'+
+      '</div>'+
+
+      '<input id="refund_zelle" class="input" '+
+        'placeholder="Phone (e.g. 2145551234) or Email" '+
+        'style="margin-bottom:10px">'+
+
+      '<div id="refund_err" '+
+        'style="font-size:var(--fs-xs);color:var(--err);margin-bottom:10px;min-height:18px">'+
+      '</div>'+
+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+
+        '<button id="refund_submit" class="btn">'+
+          'Submit'+
+        '</button>'+
+
+        '<button id="refund_cancel" class="btn secondary">'+
+          'Cancel'+
+        '</button>'+
+
+      '</div>'+
+
+    '</div>';
+
+  document.body.appendChild(modal);
+
+  var input  = modal.querySelector('#refund_zelle');
+  var errEl  = modal.querySelector('#refund_err');
+  var subBtn = modal.querySelector('#refund_submit');
+
+
+  function closeModal(){
+    modal.remove();
+  }
+
+
+  // Cancel button
+  modal.querySelector('#refund_cancel').onclick = closeModal;
+
+
+  // Close if user clicks outside the modal
+  modal.addEventListener('click', function(e){
+    if (e.target === modal) closeModal();
   });
+
+
+  // Put cursor in the input
+  setTimeout(function(){
+    input.focus();
+  }, 50);
+
+
+  // Submit refund request
+  subBtn.onclick = function(){
+
+    var val = (input.value || '').trim();
+
+    errEl.textContent = '';
+
+
+    // Validate phone number or email
+    var isPhone = /^\d{10}$/.test(
+      val.replace(/[\s\-\(\)\.]/g, '')
+    );
+
+    var isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val);
+
+
+    if (!isPhone && !isEmail){
+      errEl.textContent =
+        'Enter a valid 10-digit phone number or email address.';
+      return;
+    }
+
+
+    // Normalize phone number
+    var zelleTo = isPhone
+      ? val.replace(/[\s\-\(\)\.]/g, '')
+      : val;
+
+
+    var memo = 'Refund to ' + zelleTo;
+
+
+    // Prevent double submission
+    subBtn.disabled = true;
+    subBtn.textContent = 'Submitting…';
+
+
+    google.script.run
+
+      .withSuccessHandler(function(r){
+
+        subBtn.disabled = false;
+        subBtn.textContent = 'Submit';
+
+
+        if (!r || !r.ok){
+
+          errEl.textContent =
+            (r && r.error) ||
+            'Refund request failed. Please try again.';
+
+          return;
+        }
+
+
+        closeModal();
+
+        alert(
+          'Refund request submitted. An admin will review it shortly.'
+        );
+
+      })
+
+      .withFailureHandler(function(e){
+
+        subBtn.disabled = false;
+        subBtn.textContent = 'Submit';
+
+        errEl.textContent =
+          (e && e.message) ||
+          'Refund request failed. Please try again.';
+
+      })
+
+      .api_submitRefundRequest(
+        state.user.its,
+        memo
+      );
+  };
+});
+
   balBox.querySelector('#downloadCsvBtn').addEventListener('click', function(){
     var btn = this, orig = btn.textContent;
     btn.disabled = true; btn.textContent = 'Preparing…';
